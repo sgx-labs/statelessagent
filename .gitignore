@@ -1,0 +1,162 @@
+# Sensitive files
+.env
+.env.local
+*.env
+
+# API keys and secrets
+*api_key*
+*secret*
+firecrawl_config.sh
+
+# Claude files
+CLAUDE.md
+.claude/settings.local.json
+
+# MCP config
+.mcp.json
+
+# Scripts with sensitive data
+scripts/*_local.sh
+
+# macOS files
+.DS_Store
+
+# Node modules - always exclude from repo
+node_modules/
+.node_modules/
+pnpm-lock.yaml
+package-lock.json
+
+# Temporary directories
+.tmp/
+.worktrees/
+
+# Vault search index (embeddings, LanceDB) and Python venv
+.scripts/vault-search/data/
+.scripts/vault-search/.venv/
+__pycache__/
+*.pyc
+
+# Legacy structure (migrated)
+statelessagent/
+stateless-agent-vault/
+
+# Obsidian workspace and settings (owned by Obsidian Sync, not git)
+.obsidian/
+
+# Stray vault notes and legacy folders in root
+/OLD_VAULT/
+
+# ============================================================
+# VAULT CONTENT — OWNED BY OBSIDIAN SYNC, NOT GIT
+# ============================================================
+# All markdown notes, journal entries, templates, and project
+# files are synced by Obsidian Sync across devices. Git only
+# tracks code, config, and dotfiles. This prevents checkout
+# conflicts where git overwrites newer Sync'd content.
+# ============================================================
+00_Inbox/
+01_Projects/
+02_Areas/
+03_Resources/
+04_Archive/
+05_Attachments/
+06_Metadata/
+07_Journal/
+
+# Preserve folder structure via .gitkeep files
+!00_Inbox/.gitkeep
+!01_Projects/.gitkeep
+!02_Areas/.gitkeep
+!03_Resources/.gitkeep
+!04_Archive/.gitkeep
+!05_Attachments/.gitkeep
+!05_Attachments/**/.gitkeep
+!06_Metadata/.gitkeep
+!07_Journal/.gitkeep
+
+# Never commit real API keys
+*_API_KEY
+
+# ============================================================
+# HARD SECURITY BOUNDARY - CLIENT-SENSITIVE DATA
+# ============================================================
+# Everything below this line protects client names, financial
+# data, meeting transcripts, invoicing details, and operational
+# content that must NEVER leave this machine.
+#
+# The _PRIVATE/ folder is the single containment boundary.
+# All client-sensitive content lives there.
+# Agents should NOT operate on _PRIVATE/ contents by default.
+# ============================================================
+
+# Primary containment - everything client-sensitive lives here
+_PRIVATE/
+
+# Catch-all patterns for client-sensitive content anywhere in vault
+**/*Client*
+**/*Meta*
+**/*Invoice*
+**/*Finance*
+**/*Handovers*
+
+# ============================================================
+# BINARY FILES -- tracked by Obsidian Sync, not Git
+# ============================================================
+# Large binary assets bloat the repo and are better handled by
+# Obsidian Sync. Only .gitkeep placeholders are committed to
+# preserve folder structure.
+# ============================================================
+05_Attachments/Images/*.png
+05_Attachments/Images/*.jpg
+05_Attachments/Images/*.jpeg
+05_Attachments/Images/*.gif
+05_Attachments/Images/*.webp
+05_Attachments/Screenshots/*
+05_Attachments/Documents/*.pdf
+05_Attachments/Documents/*.docx
+05_Attachments/Documents/*.xlsx
+05_Attachments/Documents/*.pptx
+05_Attachments/Videos/*
+05_Attachments/Scans/*
+05_Attachments/Inbox/*
+
+# Preserve folder structure via .gitkeep files
+!05_Attachments/**/.gitkeep
+
+# ============================================================
+# CUSTOM CATCH-ALL PATTERNS
+# ============================================================
+# Add your own keyword patterns here to prevent accidental
+# commit of files containing client names, project codes, or
+# sensitive operational terms anywhere in the vault.
+# Example:
+#   **/*ClientName*
+#   **/*ProjectCode*
+# ============================================================
+
+# ============================================================
+# CLEANUP COMMANDS (for reference -- run manually after updating)
+# ============================================================
+# If any of the above binary/sensitive files are already tracked
+# by Git, run these commands to un-track them WITHOUT deleting
+# the local copies, then commit the .gitignore changes:
+#
+#   git rm --cached 05_Attachments/Images/*.png
+#   git rm --cached 05_Attachments/Images/*.jpg
+#   git rm --cached 05_Attachments/Images/*.jpeg
+#   git rm --cached 05_Attachments/Images/*.gif
+#   git rm --cached 05_Attachments/Images/*.webp
+#   git rm --cached 05_Attachments/Screenshots/*
+#   git rm --cached 05_Attachments/Documents/*.pdf
+#   git rm --cached 05_Attachments/Documents/*.docx
+#   git rm --cached 05_Attachments/Documents/*.xlsx
+#   git rm --cached 05_Attachments/Documents/*.pptx
+#   git rm --cached 05_Attachments/Videos/*
+#   git rm --cached 05_Attachments/Scans/*
+#   git rm --cached 05_Attachments/Inbox/*
+#
+# Then commit:
+#   git add .gitignore
+#   git commit -m "Remove tracked binaries, update .gitignore"
+# ============================================================
