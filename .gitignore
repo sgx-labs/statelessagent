@@ -160,3 +160,6 @@ _PRIVATE/
 #   git add .gitignore
 #   git commit -m "Remove tracked binaries, update .gitignore"
 # ============================================================
+
+# SAME data (machine-local)
+.scripts/same/data/
