@@ -3,7 +3,6 @@ package hooks
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/memory"
@@ -32,8 +31,12 @@ func runDecisionExtractor(_ *store.DB, input *HookInput) *HookOutput {
 		return nil
 	}
 
-	// Append to decision log
-	logPath := filepath.Join(config.VaultPath(), config.DecisionLogPath())
+	// Append to decision log (validate path stays in vault)
+	logPath, ok := config.SafeVaultSubpath(config.DecisionLogPath())
+	if !ok {
+		fmt.Fprintf(os.Stderr, "same: decision log path escapes vault boundary, skipping\n")
+		return nil
+	}
 	count := memory.AppendToDecisionLog(decisions, logPath, "")
 
 	if count > 0 {

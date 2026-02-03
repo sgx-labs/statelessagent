@@ -90,6 +90,21 @@ func RunInit(opts InitOptions) error {
 	}
 	cli.Box(boxLines)
 
+	// Access scope — show exactly what the agent can see
+	cli.Section("Scope")
+	fmt.Printf("  %sIndexed%s     %s .md files in %s\n",
+		cli.Bold, cli.Reset,
+		cli.FormatNumber(stats.NotesInIndex), cli.ShortenHome(vaultPath))
+	fmt.Printf("  %sExcluded%s    _PRIVATE/, .obsidian/, .git/, .same/\n",
+		cli.Bold, cli.Reset)
+	fmt.Printf("  %sAgent sees%s  note title + path + 300-char snippet\n",
+		cli.Bold, cli.Reset)
+	fmt.Printf("  %sWrites to%s   %s (handoffs), %s (decisions)\n",
+		cli.Bold, cli.Reset,
+		config.HandoffDirectory(), config.DecisionLogPath())
+	fmt.Println()
+	fmt.Printf("  Run %ssame scope%s to review anytime.\n", cli.Bold, cli.Reset)
+
 	fmt.Println()
 	fmt.Printf("  %sSAME is now active.%s When you use Claude Code:\n", cli.Bold, cli.Reset)
 	fmt.Println()

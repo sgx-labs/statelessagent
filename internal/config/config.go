@@ -494,6 +494,31 @@ func validateVaultPath(path string) string {
 	return path
 }
 
+// SafeVaultSubpath resolves a relative path within the vault and validates
+// that the result stays inside the vault root. Returns the absolute path and true
+// if valid, or empty string and false if the path escapes the vault boundary.
+// SECURITY: Prevents SAME_HANDOFF_DIR or SAME_DECISION_LOG from redirecting
+// file writes outside the vault via path traversal (e.g., "../../etc").
+func SafeVaultSubpath(relativePath string) (string, bool) {
+	vaultRoot := VaultPath()
+	if vaultRoot == "" {
+		return "", false
+	}
+	absVault, err := filepath.Abs(vaultRoot)
+	if err != nil {
+		return "", false
+	}
+	absPath, err := filepath.Abs(filepath.Join(vaultRoot, filepath.FromSlash(relativePath)))
+	if err != nil {
+		return "", false
+	}
+	// The resolved path must be under the vault root
+	if !strings.HasPrefix(absPath, absVault+string(filepath.Separator)) && absPath != absVault {
+		return "", false
+	}
+	return absPath, true
+}
+
 // OllamaURL returns the validated Ollama API URL.
 // Panics if the URL does not point to localhost.
 func OllamaURL() string {

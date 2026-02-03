@@ -66,7 +66,11 @@ func runSessionBootstrap(db *store.DB, _ *HookInput) *HookOutput {
 // findLatestHandoff walks the handoff directory and returns the most recent
 // handoff note's key sections (Next Session, Current State, etc.).
 func findLatestHandoff() string {
-	handoffDir := filepath.Join(config.VaultPath(), filepath.FromSlash(config.HandoffDirectory()))
+	// SECURITY: Validate handoff directory stays inside vault boundary.
+	handoffDir, ok := config.SafeVaultSubpath(config.HandoffDirectory())
+	if !ok {
+		return ""
+	}
 	entries, err := os.ReadDir(handoffDir)
 	if err != nil || len(entries) == 0 {
 		return ""
@@ -187,10 +191,12 @@ func findActiveDecisions() string {
 	vaultPath := config.VaultPath()
 	var candidates []string
 
-	// Check root decision log
-	rootLog := filepath.Join(vaultPath, config.DecisionLogPath())
-	if _, err := os.Stat(rootLog); err == nil {
-		candidates = append(candidates, rootLog)
+	// Check root decision log (validate path stays in vault)
+	rootLog, ok := config.SafeVaultSubpath(config.DecisionLogPath())
+	if ok {
+		if _, err := os.Stat(rootLog); err == nil {
+			candidates = append(candidates, rootLog)
+		}
 	}
 
 	// Check common project directories for decision files
