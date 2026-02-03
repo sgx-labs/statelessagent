@@ -49,7 +49,17 @@ func Reindex(db *store.DB, force bool) (*Stats, error) {
 // ReindexWithProgress is like Reindex but accepts an optional progress callback.
 func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stats, error) {
 	vaultPath := config.VaultPath()
-	embedClient := embedding.NewClient()
+	ec := config.EmbeddingProviderConfig()
+	embedClient, err := embedding.NewProvider(embedding.ProviderConfig{
+		Provider:   ec.Provider,
+		Model:      ec.Model,
+		APIKey:     ec.APIKey,
+		BaseURL:    config.OllamaURL(),
+		Dimensions: ec.Dimensions,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("embedding provider: %w", err)
+	}
 
 	mdFiles := walkVault(vaultPath)
 	stats := &Stats{
@@ -224,11 +234,11 @@ func enrichStats(result map[string]interface{}) {
 
 // BuildRecordsForFile builds note records and embeddings for a single file.
 // Exported for use by the watcher.
-func BuildRecordsForFile(filePath, relPath, vaultPath string, embedClient *embedding.Client) ([]store.NoteRecord, [][]float32, error) {
+func BuildRecordsForFile(filePath, relPath, vaultPath string, embedClient embedding.Provider) ([]store.NoteRecord, [][]float32, error) {
 	return buildRecords(filePath, relPath, vaultPath, embedClient)
 }
 
-func buildRecords(filePath, relPath, vaultPath string, embedClient *embedding.Client) ([]store.NoteRecord, [][]float32, error) {
+func buildRecords(filePath, relPath, vaultPath string, embedClient embedding.Provider) ([]store.NoteRecord, [][]float32, error) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("read file: %w", err)

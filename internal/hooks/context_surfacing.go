@@ -2,12 +2,12 @@ package hooks
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/sgx-labs/statelessagent/internal/config"
-	"github.com/sgx-labs/statelessagent/internal/embedding"
 	"github.com/sgx-labs/statelessagent/internal/memory"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
@@ -97,8 +97,12 @@ func runContextSurfacing(db *store.DB, input *HookInput) *HookOutput {
 	isRecency := memory.HasRecencyIntent(prompt)
 
 	// Embed the prompt
-	client := embedding.NewClient()
-	queryVec, err := client.GetQueryEmbedding(prompt)
+	embedProvider, err := newEmbedProvider()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "same: embedding provider: %v\n", err)
+		return nil
+	}
+	queryVec, err := embedProvider.GetQueryEmbedding(prompt)
 	if err != nil {
 		return nil
 	}

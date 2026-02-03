@@ -21,7 +21,7 @@ import (
 
 var (
 	db              *store.DB
-	embedClient     *embedding.Client
+	embedClient     embedding.Provider
 	lastReindexTime time.Time
 	reindexMu       sync.Mutex
 	vaultRoot       string
@@ -41,7 +41,17 @@ func Serve() error {
 	}
 	defer db.Close()
 
-	embedClient = embedding.NewClient()
+	ec := config.EmbeddingProviderConfig()
+	embedClient, err = embedding.NewProvider(embedding.ProviderConfig{
+		Provider:   ec.Provider,
+		Model:      ec.Model,
+		APIKey:     ec.APIKey,
+		BaseURL:    config.OllamaURL(),
+		Dimensions: ec.Dimensions,
+	})
+	if err != nil {
+		return fmt.Errorf("embedding provider: %w", err)
+	}
 	vaultRoot, _ = filepath.Abs(config.VaultPath())
 
 	server := mcp.NewServer(&mcp.Implementation{

@@ -39,6 +39,7 @@ var hookEventMap = map[string]string{
 	"context-surfacing":  "UserPromptSubmit",
 	"decision-extractor": "Stop",
 	"handoff-generator":  "Stop",
+	"feedback-loop":      "Stop",
 	"staleness-check":    "SessionStart",
 	"session-bootstrap":  "SessionStart",
 }
@@ -81,6 +82,8 @@ func Run(hookName string) {
 		output = runDecisionExtractor(db, input)
 	case "handoff-generator":
 		output = runHandoffGenerator(db, input)
+	case "feedback-loop":
+		output = runFeedbackLoop(db, input)
 	case "staleness-check":
 		output = runStalenessCheck(db, input)
 	case "session-bootstrap":

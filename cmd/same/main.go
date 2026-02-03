@@ -30,6 +30,18 @@ import (
 // Version is set at build time via ldflags.
 var Version = "dev"
 
+// newEmbedProvider creates an embedding provider from config.
+func newEmbedProvider() (embedding.Provider, error) {
+	ec := config.EmbeddingProviderConfig()
+	return embedding.NewProvider(embedding.ProviderConfig{
+		Provider:   ec.Provider,
+		Model:      ec.Model,
+		APIKey:     ec.APIKey,
+		BaseURL:    config.OllamaURL(),
+		Dimensions: ec.Dimensions,
+	})
+}
+
 func main() {
 	root := &cobra.Command{
 		Use:   "same",
@@ -246,7 +258,10 @@ func runEvalExport(strategy, query string, topK int, weights map[string]float64)
 	}
 	defer db.Close()
 
-	client := embedding.NewClient()
+	client, err := newEmbedProvider()
+	if err != nil {
+		return fmt.Errorf("embedding provider: %w", err)
+	}
 	queryVec, err := client.GetQueryEmbedding(query)
 	if err != nil {
 		return fmt.Errorf("embed query: %w", err)
@@ -402,7 +417,10 @@ func runSearch(query string, topK int, domain string, jsonOut bool) error {
 	}
 	defer db.Close()
 
-	client := embedding.NewClient()
+	client, err := newEmbedProvider()
+	if err != nil {
+		return fmt.Errorf("embedding provider: %w", err)
+	}
 	queryVec, err := client.GetQueryEmbedding(query)
 	if err != nil {
 		return fmt.Errorf("embed query: %w", err)
@@ -618,14 +636,17 @@ func runDoctor() error {
 			cli.FormatNumber(chunkCount)), nil
 	})
 
-	// 3. Ollama
-	check("Ollama", "start with 'ollama serve'", func() (string, error) {
-		embedClient := embedding.NewClient()
+	// 3. Embedding provider
+	check("Embedding provider", "check config or 'ollama serve'", func() (string, error) {
+		embedClient, err := newEmbedProvider()
+		if err != nil {
+			return "", fmt.Errorf("provider error: %v", err)
+		}
 		vec, err := embedClient.GetQueryEmbedding("test")
 		if err != nil {
 			return "", fmt.Errorf("connection refused")
 		}
-		return fmt.Sprintf("%d-dim embeddings", len(vec)), nil
+		return fmt.Sprintf("%s, %d-dim", embedClient.Name(), len(vec)), nil
 	})
 
 	// 4. Vector search
@@ -636,7 +657,10 @@ func runDoctor() error {
 		}
 		defer db.Close()
 
-		embedClient := embedding.NewClient()
+		embedClient, err := newEmbedProvider()
+		if err != nil {
+			return "", fmt.Errorf("provider error")
+		}
 		vec, err := embedClient.GetQueryEmbedding("test query")
 		if err != nil {
 			return "", fmt.Errorf("embedding failed")
@@ -660,7 +684,10 @@ func runDoctor() error {
 		}
 		defer db.Close()
 
-		embedClient := embedding.NewClient()
+		embedClient, err := newEmbedProvider()
+		if err != nil {
+			return "", fmt.Errorf("provider error")
+		}
 		vec, err := embedClient.GetQueryEmbedding("what notes are in this vault")
 		if err != nil {
 			return "", fmt.Errorf("embedding failed")
@@ -992,21 +1019,31 @@ func runBench() error {
 	fmt.Printf("  %-30s %8s ms  %s\n", results[len(results)-1].Name, results[len(results)-1].Latency, results[len(results)-1].Detail)
 
 	// 2. Embedding latency (single query)
-	client := embedding.NewClient()
+	client, provErr := newEmbedProvider()
+	if provErr != nil {
+		results = append(results, benchResult{
+			Name:    "Embedding",
+			Latency: "FAILED",
+			Detail:  provErr.Error(),
+		})
+		fmt.Printf("  %-30s %8s     %s\n", "Embedding", "FAILED", provErr.Error())
+		return nil
+	}
 	testQuery := "what decisions were made about the memory system architecture"
 	t0 = time.Now()
 	queryVec, err := client.GetQueryEmbedding(testQuery)
 	embedLatency := time.Since(t0)
+	embedLabel := fmt.Sprintf("Embedding (%s)", client.Name())
 	if err != nil {
 		results = append(results, benchResult{
-			Name:    "Embedding (Ollama)",
+			Name:    embedLabel,
 			Latency: "FAILED",
 			Detail:  err.Error(),
 		})
-		fmt.Printf("  %-30s %8s     %s\n", "Embedding (Ollama)", "FAILED", err.Error())
+		fmt.Printf("  %-30s %8s     %s\n", embedLabel, "FAILED", err.Error())
 	} else {
 		results = append(results, benchResult{
-			Name:    "Embedding (Ollama)",
+			Name:    embedLabel,
 			Latency: fmt.Sprintf("%.1f", float64(embedLatency.Microseconds())/1000.0),
 			Detail:  fmt.Sprintf("%d dimensions", len(queryVec)),
 		})
@@ -1093,19 +1130,19 @@ func printBenchSummary(results []benchResult) {
 	for _, r := range results {
 		var v float64
 		fmt.Sscanf(r.Latency, "%f", &v)
-		switch r.Name {
-		case "Embedding (Ollama)":
+		switch {
+		case strings.HasPrefix(r.Name, "Embedding"):
 			embedMs = v
-		case "Vector search (top-10)":
+		case r.Name == "Vector search (top-10)":
 			searchMs = v
-		case "End-to-end (hook sim)":
+		case r.Name == "End-to-end (hook sim)":
 			e2eMs = v
 		}
 	}
 
 	if embedMs > 0 && searchMs > 0 {
 		goOverhead := e2eMs - embedMs
-		fmt.Printf("  Ollama embedding: %.0fms (network I/O, dominates latency)\n", embedMs)
+		fmt.Printf("  Embedding:        %.0fms (network I/O, dominates latency)\n", embedMs)
 		fmt.Printf("  Go overhead:      %.1fms (search + scoring + I/O)\n", goOverhead)
 		fmt.Printf("  Total e2e:        %.0fms\n", e2eMs)
 	}

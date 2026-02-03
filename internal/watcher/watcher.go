@@ -113,7 +113,18 @@ func Watch(db *store.DB) error {
 }
 
 func reindexFiles(db *store.DB, paths []string, vaultPath string) {
-	embedClient := embedding.NewClient()
+	ec := config.EmbeddingProviderConfig()
+	embedClient, err := embedding.NewProvider(embedding.ProviderConfig{
+		Provider:   ec.Provider,
+		Model:      ec.Model,
+		APIKey:     ec.APIKey,
+		BaseURL:    config.OllamaURL(),
+		Dimensions: ec.Dimensions,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  [ERROR] embedding provider: %v\n", err)
+		return
+	}
 
 	for _, fp := range paths {
 		relPath := relativePath(fp, vaultPath)

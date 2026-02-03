@@ -19,6 +19,7 @@ var hookDefinitions = map[string][]hookEntry{
 		{Matcher: "", Hooks: []hookAction{
 			{Type: "command", Command: "%s hook decision-extractor"},
 			{Type: "command", Command: "%s hook handoff-generator"},
+			{Type: "command", Command: "%s hook feedback-loop"},
 		}},
 	},
 	"SessionStart": {
@@ -150,6 +151,7 @@ func HooksInstalled(vaultPath string) map[string]bool {
 		"context-surfacing":  false,
 		"decision-extractor": false,
 		"handoff-generator":  false,
+		"feedback-loop":      false,
 		"staleness-check":    false,
 	}
 

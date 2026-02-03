@@ -36,10 +36,11 @@ const (
 
 // Config holds all SAME configuration, loaded from TOML + env + flags.
 type Config struct {
-	Vault  VaultConfig  `toml:"vault"`
-	Ollama OllamaConfig `toml:"ollama"`
-	Memory MemoryConfig `toml:"memory"`
-	Hooks  HooksConfig  `toml:"hooks"`
+	Vault     VaultConfig     `toml:"vault"`
+	Ollama    OllamaConfig    `toml:"ollama"`
+	Embedding EmbeddingConfig `toml:"embedding"`
+	Memory    MemoryConfig    `toml:"memory"`
+	Hooks     HooksConfig     `toml:"hooks"`
 }
 
 // VaultConfig holds vault-related settings.
@@ -64,6 +65,14 @@ type MemoryConfig struct {
 	CompositeThreshold float64 `toml:"composite_threshold"`
 }
 
+// EmbeddingConfig holds embedding provider settings.
+type EmbeddingConfig struct {
+	Provider   string `toml:"provider"`   // "ollama" (default), "openai"
+	Model      string `toml:"model"`      // model name (provider-specific default if empty)
+	APIKey     string `toml:"api_key"`    // API key for cloud providers
+	Dimensions int    `toml:"dimensions"` // vector dimensions (0 = provider default)
+}
+
 // HooksConfig controls which hooks are enabled.
 type HooksConfig struct {
 	ContextSurfacing  bool `toml:"context_surfacing"`
@@ -82,6 +91,10 @@ func DefaultConfig() *Config {
 		Ollama: OllamaConfig{
 			URL:   "http://localhost:11434",
 			Model: EmbeddingModel,
+		},
+		Embedding: EmbeddingConfig{
+			Provider: "ollama",
+			Model:    "", // uses provider-specific default
 		},
 		Memory: MemoryConfig{
 			MaxTokenBudget:     800,
@@ -130,6 +143,23 @@ func LoadConfig() (*Config, error) {
 			if d != "" {
 				cfg.Vault.SkipDirs = append(cfg.Vault.SkipDirs, d)
 			}
+		}
+	}
+
+	// Embedding provider overrides
+	if v := os.Getenv("SAME_EMBED_PROVIDER"); v != "" {
+		cfg.Embedding.Provider = v
+	}
+	if v := os.Getenv("SAME_EMBED_MODEL"); v != "" {
+		cfg.Embedding.Model = v
+	}
+	if v := os.Getenv("SAME_EMBED_API_KEY"); v != "" {
+		cfg.Embedding.APIKey = v
+	}
+	// Also check OPENAI_API_KEY as a convenience fallback
+	if cfg.Embedding.APIKey == "" && cfg.Embedding.Provider == "openai" {
+		if v := os.Getenv("OPENAI_API_KEY"); v != "" {
+			cfg.Embedding.APIKey = v
 		}
 	}
 
@@ -213,6 +243,14 @@ func generateTOMLContent(vaultPath string) string {
 	b.WriteString("[ollama]\n")
 	b.WriteString("url = \"http://localhost:11434\"\n")
 	b.WriteString("model = \"nomic-embed-text\"\n\n")
+
+	b.WriteString("[embedding]\n")
+	b.WriteString("# Embedding provider: \"ollama\" (default, local) or \"openai\" (cloud)\n")
+	b.WriteString("provider = \"ollama\"\n")
+	b.WriteString("# model = \"nomic-embed-text\"    # provider-specific model name\n")
+	b.WriteString("# api_key = \"\"                  # required for cloud providers\n")
+	b.WriteString("#                               # or set SAME_EMBED_API_KEY / OPENAI_API_KEY\n")
+	b.WriteString("# dimensions = 0                # 0 = use provider default\n\n")
 
 	b.WriteString("[memory]\n")
 	b.WriteString("max_token_budget = 800\n")
@@ -302,6 +340,56 @@ func MemoryMaxTokenBudget() int {
 		return cfg.Memory.MaxTokenBudget
 	}
 	return 800
+}
+
+// EmbeddingProvider returns the configured embedding provider name.
+func EmbeddingProvider() string {
+	if v := os.Getenv("SAME_EMBED_PROVIDER"); v != "" {
+		return v
+	}
+	if cfg := loadConfigSafe(); cfg != nil && cfg.Embedding.Provider != "" {
+		return cfg.Embedding.Provider
+	}
+	return "ollama"
+}
+
+// EmbeddingProviderConfig returns the full embedding provider configuration.
+func EmbeddingProviderConfig() EmbeddingConfig {
+	cfg := loadConfigSafe()
+	if cfg == nil {
+		return EmbeddingConfig{Provider: "ollama"}
+	}
+
+	ec := cfg.Embedding
+	if ec.Provider == "" {
+		ec.Provider = "ollama"
+	}
+
+	// Env vars take precedence (already merged in LoadConfig, but handle
+	// the case where loadConfigSafe is called without full LoadConfig)
+	if v := os.Getenv("SAME_EMBED_PROVIDER"); v != "" {
+		ec.Provider = v
+	}
+	if v := os.Getenv("SAME_EMBED_MODEL"); v != "" {
+		ec.Model = v
+	}
+	if v := os.Getenv("SAME_EMBED_API_KEY"); v != "" {
+		ec.APIKey = v
+	}
+	if ec.APIKey == "" && ec.Provider == "openai" {
+		if v := os.Getenv("OPENAI_API_KEY"); v != "" {
+			ec.APIKey = v
+		}
+	}
+
+	// For ollama provider, merge the legacy [ollama] section if embedding model is unset
+	if ec.Provider == "ollama" && ec.Model == "" {
+		if cfg.Ollama.Model != "" {
+			ec.Model = cfg.Ollama.Model
+		}
+	}
+
+	return ec
 }
 
 // loadConfigSafe loads config without risking recursion. Returns nil on error.

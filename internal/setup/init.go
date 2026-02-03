@@ -96,6 +96,7 @@ func RunInit(opts InitOptions) error {
 	fmt.Printf("  %s→%s Your prompts get matched to relevant notes\n", cli.Cyan, cli.Reset)
 	fmt.Printf("  %s→%s Decisions get extracted and saved\n", cli.Cyan, cli.Reset)
 	fmt.Printf("  %s→%s Session handoffs keep context across sessions\n", cli.Cyan, cli.Reset)
+	fmt.Printf("  %s→%s Notes that help get boosted (feedback loop)\n", cli.Cyan, cli.Reset)
 	fmt.Printf("  %s→%s Stale notes get flagged for review\n", cli.Cyan, cli.Reset)
 	fmt.Println()
 	fmt.Printf("  Try it: run %sclaude%s and ask about something\n", cli.Bold, cli.Reset)
