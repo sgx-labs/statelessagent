@@ -1,11 +1,16 @@
 #!/bin/bash
 # SAME installer — downloads the appropriate binary for your platform.
 # Usage: curl -fsSL https://raw.githubusercontent.com/sgx-labs/statelessagent/main/install.sh | bash
+#
+# Options:
+#   INSTALL_DIR=/path    Install to a custom directory (default: ~/.local/bin)
+#   VERSION=v0.4.0       Install a specific version (default: latest)
 
 set -euo pipefail
 
 REPO="sgx-labs/statelessagent"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
+VERSION="${VERSION:-}"
 
 # Detect platform
 OS="$(uname -s)"
@@ -34,9 +39,14 @@ case "$OS" in
     ;;
 esac
 
-# Get latest release tag
-echo "Fetching latest release..."
-LATEST=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+# Get release tag (specific version or latest)
+if [ -n "$VERSION" ]; then
+  LATEST="$VERSION"
+  echo "Installing SAME $LATEST..."
+else
+  echo "Fetching latest release..."
+  LATEST=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/' || true)
+fi
 
 if [ -z "$LATEST" ]; then
   echo "No releases found. Building from source..."
@@ -63,11 +73,49 @@ fi
 curl -fsSL "$URL" -o "$OUTPUT"
 chmod +x "$OUTPUT"
 
+# Verify the binary runs
+if ! "$OUTPUT" version >/dev/null 2>&1; then
+  echo "WARNING: Binary downloaded but failed to execute."
+  echo "  This may indicate a platform mismatch or missing dependencies."
+  echo "  Try building from source: go install github.com/$REPO/cmd/same@latest"
+  exit 1
+fi
+
+INSTALLED_VERSION=$("$OUTPUT" version 2>/dev/null || echo "$LATEST")
+
 echo ""
 echo "Installed: $OUTPUT"
-echo "Version: $("$OUTPUT" version 2>/dev/null || echo "$LATEST")"
+echo "Version:   $INSTALLED_VERSION"
+
+# Check if install directory is in PATH
+if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
+  echo ""
+  echo "NOTE: $INSTALL_DIR is not in your PATH."
+  # Detect shell
+  SHELL_NAME="$(basename "$SHELL" 2>/dev/null || echo "bash")"
+  case "$SHELL_NAME" in
+    zsh)  RC_FILE="~/.zshrc" ;;
+    fish) RC_FILE="~/.config/fish/config.fish" ;;
+    *)    RC_FILE="~/.bashrc" ;;
+  esac
+  if [ "$SHELL_NAME" = "fish" ]; then
+    echo "  Add to $RC_FILE:"
+    echo "    fish_add_path $INSTALL_DIR"
+  else
+    echo "  Add to $RC_FILE:"
+    echo "    export PATH=\"$INSTALL_DIR:\$PATH\""
+  fi
+fi
+
+# Check for Ollama
 echo ""
-echo "Next steps:"
-echo "  1. Run: $OUTPUT reindex"
-echo "  2. Hooks are configured in .claude/settings.json"
-echo "  3. MCP server: $OUTPUT mcp"
+if command -v ollama >/dev/null 2>&1; then
+  echo "Ollama: found"
+else
+  echo "Ollama: not found (required for embeddings)"
+  echo "  Install: https://ollama.ai"
+fi
+
+echo ""
+echo "Next step: cd to your notes directory and run 'same init'"
+echo ""

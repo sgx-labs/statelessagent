@@ -33,3 +33,8 @@ Thumbs.db
 
 # SAME data directory (created inside vaults)
 .same/data/
+
+# Eval data (contains vault-specific paths and prompts)
+# The eval framework code (internal/eval/) is tracked,
+# but user-specific test data stays local.
+eval/

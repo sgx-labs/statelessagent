@@ -36,6 +36,7 @@ var hookEventMap = map[string]string{
 	"decision-extractor": "Stop",
 	"handoff-generator":  "Stop",
 	"staleness-check":    "SessionStart",
+	"session-bootstrap":  "SessionStart",
 }
 
 // Run reads stdin, dispatches to the named hook handler, and writes stdout.
@@ -54,7 +55,8 @@ func Run(hookName string) {
 
 	db, err := store.Open()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "same hook %s: db open: %v\n", hookName, err)
+		fmt.Fprintf(os.Stderr, "same hook %s: cannot open database: %v\n", hookName, err)
+		fmt.Fprintf(os.Stderr, "  Hint: run 'same init' or 'same doctor' to diagnose\n")
 		return
 	}
 	defer db.Close()
@@ -70,6 +72,8 @@ func Run(hookName string) {
 		output = runHandoffGenerator(db, input)
 	case "staleness-check":
 		output = runStalenessCheck(db, input)
+	case "session-bootstrap":
+		output = runSessionBootstrap(db, input)
 	default:
 		fmt.Fprintf(os.Stderr, "same hook: unknown hook %q\n", hookName)
 		return

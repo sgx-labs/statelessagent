@@ -230,6 +230,117 @@ func hasTags(tagsJSON string, required []string) bool {
 	return false
 }
 
+// KeywordSearch performs a SQL LIKE search on title and text fields.
+// Uses OR between terms and ranks by match count. Used as a fallback when
+// vector search misses exact-term queries.
+func (db *DB) KeywordSearch(terms []string, limit int) ([]RawSearchResult, error) {
+	if len(terms) == 0 || limit <= 0 {
+		return nil, nil
+	}
+
+	// Build a score expression: count how many terms match in title or text
+	var matchExprs []string
+	var args []interface{}
+	for _, term := range terms {
+		pattern := "%" + term + "%"
+		matchExprs = append(matchExprs,
+			"(CASE WHEN LOWER(n.title) LIKE LOWER(?) OR LOWER(n.text) LIKE LOWER(?) THEN 1 ELSE 0 END)")
+		args = append(args, pattern, pattern)
+	}
+
+	// Build OR conditions: at least one term must match
+	var conditions []string
+	for _, term := range terms {
+		pattern := "%" + term + "%"
+		conditions = append(conditions, "(LOWER(n.title) LIKE LOWER(?) OR LOWER(n.text) LIKE LOWER(?))")
+		args = append(args, pattern, pattern)
+	}
+
+	scoreExpr := strings.Join(matchExprs, " + ")
+
+	query := fmt.Sprintf(`
+		SELECT 0 as distance, n.id, n.path, n.title, n.chunk_heading, n.text,
+			n.domain, n.workstream, n.tags, n.content_type, n.confidence, n.modified
+		FROM vault_notes n
+		WHERE n.chunk_id = 0 AND n.path IN (
+			SELECT DISTINCT n2.path FROM vault_notes n2
+			WHERE (%s)
+		)
+		ORDER BY (%s) DESC, n.modified DESC
+		LIMIT ?`,
+		strings.Join(conditions, " OR "),
+		scoreExpr)
+	args = append(args, limit)
+
+	rows, err := db.conn.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("keyword search: %w", err)
+	}
+	defer rows.Close()
+
+	var results []RawSearchResult
+	for rows.Next() {
+		var r RawSearchResult
+		if err := rows.Scan(
+			&r.Distance, &r.NoteID, &r.Path, &r.Title, &r.Heading, &r.Text,
+			&r.Domain, &r.Workstream, &r.Tags, &r.ContentType, &r.Confidence, &r.Modified,
+		); err != nil {
+			return nil, err
+		}
+		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
+// KeywordSearchTitleMatch performs a keyword search on note titles only,
+// requiring at least minMatches terms to appear in the title. This is the
+// most conservative keyword fallback — used when only broad (generic) terms
+// are available and vector search returned nothing.
+func (db *DB) KeywordSearchTitleMatch(terms []string, minMatches int, limit int) ([]RawSearchResult, error) {
+	if len(terms) == 0 || limit <= 0 || minMatches <= 0 {
+		return nil, nil
+	}
+
+	var matchExprs []string
+	var args []interface{}
+	for _, term := range terms {
+		pattern := "%" + term + "%"
+		matchExprs = append(matchExprs,
+			"(CASE WHEN LOWER(n.title) LIKE LOWER(?) OR LOWER(n.path) LIKE LOWER(?) THEN 1 ELSE 0 END)")
+		args = append(args, pattern, pattern)
+	}
+	scoreExpr := strings.Join(matchExprs, " + ")
+
+	query := fmt.Sprintf(`
+		SELECT 0 as distance, n.id, n.path, n.title, n.chunk_heading, n.text,
+			n.domain, n.workstream, n.tags, n.content_type, n.confidence, n.modified
+		FROM vault_notes n
+		WHERE n.chunk_id = 0 AND (%s) >= ?
+		ORDER BY n.modified DESC
+		LIMIT ?`,
+		scoreExpr)
+	args = append(args, minMatches, limit)
+
+	rows, err := db.conn.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("keyword title search: %w", err)
+	}
+	defer rows.Close()
+
+	var results []RawSearchResult
+	for rows.Next() {
+		var r RawSearchResult
+		if err := rows.Scan(
+			&r.Distance, &r.NoteID, &r.Path, &r.Title, &r.Heading, &r.Text,
+			&r.Domain, &r.Workstream, &r.Tags, &r.ContentType, &r.Confidence, &r.Modified,
+		); err != nil {
+			return nil, err
+		}
+		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
 func round3(f float64) float64 {
 	return float64(int(f*1000+0.5)) / 1000
 }

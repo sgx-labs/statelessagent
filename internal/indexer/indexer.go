@@ -28,6 +28,11 @@ type Stats struct {
 	Timestamp        string `json:"timestamp"`
 }
 
+// ProgressFunc is called during indexing to report progress.
+// current is the number of files processed so far, total is the total count,
+// and path is the file being processed.
+type ProgressFunc func(current, total int, path string)
+
 // embResult holds the result of embedding a single file.
 type embResult struct {
 	Records    []store.NoteRecord
@@ -38,6 +43,11 @@ type embResult struct {
 
 // Reindex walks the vault, builds records, embeds them, and stores in the database.
 func Reindex(db *store.DB, force bool) (*Stats, error) {
+	return ReindexWithProgress(db, force, nil)
+}
+
+// ReindexWithProgress is like Reindex but accepts an optional progress callback.
+func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stats, error) {
 	vaultPath := config.VaultPath()
 	embedClient := embedding.NewClient()
 
@@ -144,9 +154,13 @@ func Reindex(db *store.DB, force bool) (*Stats, error) {
 		}
 
 		stats.NewlyIndexed++
-		fmt.Fprintf(os.Stderr, "  [%d/%d] Indexed: %s (%d chunks)\n",
-			stats.NewlyIndexed+stats.SkippedUnchanged+stats.Errors,
-			stats.TotalFiles, result.Path, len(result.Records))
+		processed := stats.NewlyIndexed + stats.SkippedUnchanged + stats.Errors
+		if progress != nil {
+			progress(processed, stats.TotalFiles, result.Path)
+		} else {
+			fmt.Fprintf(os.Stderr, "  [%d/%d] Indexed: %s (%d chunks)\n",
+				processed, stats.TotalFiles, result.Path, len(result.Records))
+		}
 	}
 
 	// Update final counts
@@ -303,6 +317,16 @@ func buildRecords(filePath, relPath, vaultPath string, embedClient *embedding.Cl
 	}
 
 	return records, embeddings, nil
+}
+
+// WalkVault returns all markdown file paths in the vault, respecting skip dirs.
+func WalkVault(vaultPath string) []string {
+	return walkVault(vaultPath)
+}
+
+// CountMarkdownFiles returns the number of .md files in a directory.
+func CountMarkdownFiles(dir string) int {
+	return len(walkVault(dir))
 }
 
 func walkVault(vaultPath string) []string {

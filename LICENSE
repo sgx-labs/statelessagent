@@ -1,43 +1,36 @@
 Business Source License 1.1
 
-Licensor:  SGX Labs
-Licensed Work:  SAME (Stateless Agent Memory Engine) v0.3.0 and later
-Change Date:  2030-02-02
-Change License:  Apache License, Version 2.0
+Parameters
 
-Terms
+Licensor:             SGX Labs
+Licensed Work:        SAME (Stateless Agent Memory Engine)
+                      The Licensed Work is (c) 2025-2026 SGX Labs.
+Additional Use Grant: You may use the Licensed Work for personal,
+                      educational, hobby, research, and evaluation
+                      purposes.
+Change Date:          2030-02-02
+Change License:       Apache License, Version 2.0
 
-The Licensor hereby grants you the right to copy, modify, create derivative
-works, redistribute, and make non-production use of the Licensed Work. The
-Licensor may make an Additional Use Grant, below.
-
-Additional Use Grant:
-
-You may use the Licensed Work for any non-commercial purpose, including
-personal use, educational use, research, evaluation, and hobbyist projects.
-
-For commercial production use — meaning use of the Licensed Work, or any
-derivative of it, as part of or in support of a product or service offered
-to third parties for a fee — you must obtain a commercial license from the
-Licensor. Contact: licensing@sgxlabs.dev
-
-Change Date and Change License:
-
-On the Change Date above, the Licensed Work will be made available under
-the Change License (Apache License, Version 2.0). Until the Change Date,
-the terms of this Business Source License 1.1 apply.
+For information about alternative licensing arrangements for the
+Licensed Work, please contact: licensing@sgx-labs.dev
 
 Notice
 
-Business Source License 1.1 was originally published by MariaDB Corporation Ab.
-The text of this license is available at https://mariadb.com/bsl11/
+The Business Source License (this document, or the "License") is not
+an Open Source license. However, the Licensed Work will eventually be
+made available under an Open Source License, as stated in this License.
 
-THE LICENSED WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-CONNECTION WITH THE LICENSED WORK OR THE USE OR OTHER DEALINGS IN THE LICENSED
-WORK.
+License text: https://mariadb.com/bsl11/
 
-Copyright (c) 2025-2026 SGX Labs
+-----------------------------------------------------------------------------
+
+Licensed Work Usage Guidelines
+
+The grant above allows free use for personal projects, learning,
+academic research, hobby tinkering, and evaluating whether SAME fits
+your needs. Production use by a commercial entity beyond evaluation
+requires a separate agreement prior to the Change Date.
+
+On the Change Date (2030-02-02), the Licensed Work converts
+automatically to Apache License, Version 2.0 with no further action
+required.

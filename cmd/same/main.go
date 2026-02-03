@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/sgx-labs/statelessagent/internal/indexer"
 	mcpserver "github.com/sgx-labs/statelessagent/internal/mcp"
 	memory "github.com/sgx-labs/statelessagent/internal/memory"
+	"github.com/sgx-labs/statelessagent/internal/setup"
 	"github.com/sgx-labs/statelessagent/internal/store"
 	"github.com/sgx-labs/statelessagent/internal/watcher"
 )
@@ -37,13 +39,13 @@ func main() {
 		},
 	}
 
+	root.AddCommand(initCmd())
 	root.AddCommand(versionCmd())
 	root.AddCommand(reindexCmd())
 	root.AddCommand(statsCmd())
 	root.AddCommand(migrateCmd())
 	root.AddCommand(hookCmd())
 	root.AddCommand(mcpCmd())
-	root.AddCommand(evalExportCmd())
 	root.AddCommand(benchCmd())
 	root.AddCommand(searchCmd())
 	root.AddCommand(relatedCmd())
@@ -52,6 +54,10 @@ func main() {
 	root.AddCommand(vaultCmd())
 	root.AddCommand(watchCmd())
 	root.AddCommand(pluginCmd())
+	root.AddCommand(statusCmd())
+	root.AddCommand(logCmd())
+	root.AddCommand(configCmd())
+	root.AddCommand(setupSubCmd())
 
 	// Global --vault flag
 	root.PersistentFlags().StringVar(&config.VaultOverride, "vault", "", "Vault name or path (overrides auto-detect)")
@@ -170,6 +176,7 @@ func hookCmd() *cobra.Command {
 	cmd.AddCommand(hookSubCmd("decision-extractor", "Stop hook: extract decisions from transcript"))
 	cmd.AddCommand(hookSubCmd("handoff-generator", "PreCompact/Stop hook: generate handoff notes"))
 	cmd.AddCommand(hookSubCmd("staleness-check", "SessionStart hook: surface stale notes"))
+	cmd.AddCommand(hookSubCmd("session-bootstrap", "SessionStart hook: bootstrap session with handoff + decisions + stale notes"))
 	return cmd
 }
 
@@ -195,40 +202,11 @@ func mcpCmd() *cobra.Command {
 	}
 }
 
-func evalExportCmd() *cobra.Command {
-	var (
-		strategy         string
-		query            string
-		topK             int
-		relevanceWeight  float64
-		recencyWeight    float64
-		confidenceWeight float64
-	)
-	cmd := &cobra.Command{
-		Use:   "eval-export",
-		Short: "JSON output for Python eval harness",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			weights := map[string]float64{
-				"relevance_weight":  relevanceWeight,
-				"recency_weight":    recencyWeight,
-				"confidence_weight": confidenceWeight,
-			}
-			return runEvalExport(strategy, query, topK, weights)
-		},
-	}
-	cmd.Flags().StringVar(&strategy, "strategy", "vanilla", "Search strategy (vanilla|confidence|no_recency|no_confidence|tuned)")
-	cmd.Flags().StringVar(&query, "query", "", "Search query")
-	cmd.Flags().IntVar(&topK, "top-k", 10, "Number of results")
-	cmd.Flags().Float64Var(&relevanceWeight, "relevance-weight", 0.5, "Relevance weight for composite scoring")
-	cmd.Flags().Float64Var(&recencyWeight, "recency-weight", 0.4, "Recency weight for composite scoring")
-	cmd.Flags().Float64Var(&confidenceWeight, "confidence-weight", 0.1, "Confidence weight for composite scoring")
-	return cmd
-}
-
 func runReindex(force bool) error {
 	db, err := store.Open()
 	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+		return userError("Cannot open SAME database",
+			"Run 'same init' to set up, or check VAULT_PATH")
 	}
 	defer db.Close()
 
@@ -245,7 +223,8 @@ func runReindex(force bool) error {
 func runStats() error {
 	db, err := store.Open()
 	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+		return userError("Cannot open SAME database",
+			"Run 'same init' to set up, or 'same doctor' to diagnose")
 	}
 	defer db.Close()
 
@@ -417,7 +396,8 @@ func searchCmd() *cobra.Command {
 func runSearch(query string, topK int, domain string, jsonOut bool) error {
 	db, err := store.Open()
 	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+		return userError("Cannot open SAME database",
+			"Run 'same init' to set up, or 'same doctor' to diagnose")
 	}
 	defer db.Close()
 
@@ -574,10 +554,13 @@ func runDoctor() error {
 	passed := 0
 	failed := 0
 
-	check := func(name string, fn func() (string, error)) {
+	check := func(name string, hint string, fn func() (string, error)) {
 		detail, err := fn()
 		if err != nil {
 			fmt.Printf("  FAIL  %s: %s\n", name, err)
+			if hint != "" {
+				fmt.Printf("        → %s\n", hint)
+			}
 			failed++
 		} else {
 			fmt.Printf("  OK    %s", name)
@@ -592,10 +575,10 @@ func runDoctor() error {
 	fmt.Print("\nSAME System Health Check\n\n")
 
 	// 1. Vault path exists
-	check("Vault path", func() (string, error) {
+	check("Vault path", "run 'same init' or set VAULT_PATH", func() (string, error) {
 		vp := config.VaultPath()
 		if vp == "" {
-			return "", fmt.Errorf("VAULT_PATH not set")
+			return "", fmt.Errorf("no vault found")
 		}
 		info, err := os.Stat(vp)
 		if err != nil {
@@ -608,7 +591,7 @@ func runDoctor() error {
 	})
 
 	// 2. Database exists and opens
-	check("Database", func() (string, error) {
+	check("Database", "run 'same init' or 'same reindex'", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
 			return "", fmt.Errorf("cannot open: %v", err)
@@ -623,23 +606,23 @@ func runDoctor() error {
 			return "", fmt.Errorf("cannot query chunks: %v", err)
 		}
 		if noteCount == 0 {
-			return "", fmt.Errorf("database is empty — run 'same reindex'")
+			return "", fmt.Errorf("empty")
 		}
 		return fmt.Sprintf("%d notes, %d chunks", noteCount, chunkCount), nil
 	})
 
 	// 3. Ollama reachable
-	check("Ollama", func() (string, error) {
+	check("Ollama", "start with 'ollama serve', or install from https://ollama.ai", func() (string, error) {
 		client := embedding.NewClient()
 		vec, err := client.GetQueryEmbedding("test")
 		if err != nil {
-			return "", fmt.Errorf("cannot connect: %v", err)
+			return "", fmt.Errorf("connection refused")
 		}
 		return fmt.Sprintf("%d-dim embeddings", len(vec)), nil
 	})
 
 	// 4. Vector search works
-	check("Vector search", func() (string, error) {
+	check("Vector search", "run 'same reindex' to rebuild the index", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
 			return "", err
@@ -663,7 +646,7 @@ func runDoctor() error {
 	})
 
 	// 5. Context surfacing hook
-	check("Context surfacing hook", func() (string, error) {
+	check("Context surfacing", "check index quality with 'same search <query>'", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
 			return "", err
@@ -690,7 +673,7 @@ func runDoctor() error {
 	})
 
 	// 6. Security: verify _PRIVATE/ is not in the index
-	check("Private content excluded", func() (string, error) {
+	check("Private content excluded", "run 'same reindex --force' to purge", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
 			return "", err
@@ -700,17 +683,16 @@ func runDoctor() error {
 		var count int
 		err = db.Conn().QueryRow("SELECT COUNT(*) FROM vault_notes WHERE path LIKE '_PRIVATE/%'").Scan(&count)
 		if err != nil {
-			// If query fails, table might not exist — that's fine
 			return "index empty or inaccessible", nil
 		}
 		if count > 0 {
-			return "", fmt.Errorf("SECURITY: %d _PRIVATE/ entries found in index — run 'same reindex --force' to purge", count)
+			return "", fmt.Errorf("SECURITY: %d _PRIVATE/ entries found in index", count)
 		}
 		return "no private content in index", nil
 	})
 
 	// 7. Security: verify Ollama is localhost-only
-	check("Ollama localhost binding", func() (string, error) {
+	check("Ollama localhost binding", "set OLLAMA_URL to http://localhost:11434", func() (string, error) {
 		url := config.OllamaURL()
 		if !strings.Contains(url, "localhost") && !strings.Contains(url, "127.0.0.1") && !strings.Contains(url, "::1") {
 			return "", fmt.Errorf("SECURITY: Ollama URL points to non-localhost: %s", url)
@@ -1120,3 +1102,389 @@ func printBenchSummary(results []benchResult) {
 		fmt.Printf("  Total e2e:        %.0fms\n", e2eMs)
 	}
 }
+
+// ---------- init ----------
+
+func initCmd() *cobra.Command {
+	var (
+		yes     bool
+		mcpOnly bool
+	)
+	cmd := &cobra.Command{
+		Use:   "init",
+		Short: "Interactive setup wizard — get SAME running in one command",
+		Long:  "Checks Ollama, detects your notes, indexes them, and configures Claude Code hooks and MCP.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return setup.RunInit(setup.InitOptions{
+				Yes:     yes,
+				MCPOnly: mcpOnly,
+				Version: Version,
+			})
+		},
+	}
+	cmd.Flags().BoolVar(&yes, "yes", false, "Accept all defaults without prompting")
+	cmd.Flags().BoolVar(&mcpOnly, "mcp-only", false, "Skip hooks setup (for Cursor/Windsurf users)")
+	return cmd
+}
+
+// ---------- status ----------
+
+func statusCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "status",
+		Short: "Show SAME status at a glance",
+		Long:  "Like 'git status' — shows vault info, index state, Ollama, hooks, MCP, and last session.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runStatus()
+		},
+	}
+}
+
+func runStatus() error {
+	vp := config.VaultPath()
+	if vp == "" {
+		return userError("No vault found",
+			"Run 'same init' to set up, or set VAULT_PATH")
+	}
+
+	fmt.Print("\nSAME Status\n\n")
+
+	// Vault info
+	fmt.Printf("  Vault:     %s\n", vp)
+
+	db, err := store.Open()
+	if err != nil {
+		fmt.Printf("  Database:  not initialized — run 'same init'\n\n")
+		return nil
+	}
+	defer db.Close()
+
+	noteCount, _ := db.NoteCount()
+	chunkCount, _ := db.ChunkCount()
+	fmt.Printf("  Notes:     %d indexed\n", noteCount)
+	fmt.Printf("  Chunks:    %d\n", chunkCount)
+
+	// Index age
+	indexAge, _ := db.IndexAge()
+	if indexAge > 0 {
+		fmt.Printf("  Indexed:   %s ago\n", formatDuration(indexAge))
+	}
+
+	// DB size
+	dbPath := config.DBPath()
+	if info, err := os.Stat(dbPath); err == nil {
+		sizeMB := float64(info.Size()) / (1024 * 1024)
+		fmt.Printf("  DB:        %.1f MB\n", sizeMB)
+	}
+
+	// Ollama
+	fmt.Println()
+	client := &http.Client{Timeout: time.Second}
+	ollamaURL := config.OllamaURL()
+	resp, err := client.Get(ollamaURL + "/api/tags")
+	if err != nil {
+		fmt.Printf("  Ollama:    not running\n")
+	} else {
+		resp.Body.Close()
+		fmt.Printf("  Ollama:    running (%s)\n", config.EmbeddingModel)
+	}
+
+	// Hooks
+	fmt.Println()
+	fmt.Println("  Hooks:")
+	hookStatus := setup.HooksInstalled(vp)
+	hookNames := []string{"context-surfacing", "decision-extractor", "handoff-generator", "staleness-check"}
+	for _, name := range hookNames {
+		if hookStatus[name] {
+			fmt.Printf("    %-22s \033[32m✓\033[0m active\n", name)
+		} else {
+			fmt.Printf("    %-22s \033[33m✗\033[0m not configured\n", name)
+		}
+	}
+
+	// MCP
+	fmt.Println()
+	if setup.MCPInstalled(vp) {
+		fmt.Println("  MCP:       registered in .mcp.json")
+	} else {
+		fmt.Println("  MCP:       not registered")
+	}
+
+	// Last session
+	lastSession, err := db.LastSession()
+	if err == nil && lastSession != nil {
+		fmt.Println()
+		fmt.Println("  Last Session:")
+
+		// Get usage for this session
+		usage, _ := db.GetUsageBySession(lastSession.SessionID)
+		totalTokens := 0
+		noteCount := 0
+		decisions := 0
+		for _, u := range usage {
+			if u.HookName == "context_surfacing" {
+				totalTokens += u.EstimatedTokens
+				noteCount += len(u.InjectedPaths)
+			}
+			if u.HookName == "decision_extractor" {
+				decisions++
+			}
+		}
+		if noteCount > 0 {
+			fmt.Printf("    Context injected: %d notes (%d tokens)\n", noteCount, totalTokens)
+		}
+		if decisions > 0 {
+			fmt.Printf("    Decisions saved:  %d\n", decisions)
+		}
+		if lastSession.HandoffPath != "" {
+			fmt.Printf("    Handoff:          %s\n", lastSession.HandoffPath)
+		}
+	}
+
+	fmt.Println()
+	return nil
+}
+
+func formatDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%d seconds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%d minutes", int(d.Minutes()))
+	}
+	if d < 24*time.Hour {
+		hours := int(d.Hours())
+		if hours == 1 {
+			return "1 hour"
+		}
+		return fmt.Sprintf("%d hours", hours)
+	}
+	days := int(d.Hours() / 24)
+	if days == 1 {
+		return "1 day"
+	}
+	return fmt.Sprintf("%d days", days)
+}
+
+// ---------- log ----------
+
+func logCmd() *cobra.Command {
+	var (
+		lastN   int
+		jsonOut bool
+	)
+	cmd := &cobra.Command{
+		Use:   "log",
+		Short: "Show recent SAME activity",
+		Long:  "Shows recent context injections, decision extractions, and handoff generations.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runLog(lastN, jsonOut)
+		},
+	}
+	cmd.Flags().IntVar(&lastN, "last", 5, "Number of recent sessions to show")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Output as JSON")
+	return cmd
+}
+
+func runLog(lastN int, jsonOut bool) error {
+	db, err := store.Open()
+	if err != nil {
+		return userError("Cannot open SAME database",
+			"Run 'same init' to set up, or 'same doctor' to diagnose")
+	}
+	defer db.Close()
+
+	usage, err := db.GetRecentUsage(lastN)
+	if err != nil {
+		return fmt.Errorf("query usage: %w", err)
+	}
+
+	if jsonOut {
+		data, _ := json.MarshalIndent(usage, "", "  ")
+		fmt.Println(string(data))
+		return nil
+	}
+
+	if len(usage) == 0 {
+		fmt.Println("\nNo recent activity. SAME records activity when hooks fire during Claude Code sessions.")
+		return nil
+	}
+
+	fmt.Printf("\nRecent Activity (last %d sessions):\n\n", lastN)
+
+	for _, u := range usage {
+		ts := u.Timestamp
+		if len(ts) > 16 {
+			ts = ts[:16] // trim to YYYY-MM-DD HH:MM
+		}
+		ts = strings.Replace(ts, "T", " ", 1)
+
+		fmt.Printf("  %s  %-22s", ts, u.HookName)
+
+		switch u.HookName {
+		case "context_surfacing":
+			fmt.Printf("  Injected %d notes (%d tokens)\n", len(u.InjectedPaths), u.EstimatedTokens)
+			for _, p := range u.InjectedPaths {
+				// Show just filename
+				name := filepath.Base(p)
+				name = strings.TrimSuffix(name, ".md")
+				fmt.Printf("  %s%-40s→ %s%s\n", strings.Repeat(" ", 40), "", name, "")
+			}
+		case "decision_extractor":
+			fmt.Printf("  Extracted decision(s)\n")
+		case "handoff_generator":
+			fmt.Printf("  Created handoff\n")
+		case "staleness_check":
+			if len(u.InjectedPaths) > 0 {
+				fmt.Printf("  Surfaced %d stale notes\n", len(u.InjectedPaths))
+			} else {
+				fmt.Printf("  No stale notes\n")
+			}
+		default:
+			fmt.Printf("  %d tokens\n", u.EstimatedTokens)
+		}
+	}
+	fmt.Println()
+
+	return nil
+}
+
+// ---------- config ----------
+
+func configCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "Manage SAME configuration",
+	}
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "show",
+		Short: "Show effective configuration",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Println(config.ShowConfig())
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "path",
+		Short: "Print path to config file",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			vp := config.VaultPath()
+			if vp == "" {
+				return fmt.Errorf("no vault found — run 'same init' or set VAULT_PATH")
+			}
+			fmt.Println(config.ConfigFilePath(vp))
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "edit",
+		Short: "Open config file in $EDITOR",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			vp := config.VaultPath()
+			if vp == "" {
+				return fmt.Errorf("no vault found — run 'same init' or set VAULT_PATH")
+			}
+			configPath := config.ConfigFilePath(vp)
+			if _, err := os.Stat(configPath); os.IsNotExist(err) {
+				fmt.Println("No config file found. Generating default...")
+				if err := config.GenerateConfig(vp); err != nil {
+					return err
+				}
+			}
+			editor := os.Getenv("EDITOR")
+			if editor == "" {
+				editor = "vi"
+			}
+			fmt.Printf("Opening %s in %s...\n", configPath, editor)
+			return runEditor(editor, configPath)
+		},
+	})
+
+	return cmd
+}
+
+func runEditor(editor, path string) error {
+	cmd := exec.Command(editor, path)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// ---------- setup ----------
+
+func setupSubCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "setup",
+		Short: "Set up integrations (hooks, MCP)",
+	}
+
+	var removeHooks bool
+	hooksCmd := &cobra.Command{
+		Use:   "hooks",
+		Short: "Install or remove Claude Code hooks",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			vp := config.VaultPath()
+			if vp == "" {
+				return userError("No vault found",
+					"Run 'same init' to set up, or set VAULT_PATH")
+			}
+			if removeHooks {
+				return setup.RemoveHooks(vp)
+			}
+			return setup.SetupHooks(vp)
+		},
+	}
+	hooksCmd.Flags().BoolVar(&removeHooks, "remove", false, "Remove SAME hooks")
+	cmd.AddCommand(hooksCmd)
+
+	var removeMCP bool
+	mcpSetupCmd := &cobra.Command{
+		Use:   "mcp",
+		Short: "Register or remove SAME MCP server",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			vp := config.VaultPath()
+			if vp == "" {
+				return userError("No vault found",
+					"Run 'same init' to set up, or set VAULT_PATH")
+			}
+			if removeMCP {
+				return setup.RemoveMCP(vp)
+			}
+			if err := setup.SetupMCP(vp); err != nil {
+				return err
+			}
+			fmt.Println("\n  Available MCP tools:")
+			fmt.Println("    search_notes          Semantic search")
+			fmt.Println("    search_notes_filtered Search with filters")
+			fmt.Println("    get_note              Read a note by path")
+			fmt.Println("    find_similar_notes    Find related notes")
+			fmt.Println("    reindex               Re-index the vault")
+			fmt.Println("    index_stats           Index statistics")
+			return nil
+		},
+	}
+	mcpSetupCmd.Flags().BoolVar(&removeMCP, "remove", false, "Remove SAME MCP server")
+	cmd.AddCommand(mcpSetupCmd)
+
+	return cmd
+}
+
+// ---------- error helpers ----------
+
+type sameError struct {
+	message string
+	hint    string
+}
+
+func (e *sameError) Error() string {
+	return fmt.Sprintf("%s\n  Hint: %s", e.message, e.hint)
+}
+
+func userError(message, hint string) error {
+	return &sameError{message: message, hint: hint}
+}
+

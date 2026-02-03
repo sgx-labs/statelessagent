@@ -1,5 +1,5 @@
 // Package config provides configuration for the SAME binary.
-// Reads from environment variables with sensible defaults.
+// Loads from: CLI flags > env vars > .same/config.toml > built-in defaults.
 package config
 
 import (
@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/BurntSushi/toml"
 )
 
 // Embedding model settings.
@@ -32,22 +34,251 @@ const (
 	ContextSurfacingMinChars  = 20
 )
 
+// Config holds all SAME configuration, loaded from TOML + env + flags.
+type Config struct {
+	Vault  VaultConfig  `toml:"vault"`
+	Ollama OllamaConfig `toml:"ollama"`
+	Memory MemoryConfig `toml:"memory"`
+	Hooks  HooksConfig  `toml:"hooks"`
+}
+
+// VaultConfig holds vault-related settings.
+type VaultConfig struct {
+	Path        string   `toml:"path"`
+	SkipDirs    []string `toml:"skip_dirs"`
+	HandoffDir  string   `toml:"handoff_dir"`
+	DecisionLog string   `toml:"decision_log"`
+}
+
+// OllamaConfig holds Ollama connection settings.
+type OllamaConfig struct {
+	URL   string `toml:"url"`
+	Model string `toml:"model"`
+}
+
+// MemoryConfig holds memory engine tuning parameters.
+type MemoryConfig struct {
+	MaxTokenBudget     int     `toml:"max_token_budget"`
+	MaxResults         int     `toml:"max_results"`
+	DistanceThreshold  float64 `toml:"distance_threshold"`
+	CompositeThreshold float64 `toml:"composite_threshold"`
+}
+
+// HooksConfig controls which hooks are enabled.
+type HooksConfig struct {
+	ContextSurfacing  bool `toml:"context_surfacing"`
+	DecisionExtractor bool `toml:"decision_extractor"`
+	HandoffGenerator  bool `toml:"handoff_generator"`
+	StalenessCheck    bool `toml:"staleness_check"`
+}
+
+// DefaultConfig returns a Config with all built-in defaults.
+func DefaultConfig() *Config {
+	return &Config{
+		Vault: VaultConfig{
+			HandoffDir:  "sessions",
+			DecisionLog: "decisions.md",
+		},
+		Ollama: OllamaConfig{
+			URL:   "http://localhost:11434",
+			Model: EmbeddingModel,
+		},
+		Memory: MemoryConfig{
+			MaxTokenBudget:     800,
+			MaxResults:         2,
+			DistanceThreshold:  16.5,
+			CompositeThreshold: 0.65,
+		},
+		Hooks: HooksConfig{
+			ContextSurfacing:  true,
+			DecisionExtractor: true,
+			HandoffGenerator:  true,
+			StalenessCheck:    true,
+		},
+	}
+}
+
+// LoadConfig merges all configuration sources: defaults < TOML file < env vars.
+// CLI flags (VaultOverride) are handled separately by the existing VaultPath() logic.
+func LoadConfig() (*Config, error) {
+	cfg := DefaultConfig()
+
+	// Try to load TOML config file
+	configPath := findConfigFile()
+	if configPath != "" {
+		if _, err := toml.DecodeFile(configPath, cfg); err != nil {
+			return nil, fmt.Errorf("parse config %s: %w", configPath, err)
+		}
+	}
+
+	// Environment variables override TOML values
+	if v := os.Getenv("VAULT_PATH"); v != "" {
+		cfg.Vault.Path = v
+	}
+	if v := os.Getenv("OLLAMA_URL"); v != "" {
+		cfg.Ollama.URL = v
+	}
+	if v := os.Getenv("SAME_HANDOFF_DIR"); v != "" {
+		cfg.Vault.HandoffDir = v
+	}
+	if v := os.Getenv("SAME_DECISION_LOG"); v != "" {
+		cfg.Vault.DecisionLog = v
+	}
+	if v := os.Getenv("SAME_SKIP_DIRS"); v != "" {
+		for _, d := range strings.Split(v, ",") {
+			d = strings.TrimSpace(d)
+			if d != "" {
+				cfg.Vault.SkipDirs = append(cfg.Vault.SkipDirs, d)
+			}
+		}
+	}
+
+	return cfg, nil
+}
+
+// findConfigFile looks for .same/config.toml starting from vault path, then CWD.
+func findConfigFile() string {
+	// Check vault path first (if already resolved)
+	if vp := resolveVaultForConfig(); vp != "" {
+		p := filepath.Join(vp, ".same", "config.toml")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+
+	// Check CWD
+	if cwd, err := os.Getwd(); err == nil {
+		p := filepath.Join(cwd, ".same", "config.toml")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+
+	return ""
+}
+
+// resolveVaultForConfig resolves the vault path for config loading without
+// calling VaultPath() to avoid circular dependency with config loading.
+func resolveVaultForConfig() string {
+	if VaultOverride != "" {
+		reg := LoadRegistry()
+		if resolved := reg.ResolveVault(VaultOverride); resolved != "" {
+			return resolved
+		}
+		return VaultOverride
+	}
+	if v := os.Getenv("VAULT_PATH"); v != "" {
+		return v
+	}
+	return ""
+}
+
+// ConfigFilePath returns the path where the config file should be written
+// for the given vault path.
+func ConfigFilePath(vaultPath string) string {
+	return filepath.Join(vaultPath, ".same", "config.toml")
+}
+
+// GenerateConfig writes a default .same/config.toml with comments.
+// If vaultPath is provided, it's included in the generated config.
+func GenerateConfig(vaultPath string) error {
+	configPath := ConfigFilePath(vaultPath)
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+
+	content := generateTOMLContent(vaultPath)
+	return os.WriteFile(configPath, []byte(content), 0o644)
+}
+
+func generateTOMLContent(vaultPath string) string {
+	var b strings.Builder
+	b.WriteString("# SAME Configuration\n")
+	b.WriteString("# https://github.com/sgx-labs/statelessagent\n")
+	b.WriteString("#\n")
+	b.WriteString("# Priority: CLI flags > environment variables > this file > built-in defaults\n")
+	b.WriteString("# Environment variables: VAULT_PATH, OLLAMA_URL, SAME_HANDOFF_DIR,\n")
+	b.WriteString("#   SAME_DECISION_LOG, SAME_SKIP_DIRS, SAME_DATA_DIR\n\n")
+
+	b.WriteString("[vault]\n")
+	if vaultPath != "" {
+		b.WriteString(fmt.Sprintf("path = %q\n", vaultPath))
+	} else {
+		b.WriteString("# path = \"/path/to/your/notes\"  # auto-detected if unset\n")
+	}
+	b.WriteString("# skip_dirs = [\".venv\", \"build\"]  # added to built-in exclusions\n")
+	b.WriteString("handoff_dir = \"sessions\"\n")
+	b.WriteString("decision_log = \"decisions.md\"\n\n")
+
+	b.WriteString("[ollama]\n")
+	b.WriteString("url = \"http://localhost:11434\"\n")
+	b.WriteString("model = \"nomic-embed-text\"\n\n")
+
+	b.WriteString("[memory]\n")
+	b.WriteString("max_token_budget = 800\n")
+	b.WriteString("max_results = 2\n")
+	b.WriteString("distance_threshold = 16.5\n")
+	b.WriteString("composite_threshold = 0.65\n\n")
+
+	b.WriteString("[hooks]\n")
+	b.WriteString("context_surfacing = true\n")
+	b.WriteString("decision_extractor = true\n")
+	b.WriteString("handoff_generator = true\n")
+	b.WriteString("staleness_check = true\n")
+
+	return b.String()
+}
+
+// ShowConfig returns the current effective configuration as TOML.
+func ShowConfig() string {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return fmt.Sprintf("# Error loading config: %v\n", err)
+	}
+
+	// Fill in the effective vault path if not explicitly set
+	if cfg.Vault.Path == "" {
+		cfg.Vault.Path = VaultPath()
+	}
+
+	var b strings.Builder
+	b.WriteString("# Effective SAME configuration (merged from all sources)\n\n")
+	enc := toml.NewEncoder(&b)
+	enc.Encode(cfg)
+	return b.String()
+}
+
+// --- Existing API (preserved for backward compatibility) ---
+
 // HandoffDirectory returns the directory for session handoff notes.
-// Reads SAME_HANDOFF_DIR env var, defaults to "sessions".
 func HandoffDirectory() string {
 	if v := os.Getenv("SAME_HANDOFF_DIR"); v != "" {
 		return v
+	}
+	if cfg := loadConfigSafe(); cfg != nil && cfg.Vault.HandoffDir != "" {
+		return cfg.Vault.HandoffDir
 	}
 	return "sessions"
 }
 
 // DecisionLogPath returns the path (relative to vault root) for the decision log.
-// Reads SAME_DECISION_LOG env var, defaults to "decisions.md".
 func DecisionLogPath() string {
 	if v := os.Getenv("SAME_DECISION_LOG"); v != "" {
 		return v
 	}
+	if cfg := loadConfigSafe(); cfg != nil && cfg.Vault.DecisionLog != "" {
+		return cfg.Vault.DecisionLog
+	}
 	return "decisions.md"
+}
+
+// loadConfigSafe loads config without risking recursion. Returns nil on error.
+func loadConfigSafe() *Config {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return nil
+	}
+	return cfg
 }
 
 // defaultSkipDirs are directories to skip during vault walks.
@@ -66,7 +297,6 @@ var defaultSkipDirs = map[string]bool{
 }
 
 // SkipDirs returns the set of directories to skip during vault walks.
-// Reads SAME_SKIP_DIRS env var (comma-separated) to add extra dirs.
 var SkipDirs = buildSkipDirs()
 
 func buildSkipDirs() map[string]bool {
@@ -85,10 +315,37 @@ func buildSkipDirs() map[string]bool {
 	return dirs
 }
 
+// RebuildSkipDirs rebuilds the SkipDirs map, incorporating config file settings.
+// Should be called after config is loaded if skip_dirs is set in TOML.
+func RebuildSkipDirs(extra []string) {
+	dirs := make(map[string]bool)
+	for k, v := range defaultSkipDirs {
+		dirs[k] = v
+	}
+	if envExtra := os.Getenv("SAME_SKIP_DIRS"); envExtra != "" {
+		for _, d := range strings.Split(envExtra, ",") {
+			d = strings.TrimSpace(d)
+			if d != "" {
+				dirs[d] = true
+			}
+		}
+	}
+	for _, d := range extra {
+		d = strings.TrimSpace(d)
+		if d != "" {
+			dirs[d] = true
+		}
+	}
+	SkipDirs = dirs
+}
+
 // VaultPath returns the vault root directory.
 func VaultPath() string {
 	if v := os.Getenv("VAULT_PATH"); v != "" {
 		return v
+	}
+	if cfg := loadConfigSafe(); cfg != nil && cfg.Vault.Path != "" {
+		return cfg.Vault.Path
 	}
 	return defaultVaultPath()
 }
@@ -98,7 +355,11 @@ func VaultPath() string {
 func OllamaURL() string {
 	raw := os.Getenv("OLLAMA_URL")
 	if raw == "" {
-		raw = "http://localhost:11434"
+		if cfg := loadConfigSafe(); cfg != nil && cfg.Ollama.URL != "" {
+			raw = cfg.Ollama.URL
+		} else {
+			raw = "http://localhost:11434"
+		}
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -117,7 +378,6 @@ func DBPath() string {
 }
 
 // DataDir returns the data directory for the same binary.
-// Reads SAME_DATA_DIR env var, defaults to <vault>/.same/data.
 func DataDir() string {
 	if v := os.Getenv("SAME_DATA_DIR"); v != "" {
 		return v
@@ -179,9 +439,9 @@ func (r *VaultRegistry) ResolveVault(alias string) string {
 // VaultOverride is set by the --vault global flag.
 var VaultOverride string
 
-// vaultMarkers are dotfiles/directories that indicate a knowledge base root.
+// VaultMarkers are dotfiles/directories that indicate a knowledge base root.
 // Checked in priority order: SAME's own marker first, then common tools.
-var vaultMarkers = []string{".same", ".obsidian", ".logseq", ".foam", ".dendron"}
+var VaultMarkers = []string{".same", ".obsidian", ".logseq", ".foam", ".dendron"}
 
 func defaultVaultPath() string {
 	// Check --vault flag override first
@@ -204,7 +464,7 @@ func defaultVaultPath() string {
 
 	// Auto-detect: check CWD for any known marker
 	if cwd, err := os.Getwd(); err == nil {
-		for _, marker := range vaultMarkers {
+		for _, marker := range VaultMarkers {
 			if _, err := os.Stat(filepath.Join(cwd, marker)); err == nil {
 				return cwd
 			}
@@ -215,7 +475,7 @@ func defaultVaultPath() string {
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
 		for i := 0; i < 5; i++ {
-			for _, marker := range vaultMarkers {
+			for _, marker := range VaultMarkers {
 				if _, err := os.Stat(filepath.Join(dir, marker)); err == nil {
 					return dir
 				}

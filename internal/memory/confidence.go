@@ -136,6 +136,9 @@ var recencyKeywords = []string{
 	"last session", "previous session", "earlier today",
 	"worked on", "changed", "modified",
 	"updated", "latest", "newest", "last time",
+	"last night", "left off", "up to speed", "catch me up",
+	"where were we", "bring me up", "what happened",
+	"handoff", "hand off", "hand-off",
 }
 
 // HasRecencyIntent returns true if the query contains time-related keywords.

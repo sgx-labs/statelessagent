@@ -1,156 +1,205 @@
 # SAME — Stateless Agent Memory Engine
 
-SAME gives AI coding agents persistent memory across sessions. It indexes any folder of markdown files into a local SQLite database with vector embeddings, then surfaces relevant context automatically via hooks and an MCP server.
+Give your AI coding agent memory that persists across sessions.
 
-Works with Obsidian, Logseq, Foam, Dendron, or any directory of `.md` files. Designed for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) but usable with any MCP client (Cursor, Windsurf, etc.).
+SAME indexes your markdown notes into a local SQLite database with vector embeddings (via Ollama), then automatically surfaces relevant context when you're working with Claude Code, Cursor, Windsurf, or any MCP client. Decisions get extracted, session handoffs get generated, and stale notes get flagged — all locally, all automatically.
+
+## How It Works
+
+```
+Your Notes  →  Ollama Embeddings  →  SQLite + sqlite-vec  →  Agent Gets Context
+   (.md)       (nomic-embed-text)      (local database)       (hooks / MCP)
+```
+
+SAME runs four hooks that fire automatically during Claude Code sessions:
+
+- **Context Surfacing** — Embeds your prompt, searches your notes, injects the most relevant ones as context
+- **Decision Extraction** — Pulls decisions from the conversation and saves them to a decision log
+- **Handoff Generation** — Creates session summaries so your next session picks up where you left off
+- **Staleness Check** — Flags notes that haven't been reviewed in a while
+
+## Install
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/sgx-labs/statelessagent/main/install.sh | bash
+
+# Or with Homebrew (coming soon)
+# brew install sgx-labs/tap/same
+
+# Or build from source (requires Go 1.23+ and CGO)
+git clone https://github.com/sgx-labs/statelessagent.git
+cd statelessagent && make install
+```
+
+Requires [Ollama](https://ollama.ai) for local embeddings.
 
 ## Quick Start
 
 ```bash
-# Install (macOS/Linux)
-curl -fsSL https://raw.githubusercontent.com/sgx-labs/statelessagent/main/install.sh | bash
-
-# Or build from source
-git clone https://github.com/sgx-labs/statelessagent.git
-cd statelessagent
-make install
-
-# Point at your knowledge base
-export VAULT_PATH=~/Documents/my-notes
-
-# Start Ollama (required for embeddings)
-ollama pull nomic-embed-text
-
-# Index your notes
-same reindex
-
-# Search
-same search "how does authentication work"
-
-# Check system health
-same doctor
+cd ~/my-notes    # any directory with .md files
+same init        # interactive setup wizard
 ```
 
-## How It Works
+The wizard checks Ollama, finds your notes, indexes them, generates a config file, and sets up Claude Code hooks and MCP — all in one command.
 
-1. **Indexing** — Walks your markdown directory, chunks long notes by H2 headings, and generates 768-dim embeddings via [Ollama](https://ollama.ai) (`nomic-embed-text`). Stores everything in a local SQLite database with [sqlite-vec](https://github.com/asg017/sqlite-vec) for vector search.
+```
+$ same init
 
-2. **Search** — KNN vector search with composite scoring that blends semantic similarity, recency (exponential decay by content type), and confidence (based on content type, access frequency, and maintenance signals).
+SAME v0.4.0 — Stateless Agent Memory Engine
 
-3. **Hooks** — Claude Code hooks that fire automatically:
-   - **Context Surfacing** (`UserPromptSubmit`) — Embeds your prompt, searches the vault, injects relevant notes as context
-   - **Decision Extraction** (`Stop`) — Extracts decisions from the conversation transcript and appends them to a decision log
-   - **Handoff Generation** (`Stop`/`PreCompact`) — Generates session handoff notes for cross-session continuity
-   - **Staleness Check** (`SessionStart`) — Surfaces notes that haven't been reviewed in a while
+Step 1/5: Checking Ollama...
+  ✓ Ollama running at localhost:11434
+  ✓ nomic-embed-text model available
 
-4. **MCP Server** — Exposes 6 tools over stdio for direct use by any MCP client.
+Step 2/5: Finding your notes...
+  Found obsidian marker in current directory
+  → Using /Users/sean/Documents/notes (312 markdown files)
+
+Step 3/5: Indexing...
+  [████████████████████████████████████████] 312/312 files
+
+Step 4/5: Generating config...
+  → .same/config.toml
+
+Step 5/5: Integrations (optional)
+  Set up Claude Code hooks? [Y/n] Y
+  → 4 hooks added to .claude/settings.json
+  Register MCP server? [Y/n] Y
+  → Added to .mcp.json
+
+Done! Run 'claude' in this directory — SAME will surface relevant notes automatically.
+Run 'same status' to see what SAME is doing at any time.
+```
+
+## Use Cases
+
+### Any Markdown Directory + Claude Code
+
+SAME works with any directory of `.md` files. No Obsidian required. Just `cd` to your notes and run `same init`.
+
+### Obsidian Vault
+
+SAME auto-detects `.obsidian` markers. Your vault stays yours — SAME only reads your notes and stores its index in `.same/data/`.
+
+### Cursor / Windsurf (MCP Only)
+
+Use `same init --mcp-only` to skip Claude Code hooks and just register the MCP server. Or set it up manually:
+
+```bash
+same setup mcp
+```
 
 ## CLI Reference
 
-```
-same reindex [--force]       Index/re-index markdown files
-same search <query>          Search from the command line
-same related <note-path>     Find semantically similar notes
-same stats                   Show index statistics
-same doctor                  System health check
-same mcp                     Start MCP stdio server
-same watch                   Watch for changes and auto-reindex
-same hook <name>             Run a hook handler
-same eval-export             JSON output for eval harness
-same bench                   Performance benchmarks
-same budget                  Context utilization report
-same vault list|add|remove   Manage vault registrations
-same plugin list             List hook plugins
-same version [--check]       Print version / check for updates
-```
-
-## MCP Server
-
-SAME exposes 6 tools via MCP (Model Context Protocol):
-
-| Tool | Description |
-|------|-------------|
-| `search_notes` | Semantic search across all indexed notes |
-| `search_notes_filtered` | Search with domain/workstream/tag filters |
-| `get_note` | Read full content of a note by path |
-| `find_similar_notes` | Find notes similar to a given note |
-| `reindex` | Re-index the vault (with cooldown) |
-| `index_stats` | Index statistics (note count, chunks, etc.) |
-
-### Claude Code Configuration
-
-Add to your project's `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "same": {
-      "command": "same",
-      "args": ["mcp"],
-      "env": {
-        "VAULT_PATH": "/path/to/your/notes"
-      }
-    }
-  }
-}
-```
-
-### Claude Code Hooks
-
-Add to `.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [{ "type": "command", "command": "same hook context-surfacing" }]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          { "type": "command", "command": "same hook decision-extractor" },
-          { "type": "command", "command": "same hook handoff-generator" }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          { "type": "command", "command": "same version --check" },
-          { "type": "command", "command": "same hook staleness-check" }
-        ]
-      }
-    ]
-  }
-}
-```
+| Command | Description |
+|---------|-------------|
+| `same init` | Interactive setup wizard |
+| `same status` | At-a-glance system status |
+| `same log` | Recent SAME activity |
+| `same search <query>` | Search from the command line |
+| `same related <path>` | Find similar notes |
+| `same reindex [--force]` | Re-index markdown files |
+| `same doctor` | System health check with fix suggestions |
+| `same config show` | Show effective configuration |
+| `same config edit` | Open config in $EDITOR |
+| `same setup hooks` | Install/update Claude Code hooks |
+| `same setup mcp` | Register MCP server |
+| `same stats` | Index statistics |
+| `same watch` | Auto-reindex on file changes |
+| `same budget` | Context utilization report |
+| `same vault list\|add\|remove` | Manage multiple vaults |
+| `same version [--check]` | Version and update check |
 
 ## Configuration
 
-All configuration is via environment variables:
+SAME uses `.same/config.toml` for configuration, generated by `same init`:
+
+```toml
+[vault]
+path = "/Users/sean/Documents/notes"
+# skip_dirs = [".venv", "build"]  # added to built-in exclusions
+handoff_dir = "sessions"
+decision_log = "decisions.md"
+
+[ollama]
+url = "http://localhost:11434"
+model = "nomic-embed-text"
+
+[memory]
+max_token_budget = 800
+max_results = 2
+distance_threshold = 16.5
+composite_threshold = 0.65
+
+[hooks]
+context_surfacing = true
+decision_extractor = true
+handoff_generator = true
+staleness_check = true
+```
+
+Configuration priority (highest wins):
+
+1. CLI flags (`--vault`)
+2. Environment variables (`VAULT_PATH`, `OLLAMA_URL`, `SAME_*`)
+3. Config file (`.same/config.toml`)
+4. Built-in defaults
+
+Environment variables still work — existing setups require zero changes.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VAULT_PATH` | auto-detect | Path to your markdown knowledge base |
-| `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint (must be localhost) |
-| `SAME_DATA_DIR` | `<vault>/.same/data` | Where to store the SQLite database |
-| `SAME_HANDOFF_DIR` | `sessions` | Directory for handoff notes (relative to vault) |
-| `SAME_DECISION_LOG` | `decisions.md` | Path for the decision log (relative to vault) |
-| `SAME_SKIP_DIRS` | *(none)* | Extra directories to skip (comma-separated) |
+| `VAULT_PATH` | auto-detect | Path to your markdown notes |
+| `OLLAMA_URL` | `http://localhost:11434` | Ollama API (must be localhost) |
+| `SAME_DATA_DIR` | `<vault>/.same/data` | Database location |
+| `SAME_HANDOFF_DIR` | `sessions` | Handoff notes directory |
+| `SAME_DECISION_LOG` | `decisions.md` | Decision log path |
+| `SAME_SKIP_DIRS` | *(none)* | Extra dirs to skip (comma-separated) |
 
-SAME also supports a vault registry for managing multiple knowledge bases:
+## MCP Server
 
-```bash
-same vault add work ~/Documents/work-notes
-same vault add personal ~/Documents/personal-notes
-same vault default work
-same --vault personal search "weekend plans"
-```
+SAME exposes 6 tools via MCP:
+
+| Tool | Description |
+|------|-------------|
+| `search_notes` | Semantic search |
+| `search_notes_filtered` | Search with domain/workstream/tag filters |
+| `get_note` | Read full note by path |
+| `find_similar_notes` | Find related notes |
+| `reindex` | Re-index the vault |
+| `index_stats` | Index statistics |
+
+## FAQ
+
+**Do I need Obsidian?**
+No. Any directory of markdown files works. SAME detects Obsidian, Logseq, Foam, and Dendron vaults automatically, but none are required.
+
+**Does it slow down my prompts?**
+Typically 50-200ms added latency. Ollama embedding is the bottleneck — search and scoring take <5ms.
+
+**Is my data sent anywhere?**
+SAME itself is fully local — embeddings, storage, and search all happen on your machine. However, context injected into your AI tool (Claude Code, Cursor, Windsurf) is sent to that tool's API as part of your conversation, same as if you pasted it manually.
+
+**How much disk space?**
+Typically 5-15MB for a vault with a few hundred notes.
+
+**What if I don't use Claude Code?**
+The MCP server works with Cursor, Windsurf, and any other MCP client. Use `same init --mcp-only` or `same setup mcp`.
+
+**Can I see what SAME is doing?**
+Run `same status` for current state, `same log` for recent activity, `same budget` for context utilization stats.
+
+**Can I use multiple vaults?**
+Yes. `same vault add work ~/work-notes && same vault add personal ~/personal-notes && same vault default work`. Use `--vault personal` to switch.
+
+## Security
+
+- All data stays local — no external API calls except Ollama on localhost
+- Ollama URL is validated to be localhost-only
+- `_PRIVATE/` directories are excluded from indexing and context surfacing
+- Snippets are scanned for prompt injection patterns before injection
+- Path traversal is blocked in the MCP `get_note` tool
 
 ## Building from Source
 
@@ -162,21 +211,11 @@ cd statelessagent
 make build        # Build for current platform
 make test         # Run tests
 make install      # Install to $GOPATH/bin
-make cross-all    # Build for macOS (arm64/amd64), Linux, Windows
+make cross-all    # Build for all platforms (requires zig)
 ```
-
-Cross-compilation for Linux/Windows from macOS requires [zig](https://ziglang.org/) as a C cross-compiler.
-
-## Security
-
-- Ollama URL is validated to be localhost-only (no remote embedding endpoints)
-- `_PRIVATE/` directories are excluded from indexing and context surfacing at multiple layers
-- Snippet content is scanned for prompt injection patterns before injection
-- Path traversal attacks are blocked in the MCP `get_note` tool
-- All data stays local — no external API calls except Ollama on localhost
 
 ## License
 
-Business Source License 1.1 — free for personal, educational, and non-commercial use. Commercial production use requires a paid license. See [LICENSE](LICENSE) for full terms.
+BSL 1.1 — Free for personal, educational, hobby, research, and evaluation use. See [LICENSE](LICENSE) for details.
 
-On 2030-02-02, the code automatically relicenses to Apache 2.0.
+Change date: 2030-02-02 (converts to Apache 2.0).
