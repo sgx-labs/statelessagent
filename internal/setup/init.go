@@ -12,19 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sgx-labs/statelessagent/internal/cli"
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/indexer"
 	"github.com/sgx-labs/statelessagent/internal/store"
-)
-
-// ANSI color codes.
-const (
-	colorReset  = "\033[0m"
-	colorGreen  = "\033[32m"
-	colorYellow = "\033[33m"
-	colorCyan   = "\033[36m"
-	colorBold   = "\033[1m"
-	colorDim    = "\033[2m"
 )
 
 // InitOptions controls the init wizard behavior.
@@ -40,36 +31,30 @@ func RunInit(opts InitOptions) error {
 	if version == "" {
 		version = "dev"
 	}
-	fmt.Printf("\n%sSAME %s%s — Stateless Agent Memory Engine\n\n", colorBold, version, colorReset)
+	fmt.Printf("\n%sSAME v%s%s\n", cli.Bold, version, cli.Reset)
 
-	// Step 1: Check Ollama
-	fmt.Printf("%sStep 1/5:%s Checking Ollama...\n", colorBold, colorReset)
+	// Checking Ollama
+	fmt.Printf("\n  Checking Ollama\n")
 	if err := checkOllama(); err != nil {
 		return err
 	}
 
-	// Step 2: Find notes
-	fmt.Printf("\n%sStep 2/5:%s Finding your notes...\n", colorBold, colorReset)
+	// Finding notes
+	fmt.Printf("\n  Finding your notes\n")
 	vaultPath, err := detectVault(opts.Yes)
 	if err != nil {
 		return err
 	}
 
-	// Privacy notice
-	fmt.Printf("\n%s  Privacy:%s SAME runs entirely on your machine. Embeddings are generated\n", colorDim, colorReset)
-	fmt.Printf("%s  by Ollama locally, and your notes index is stored in .same/data/.\n", colorDim)
-	fmt.Printf("  Note: Context injected into your AI tool is sent to that tool's API\n")
-	fmt.Printf("  (e.g., Anthropic for Claude Code) as part of your conversation.%s\n", colorReset)
-
-	// Step 3: Index
-	fmt.Printf("\n%sStep 3/5:%s Indexing...\n", colorBold, colorReset)
+	// Indexing
+	fmt.Printf("\n  Indexing\n")
 	stats, err := runIndex(vaultPath)
 	if err != nil {
 		return err
 	}
 
-	// Step 4: Generate config
-	fmt.Printf("\n%sStep 4/5:%s Generating config...\n", colorBold, colorReset)
+	// Config
+	fmt.Printf("\n  Config\n")
 	if err := generateConfig(vaultPath); err != nil {
 		return err
 	}
@@ -80,29 +65,36 @@ func RunInit(opts InitOptions) error {
 	// Register vault
 	registerVault(vaultPath)
 
-	// Step 5: Integrations
-	fmt.Printf("\n%sStep 5/5:%s Integrations (optional)\n", colorBold, colorReset)
+	// Integrations
+	fmt.Printf("\n  Integrations\n")
 	if !opts.MCPOnly {
 		setupHooksInteractive(vaultPath, opts.Yes)
 	}
 	setupMCPInteractive(vaultPath, opts.Yes)
 
-	// Done
-	fmt.Printf("\n%s%sDone!%s", colorBold, colorGreen, colorReset)
-	fmt.Printf(" Run 'claude' in this directory — SAME will surface relevant notes automatically.\n")
-	fmt.Printf("Run '%ssame status%s' to see what SAME is doing at any time.\n\n", colorCyan, colorReset)
+	// Setup complete + summary
+	fmt.Printf("\n  %sSetup complete%s\n", cli.Bold, cli.Reset)
 
-	// Print summary
 	dbPath := filepath.Join(vaultPath, ".same", "data", "vault.db")
 	var dbSizeMB float64
 	if info, err := os.Stat(dbPath); err == nil {
 		dbSizeMB = float64(info.Size()) / (1024 * 1024)
 	}
-	fmt.Printf("  Notes indexed: %d\n", stats.NotesInIndex)
-	fmt.Printf("  Chunks:        %d\n", stats.ChunksInIndex)
+	fmt.Println()
+	fmt.Printf("  Notes:    %s\n", cli.FormatNumber(stats.NotesInIndex))
+	fmt.Printf("  Chunks:   %s\n", cli.FormatNumber(stats.ChunksInIndex))
 	if dbSizeMB > 0 {
-		fmt.Printf("  Database:      %.1f MB\n", dbSizeMB)
+		fmt.Printf("  Database: %.1f MB\n", dbSizeMB)
 	}
+
+	fmt.Println()
+	fmt.Printf("  Run '%sclaude%s' to start. SAME surfaces context\n", cli.Cyan, cli.Reset)
+	fmt.Printf("  automatically. Run '%ssame status%s' anytime.\n", cli.Cyan, cli.Reset)
+
+	// Privacy at the end (less interruptive)
+	fmt.Printf("\n  %sPrivacy: all processing is local via Ollama.%s\n", cli.Dim, cli.Reset)
+	fmt.Printf("  %sContext sent to your AI tool's API as part of%s\n", cli.Dim, cli.Reset)
+	fmt.Printf("  %syour conversation — same as pasting it manually.%s\n", cli.Dim, cli.Reset)
 	fmt.Println()
 
 	return nil
@@ -115,23 +107,25 @@ func checkOllama() error {
 		ollamaURL = v
 	}
 
-	client := &http.Client{Timeout: 5 * time.Second}
+	httpClient := &http.Client{Timeout: 5 * time.Second}
 
 	// Check if Ollama is running
-	resp, err := client.Get(ollamaURL + "/api/tags")
+	resp, err := httpClient.Get(ollamaURL + "/api/tags")
 	if err != nil {
-		fmt.Printf("  %s✗%s Ollama not running at %s\n\n", colorYellow, colorReset, ollamaURL)
+		fmt.Printf("  %s✗%s Not running at %s\n\n",
+			cli.Yellow, cli.Reset, ollamaURL)
 		fmt.Println("  Install Ollama:")
-		fmt.Println("    macOS:   brew install ollama && ollama serve")
+		fmt.Println("    macOS:   brew install ollama")
 		fmt.Println("    Linux:   curl -fsSL https://ollama.ai/install.sh | sh")
 		fmt.Println("    Windows: https://ollama.ai/download")
 		fmt.Println()
-		fmt.Println("  Then run: ollama pull nomic-embed-text")
-		return fmt.Errorf("Ollama is required but not running. Start it and run 'same init' again")
+		fmt.Println("  Then: ollama serve && ollama pull nomic-embed-text")
+		return fmt.Errorf("Ollama required. Start it and re-run 'same init'")
 	}
 	defer resp.Body.Close()
 
-	fmt.Printf("  %s✓%s Ollama running at %s\n", colorGreen, colorReset, ollamaURL)
+	fmt.Printf("  %s✓%s Running at localhost:11434\n",
+		cli.Green, cli.Reset)
 
 	// Check if the model is available
 	body, err := io.ReadAll(resp.Body)
@@ -151,7 +145,6 @@ func checkOllama() error {
 	model := config.EmbeddingModel
 	found := false
 	for _, m := range tagsResp.Models {
-		// Match both "nomic-embed-text" and "nomic-embed-text:latest"
 		if m.Name == model || strings.HasPrefix(m.Name, model+":") {
 			found = true
 			break
@@ -159,15 +152,18 @@ func checkOllama() error {
 	}
 
 	if !found {
-		fmt.Printf("  %s!%s Model '%s' not found — pulling...\n", colorYellow, colorReset, model)
+		fmt.Printf("  %s!%s %s not found — pulling...\n",
+			cli.Yellow, cli.Reset, model)
 		if err := pullModel(ollamaURL, model); err != nil {
-			fmt.Printf("  %s✗%s Failed to pull model: %v\n", colorYellow, colorReset, err)
+			fmt.Printf("  %s✗%s Failed to pull: %v\n",
+				cli.Yellow, cli.Reset, err)
 			fmt.Printf("\n  Run manually: ollama pull %s\n", model)
-			return fmt.Errorf("required model '%s' not available", model)
+			return fmt.Errorf("model '%s' not available", model)
 		}
 	}
 
-	fmt.Printf("  %s✓%s %s model available\n", colorGreen, colorReset, model)
+	fmt.Printf("  %s✓%s %s available\n",
+		cli.Green, cli.Reset, model)
 	return nil
 }
 
@@ -215,11 +211,15 @@ func detectVault(autoAccept bool) (string, error) {
 		if _, err := os.Stat(filepath.Join(cwd, marker)); err == nil {
 			markerName := strings.TrimPrefix(marker, ".")
 			count := indexer.CountMarkdownFiles(cwd)
-			fmt.Printf("  Found %s marker in current directory\n", markerName)
-			fmt.Printf("  → Using %s (%d markdown files)\n", cwd, count)
+			fmt.Printf("  %s✓%s %s vault detected\n",
+				cli.Green, cli.Reset, markerName)
+			fmt.Printf("    %s\n", cli.ShortenHome(cwd))
+			fmt.Printf("    %s markdown files\n",
+				cli.FormatNumber(count))
 
 			if count == 0 {
-				fmt.Printf("  %s!%s No markdown files found. Is this the right directory?\n", colorYellow, colorReset)
+				fmt.Printf("  %s!%s No markdown files found\n",
+					cli.Yellow, cli.Reset)
 			}
 
 			if !autoAccept && count > 0 {
@@ -234,13 +234,14 @@ func detectVault(autoAccept bool) (string, error) {
 	// Check if CWD has markdown files even without a marker
 	count := indexer.CountMarkdownFiles(cwd)
 	if count > 0 {
-		fmt.Printf("  Found %d markdown files in current directory\n", count)
-		fmt.Printf("  → %s\n", cwd)
+		fmt.Printf("  Found %s markdown files\n",
+			cli.FormatNumber(count))
+		fmt.Printf("    %s\n", cli.ShortenHome(cwd))
 		if autoAccept || confirm("  Use this directory?", true) {
 			return cwd, nil
 		}
 	} else {
-		fmt.Println("  No vault markers or markdown files found in current directory.")
+		fmt.Println("  No vault markers or markdown files found.")
 	}
 
 	// Check common locations
@@ -268,7 +269,10 @@ func detectVault(autoAccept bool) (string, error) {
 					count := indexer.CountMarkdownFiles(dir)
 					if count > 0 {
 						markerName := strings.TrimPrefix(marker, ".")
-						fmt.Printf("  Found %s vault: %s (%d files)\n", markerName, dir, count)
+						fmt.Printf("  Found %s vault: %s (%s files)\n",
+							markerName,
+							cli.ShortenHome(dir),
+							cli.FormatNumber(count))
 						if autoAccept || confirm("  Use this directory?", true) {
 							return dir, nil
 						}
@@ -282,7 +286,7 @@ func detectVault(autoAccept bool) (string, error) {
 }
 
 func promptForPath() (string, error) {
-	fmt.Print("  Enter path to your notes directory: ")
+	fmt.Print("  Enter path to your notes: ")
 	reader := bufio.NewReader(os.Stdin)
 	line, err := reader.ReadString('\n')
 	if err != nil {
@@ -310,9 +314,11 @@ func promptForPath() (string, error) {
 	}
 
 	count := indexer.CountMarkdownFiles(absPath)
-	fmt.Printf("  → %s (%d markdown files)\n", absPath, count)
+	fmt.Printf("    %s\n", cli.ShortenHome(absPath))
+	fmt.Printf("    %s markdown files\n", cli.FormatNumber(count))
 	if count == 0 {
-		fmt.Printf("  %s!%s Warning: no markdown files found\n", colorYellow, colorReset)
+		fmt.Printf("  %s!%s No markdown files found\n",
+			cli.Yellow, cli.Reset)
 	}
 
 	return absPath, nil
@@ -350,7 +356,7 @@ func runIndex(vaultPath string) (*indexer.Stats, error) {
 		}
 		filled := current * barWidth / total
 		bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
-		fmt.Printf("\r  [%s] %d/%d files", bar, current, total)
+		fmt.Printf("\r  [%s] %d/%d", bar, current, total)
 	}
 
 	stats, err := indexer.ReindexWithProgress(db, true, progress)
@@ -393,11 +399,12 @@ func handleGitignore(vaultPath string, autoAccept bool) {
 		}
 	}
 
-	if autoAccept || confirm("\n  Add .same/data/ to .gitignore? (The database is machine-specific)", true) {
+	if autoAccept || confirm("\n  Add .same/data/ to .gitignore?", true) {
 		entry := "\n# SAME database (machine-specific)\n.same/data/\n"
 		f, err := os.OpenFile(gitignorePath, os.O_APPEND|os.O_WRONLY, 0o644)
 		if err != nil {
-			fmt.Printf("  %s!%s Could not update .gitignore: %v\n", colorYellow, colorReset, err)
+			fmt.Printf("  %s!%s Could not update .gitignore: %v\n",
+				cli.Yellow, cli.Reset, err)
 			return
 		}
 		defer f.Close()

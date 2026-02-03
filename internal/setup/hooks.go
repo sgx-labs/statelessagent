@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/sgx-labs/statelessagent/internal/cli"
 )
 
 // hookDefinitions are the SAME hooks to install in .claude/settings.json.
@@ -90,7 +92,7 @@ func SetupHooks(vaultPath string) error {
 		return fmt.Errorf("write settings: %w", err)
 	}
 
-	fmt.Printf("  → %d hooks added to .claude/settings.json\n", count)
+	fmt.Printf("  → .claude/settings.json (%d hooks)\n", count)
 	return nil
 }
 
@@ -277,9 +279,10 @@ func detectBinaryPath() string {
 func setupHooksInteractive(vaultPath string, autoAccept bool) {
 	if autoAccept || confirm("  Set up Claude Code hooks?", true) {
 		if err := SetupHooks(vaultPath); err != nil {
-			fmt.Printf("  %s!%s Could not set up hooks: %v\n", colorYellow, colorReset, err)
+			fmt.Printf("  %s!%s Could not set up hooks: %v\n",
+				cli.Yellow, cli.Reset, err)
 		}
 	} else {
-		fmt.Println("  Skipped hooks setup. Run 'same setup hooks' later.")
+		fmt.Println("  Skipped. Run 'same setup hooks' later.")
 	}
 }

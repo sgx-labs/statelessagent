@@ -228,12 +228,13 @@ func (db *DB) GetNoteByPath(path string) ([]NoteRecord, error) {
 }
 
 // GetStaleNotes returns notes with review_by dates that are past due.
+// SECURITY: Excludes _PRIVATE/ content from results.
 func (db *DB) GetStaleNotes(maxResults int, overdueOnly bool) ([]NoteRecord, error) {
 	query := `
 		SELECT DISTINCT id, path, title, tags, domain, workstream, chunk_id, chunk_heading,
 			text, modified, content_hash, content_type, review_by, confidence, access_count
 		FROM vault_notes
-		WHERE review_by != '' AND review_by IS NOT NULL
+		WHERE review_by != '' AND review_by IS NOT NULL AND path NOT LIKE '_PRIVATE/%'
 		GROUP BY path
 		HAVING MIN(chunk_id)
 		ORDER BY review_by ASC
@@ -303,6 +304,7 @@ func scanNotes(rows *sql.Rows) ([]NoteRecord, error) {
 }
 
 // RecentNotes returns the most recently modified notes (one chunk per path).
+// SECURITY: Excludes _PRIVATE/ content from results.
 func (db *DB) RecentNotes(limit int) ([]NoteRecord, error) {
 	if limit <= 0 {
 		limit = 10
@@ -311,7 +313,7 @@ func (db *DB) RecentNotes(limit int) ([]NoteRecord, error) {
 		SELECT id, path, title, tags, domain, workstream, chunk_id, chunk_heading,
 			text, modified, content_hash, content_type, review_by, confidence, access_count
 		FROM vault_notes
-		WHERE chunk_id = 0
+		WHERE chunk_id = 0 AND path NOT LIKE '_PRIVATE/%'
 		ORDER BY modified DESC
 		LIMIT ?`, limit)
 	if err != nil {

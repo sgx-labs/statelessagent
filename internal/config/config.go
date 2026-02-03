@@ -372,14 +372,38 @@ func RebuildSkipDirs(extra []string) {
 }
 
 // VaultPath returns the vault root directory.
+// SECURITY: Validates the path is a reasonable vault root (not / or other
+// dangerous top-level paths that would cause the indexer to walk the entire filesystem).
 func VaultPath() string {
+	var path string
 	if v := os.Getenv("VAULT_PATH"); v != "" {
-		return v
+		path = v
+	} else if cfg := loadConfigSafe(); cfg != nil && cfg.Vault.Path != "" {
+		path = cfg.Vault.Path
+	} else {
+		path = defaultVaultPath()
 	}
-	if cfg := loadConfigSafe(); cfg != nil && cfg.Vault.Path != "" {
-		return cfg.Vault.Path
+	if path != "" {
+		path = validateVaultPath(path)
 	}
-	return defaultVaultPath()
+	return path
+}
+
+// validateVaultPath rejects vault paths that are too broad (e.g., /, /home, /Users).
+func validateVaultPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	// Block filesystem roots and shallow system directories
+	dangerous := []string{"/", "/home", "/Users", "/tmp", "/var", "/etc", "/opt"}
+	for _, d := range dangerous {
+		if abs == d {
+			fmt.Fprintf(os.Stderr, "WARNING: VAULT_PATH=%q is too broad, ignoring.\n", abs)
+			return ""
+		}
+	}
+	return path
 }
 
 // OllamaURL returns the validated Ollama API URL.

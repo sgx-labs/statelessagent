@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sgx-labs/statelessagent/internal/cli"
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/embedding"
 	"github.com/sgx-labs/statelessagent/internal/hooks"
@@ -557,24 +558,27 @@ func runDoctor() error {
 	check := func(name string, hint string, fn func() (string, error)) {
 		detail, err := fn()
 		if err != nil {
-			fmt.Printf("  FAIL  %s: %s\n", name, err)
+			fmt.Printf("  %s✗%s %s: %s\n",
+				cli.Red, cli.Reset, name, err)
 			if hint != "" {
-				fmt.Printf("        → %s\n", hint)
+				fmt.Printf("    → %s\n", hint)
 			}
 			failed++
 		} else {
-			fmt.Printf("  OK    %s", name)
 			if detail != "" {
-				fmt.Printf(" (%s)", detail)
+				fmt.Printf("  %s✓%s %s (%s)\n",
+					cli.Green, cli.Reset, name, detail)
+			} else {
+				fmt.Printf("  %s✓%s %s\n",
+					cli.Green, cli.Reset, name)
 			}
-			fmt.Println()
 			passed++
 		}
 	}
 
-	fmt.Print("\nSAME System Health Check\n\n")
+	fmt.Printf("\n%sSAME Health Check%s\n\n", cli.Bold, cli.Reset)
 
-	// 1. Vault path exists
+	// 1. Vault path
 	check("Vault path", "run 'same init' or set VAULT_PATH", func() (string, error) {
 		vp := config.VaultPath()
 		if vp == "" {
@@ -582,98 +586,97 @@ func runDoctor() error {
 		}
 		info, err := os.Stat(vp)
 		if err != nil {
-			return "", fmt.Errorf("path does not exist: %s", vp)
+			return "", fmt.Errorf("path does not exist")
 		}
 		if !info.IsDir() {
-			return "", fmt.Errorf("path is not a directory: %s", vp)
+			return "", fmt.Errorf("not a directory")
 		}
-		return vp, nil
+		return "", nil
 	})
 
-	// 2. Database exists and opens
+	// 2. Database
 	check("Database", "run 'same init' or 'same reindex'", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
-			return "", fmt.Errorf("cannot open: %v", err)
+			return "", fmt.Errorf("cannot open")
 		}
 		defer db.Close()
 		noteCount, err := db.NoteCount()
 		if err != nil {
-			return "", fmt.Errorf("cannot query notes: %v", err)
+			return "", fmt.Errorf("cannot query")
 		}
 		chunkCount, err := db.ChunkCount()
 		if err != nil {
-			return "", fmt.Errorf("cannot query chunks: %v", err)
+			return "", fmt.Errorf("cannot query")
 		}
 		if noteCount == 0 {
 			return "", fmt.Errorf("empty")
 		}
-		return fmt.Sprintf("%d notes, %d chunks", noteCount, chunkCount), nil
+		return fmt.Sprintf("%s notes, %s chunks",
+			cli.FormatNumber(noteCount),
+			cli.FormatNumber(chunkCount)), nil
 	})
 
-	// 3. Ollama reachable
-	check("Ollama", "start with 'ollama serve', or install from https://ollama.ai", func() (string, error) {
-		client := embedding.NewClient()
-		vec, err := client.GetQueryEmbedding("test")
+	// 3. Ollama
+	check("Ollama", "start with 'ollama serve'", func() (string, error) {
+		embedClient := embedding.NewClient()
+		vec, err := embedClient.GetQueryEmbedding("test")
 		if err != nil {
 			return "", fmt.Errorf("connection refused")
 		}
 		return fmt.Sprintf("%d-dim embeddings", len(vec)), nil
 	})
 
-	// 4. Vector search works
-	check("Vector search", "run 'same reindex' to rebuild the index", func() (string, error) {
+	// 4. Vector search
+	check("Vector search", "run 'same reindex'", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
 			return "", err
 		}
 		defer db.Close()
 
-		client := embedding.NewClient()
-		vec, err := client.GetQueryEmbedding("test query for health check")
+		embedClient := embedding.NewClient()
+		vec, err := embedClient.GetQueryEmbedding("test query")
 		if err != nil {
-			return "", fmt.Errorf("embedding failed: %v", err)
+			return "", fmt.Errorf("embedding failed")
 		}
 
 		results, err := db.VectorSearch(vec, store.SearchOptions{TopK: 1})
 		if err != nil {
-			return "", fmt.Errorf("search failed: %v", err)
+			return "", fmt.Errorf("search failed")
 		}
 		if len(results) == 0 {
-			return "", fmt.Errorf("no results — index may be empty")
+			return "", fmt.Errorf("no results")
 		}
-		return fmt.Sprintf("top result: %s (d=%.1f)", results[0].Title, results[0].Distance), nil
+		return "", nil
 	})
 
-	// 5. Context surfacing hook
-	check("Context surfacing", "check index quality with 'same search <query>'", func() (string, error) {
+	// 5. Context surfacing
+	check("Context surfacing", "'same search <query>' to test", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
 			return "", err
 		}
 		defer db.Close()
 
-		client := embedding.NewClient()
-		vec, err := client.GetQueryEmbedding("what notes are in this vault")
+		embedClient := embedding.NewClient()
+		vec, err := embedClient.GetQueryEmbedding("what notes are in this vault")
 		if err != nil {
-			return "", fmt.Errorf("embedding failed: %v", err)
+			return "", fmt.Errorf("embedding failed")
 		}
 
 		raw, err := db.VectorSearchRaw(vec, 3)
 		if err != nil {
-			return "", fmt.Errorf("raw search failed: %v", err)
+			return "", fmt.Errorf("raw search failed")
 		}
 		if len(raw) == 0 {
-			return "", fmt.Errorf("no raw results")
+			return "", fmt.Errorf("no results")
 		}
-		if raw[0].Distance > 16.5 {
-			return fmt.Sprintf("best distance %.1f (above 16.5 threshold — would not inject)", raw[0].Distance), nil
-		}
-		return fmt.Sprintf("best distance %.1f (would inject)", raw[0].Distance), nil
+		return "", nil
 	})
 
-	// 6. Security: verify _PRIVATE/ is not in the index
-	check("Private content excluded", "run 'same reindex --force' to purge", func() (string, error) {
+	// 6. Private content excluded
+	check("Private content excluded", "'same reindex --force' to purge", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
 			return "", err
@@ -683,24 +686,24 @@ func runDoctor() error {
 		var count int
 		err = db.Conn().QueryRow("SELECT COUNT(*) FROM vault_notes WHERE path LIKE '_PRIVATE/%'").Scan(&count)
 		if err != nil {
-			return "index empty or inaccessible", nil
+			return "", nil
 		}
 		if count > 0 {
-			return "", fmt.Errorf("SECURITY: %d _PRIVATE/ entries found in index", count)
+			return "", fmt.Errorf("%d _PRIVATE/ entries in index", count)
 		}
-		return "no private content in index", nil
+		return "", nil
 	})
 
-	// 7. Security: verify Ollama is localhost-only
-	check("Ollama localhost binding", "set OLLAMA_URL to http://localhost:11434", func() (string, error) {
+	// 7. Ollama localhost only
+	check("Ollama localhost only", "set OLLAMA_URL to localhost", func() (string, error) {
 		url := config.OllamaURL()
 		if !strings.Contains(url, "localhost") && !strings.Contains(url, "127.0.0.1") && !strings.Contains(url, "::1") {
-			return "", fmt.Errorf("SECURITY: Ollama URL points to non-localhost: %s", url)
+			return "", fmt.Errorf("non-localhost: %s", url)
 		}
-		return url, nil
+		return "", nil
 	})
 
-	fmt.Printf("\n%d passed, %d failed\n\n", passed, failed)
+	fmt.Printf("\n  %d passed, %d failed\n\n", passed, failed)
 
 	if failed > 0 {
 		return fmt.Errorf("%d check(s) failed", failed)
@@ -1147,98 +1150,75 @@ func runStatus() error {
 			"Run 'same init' to set up, or set VAULT_PATH")
 	}
 
-	fmt.Print("\nSAME Status\n\n")
+	fmt.Printf("\n%sSAME Status%s\n\n", cli.Bold, cli.Reset)
 
-	// Vault info
-	fmt.Printf("  Vault:     %s\n", vp)
+	fmt.Printf("  Vault:   %s\n", cli.ShortenHome(vp))
 
 	db, err := store.Open()
 	if err != nil {
-		fmt.Printf("  Database:  not initialized — run 'same init'\n\n")
+		fmt.Printf("  DB:      %snot initialized%s\n\n",
+			cli.Red, cli.Reset)
+		fmt.Printf("  Run 'same init' to set up.\n\n")
 		return nil
 	}
 	defer db.Close()
 
 	noteCount, _ := db.NoteCount()
 	chunkCount, _ := db.ChunkCount()
-	fmt.Printf("  Notes:     %d indexed\n", noteCount)
-	fmt.Printf("  Chunks:    %d\n", chunkCount)
+	fmt.Printf("  Notes:   %s indexed\n", cli.FormatNumber(noteCount))
+	fmt.Printf("  Chunks:  %s\n", cli.FormatNumber(chunkCount))
 
 	// Index age
 	indexAge, _ := db.IndexAge()
 	if indexAge > 0 {
-		fmt.Printf("  Indexed:   %s ago\n", formatDuration(indexAge))
+		fmt.Printf("  Indexed: %s ago\n", formatDuration(indexAge))
 	}
 
 	// DB size
 	dbPath := config.DBPath()
 	if info, err := os.Stat(dbPath); err == nil {
 		sizeMB := float64(info.Size()) / (1024 * 1024)
-		fmt.Printf("  DB:        %.1f MB\n", sizeMB)
+		fmt.Printf("  DB:      %.1f MB\n", sizeMB)
 	}
 
-	// Ollama
-	fmt.Println()
-	client := &http.Client{Timeout: time.Second}
+	// Ollama (same line block, no extra blank line)
+	httpClient := &http.Client{Timeout: time.Second}
 	ollamaURL := config.OllamaURL()
-	resp, err := client.Get(ollamaURL + "/api/tags")
+	resp, err := httpClient.Get(ollamaURL + "/api/tags")
 	if err != nil {
-		fmt.Printf("  Ollama:    not running\n")
+		fmt.Printf("  Ollama:  %snot running%s\n",
+			cli.Red, cli.Reset)
 	} else {
 		resp.Body.Close()
-		fmt.Printf("  Ollama:    running (%s)\n", config.EmbeddingModel)
+		fmt.Printf("  Ollama:  %srunning%s (%s)\n",
+			cli.Green, cli.Reset, config.EmbeddingModel)
 	}
 
 	// Hooks
-	fmt.Println()
-	fmt.Println("  Hooks:")
+	fmt.Printf("\n  Hooks:\n")
 	hookStatus := setup.HooksInstalled(vp)
-	hookNames := []string{"context-surfacing", "decision-extractor", "handoff-generator", "staleness-check"}
+	hookNames := []string{
+		"context-surfacing",
+		"decision-extractor",
+		"handoff-generator",
+		"staleness-check",
+	}
 	for _, name := range hookNames {
 		if hookStatus[name] {
-			fmt.Printf("    %-22s \033[32m✓\033[0m active\n", name)
+			fmt.Printf("    %-22s %s✓ active%s\n",
+				name, cli.Green, cli.Reset)
 		} else {
-			fmt.Printf("    %-22s \033[33m✗\033[0m not configured\n", name)
+			fmt.Printf("    %-22s %s- not configured%s\n",
+				name, cli.Dim, cli.Reset)
 		}
 	}
 
 	// MCP
-	fmt.Println()
 	if setup.MCPInstalled(vp) {
-		fmt.Println("  MCP:       registered in .mcp.json")
+		fmt.Printf("\n  MCP: registered\n")
 	} else {
-		fmt.Println("  MCP:       not registered")
-	}
-
-	// Last session
-	lastSession, err := db.LastSession()
-	if err == nil && lastSession != nil {
-		fmt.Println()
-		fmt.Println("  Last Session:")
-
-		// Get usage for this session
-		usage, _ := db.GetUsageBySession(lastSession.SessionID)
-		totalTokens := 0
-		noteCount := 0
-		decisions := 0
-		for _, u := range usage {
-			if u.HookName == "context_surfacing" {
-				totalTokens += u.EstimatedTokens
-				noteCount += len(u.InjectedPaths)
-			}
-			if u.HookName == "decision_extractor" {
-				decisions++
-			}
-		}
-		if noteCount > 0 {
-			fmt.Printf("    Context injected: %d notes (%d tokens)\n", noteCount, totalTokens)
-		}
-		if decisions > 0 {
-			fmt.Printf("    Decisions saved:  %d\n", decisions)
-		}
-		if lastSession.HandoffPath != "" {
-			fmt.Printf("    Handoff:          %s\n", lastSession.HandoffPath)
-		}
+		fmt.Printf("\n  MCP: %snot registered%s\n",
+			cli.Dim, cli.Reset)
 	}
 
 	fmt.Println()

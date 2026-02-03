@@ -262,7 +262,7 @@ func (db *DB) KeywordSearch(terms []string, limit int) ([]RawSearchResult, error
 		SELECT 0 as distance, n.id, n.path, n.title, n.chunk_heading, n.text,
 			n.domain, n.workstream, n.tags, n.content_type, n.confidence, n.modified
 		FROM vault_notes n
-		WHERE n.chunk_id = 0 AND n.path IN (
+		WHERE n.chunk_id = 0 AND n.path NOT LIKE '_PRIVATE/%%' AND n.path IN (
 			SELECT DISTINCT n2.path FROM vault_notes n2
 			WHERE (%s)
 		)
@@ -315,7 +315,7 @@ func (db *DB) KeywordSearchTitleMatch(terms []string, minMatches int, limit int)
 		SELECT 0 as distance, n.id, n.path, n.title, n.chunk_heading, n.text,
 			n.domain, n.workstream, n.tags, n.content_type, n.confidence, n.modified
 		FROM vault_notes n
-		WHERE n.chunk_id = 0 AND (%s) >= ?
+		WHERE n.chunk_id = 0 AND n.path NOT LIKE '_PRIVATE/%%' AND (%s) >= ?
 		ORDER BY n.modified DESC
 		LIMIT ?`,
 		scoreExpr)

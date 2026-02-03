@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
+
+// maxTranscriptSize is the maximum transcript file size we'll process (50 MB).
+const maxTranscriptSize = 50 * 1024 * 1024
 
 // HookInput is the JSON input from Claude Code hooks.
 type HookInput struct {
@@ -51,6 +55,13 @@ func Run(hookName string) {
 	inputData, input, err := readInputRaw()
 	if err != nil {
 		return
+	}
+
+	// SECURITY: Validate transcript path before processing (M1, M5).
+	if input.TranscriptPath != "" {
+		if !validateTranscriptPath(input.TranscriptPath, hookName) {
+			input.TranscriptPath = "" // clear invalid path
+		}
 	}
 
 	db, err := store.Open()
@@ -113,6 +124,33 @@ func mergePluginOutput(output *HookOutput, eventName string, pluginContexts []st
 
 	output.HookSpecificOutput.AdditionalContext += extra
 	return output
+}
+
+// validateTranscriptPath checks that a transcript path is safe to open.
+// Must be an absolute path to a regular file with a .jsonl extension and under size limit.
+func validateTranscriptPath(path string, hookName string) bool {
+	if !filepath.IsAbs(path) {
+		fmt.Fprintf(os.Stderr, "same hook %s: transcript path must be absolute\n", hookName)
+		return false
+	}
+	if filepath.Ext(path) != ".jsonl" {
+		fmt.Fprintf(os.Stderr, "same hook %s: transcript must be .jsonl file\n", hookName)
+		return false
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	if !info.Mode().IsRegular() {
+		fmt.Fprintf(os.Stderr, "same hook %s: transcript path is not a regular file\n", hookName)
+		return false
+	}
+	if info.Size() > maxTranscriptSize {
+		fmt.Fprintf(os.Stderr, "same hook %s: transcript too large (%d MB, max %d MB)\n",
+			hookName, info.Size()/(1024*1024), maxTranscriptSize/(1024*1024))
+		return false
+	}
+	return true
 }
 
 // readInputRaw reads stdin and returns both the raw bytes and parsed input.

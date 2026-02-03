@@ -136,6 +136,7 @@ func handleSearchNotes(ctx context.Context, req *mcp.CallToolRequest, input sear
 	if err != nil {
 		return textResult(fmt.Sprintf("Search error: %v", err)), nil, nil
 	}
+	results = filterPrivatePaths(results)
 	if len(results) == 0 {
 		return textResult("No results found. The index may be empty — try running reindex() first."), nil, nil
 	}
@@ -171,6 +172,7 @@ func handleSearchNotesFiltered(ctx context.Context, req *mcp.CallToolRequest, in
 	if err != nil {
 		return textResult(fmt.Sprintf("Search error: %v", err)), nil, nil
 	}
+	results = filterPrivatePaths(results)
 	if len(results) == 0 {
 		return textResult("No results found matching the filters."), nil, nil
 	}
@@ -210,6 +212,7 @@ func handleFindSimilar(ctx context.Context, req *mcp.CallToolRequest, input simi
 		return textResult(fmt.Sprintf("Search error: %v", err)), nil, nil
 	}
 
+	allResults = filterPrivatePaths(allResults)
 	var results []store.SearchResult
 	for _, r := range allResults {
 		if r.Path != input.Path {
@@ -276,9 +279,15 @@ func clampTopK(topK, defaultVal int) int {
 	return topK
 }
 
-// safeVaultPath resolves a relative path within the vault, blocking traversal attacks.
+// safeVaultPath resolves a relative path within the vault, blocking traversal attacks
+// and access to _PRIVATE/ content.
 func safeVaultPath(path string) string {
 	if filepath.IsAbs(path) {
+		return ""
+	}
+	// SECURITY: block access to _PRIVATE/ directory
+	clean := filepath.ToSlash(filepath.Clean(path))
+	if strings.HasPrefix(clean, "_PRIVATE/") || clean == "_PRIVATE" {
 		return ""
 	}
 	full, err := filepath.Abs(filepath.Join(config.VaultPath(), filepath.FromSlash(path)))
@@ -289,4 +298,15 @@ func safeVaultPath(path string) string {
 		return ""
 	}
 	return full
+}
+
+// filterPrivatePaths removes _PRIVATE/ results from search output (defense-in-depth).
+func filterPrivatePaths(results []store.SearchResult) []store.SearchResult {
+	filtered := results[:0]
+	for _, r := range results {
+		if !strings.HasPrefix(r.Path, "_PRIVATE/") && !strings.HasPrefix(r.Path, "_PRIVATE\\") {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
 }

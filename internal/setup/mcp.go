@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/sgx-labs/statelessagent/internal/cli"
 )
 
 type mcpConfig struct {
@@ -44,7 +46,7 @@ func SetupMCP(vaultPath string) error {
 		return fmt.Errorf("write .mcp.json: %w", err)
 	}
 
-	fmt.Println("  → Added to .mcp.json")
+	fmt.Println("  → .mcp.json (MCP server)")
 	return nil
 }
 
@@ -100,9 +102,10 @@ func MCPInstalled(vaultPath string) bool {
 func setupMCPInteractive(vaultPath string, autoAccept bool) {
 	if autoAccept || confirm("  Register MCP server?", true) {
 		if err := SetupMCP(vaultPath); err != nil {
-			fmt.Printf("  %s!%s Could not set up MCP: %v\n", colorYellow, colorReset, err)
+			fmt.Printf("  %s!%s Could not set up MCP: %v\n",
+				cli.Yellow, cli.Reset, err)
 		}
 	} else {
-		fmt.Println("  Skipped MCP setup. Run 'same setup mcp' later.")
+		fmt.Println("  Skipped. Run 'same setup mcp' later.")
 	}
 }
