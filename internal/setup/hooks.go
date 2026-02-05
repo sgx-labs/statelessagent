@@ -279,12 +279,13 @@ func detectBinaryPath() string {
 
 // setupHooksInteractive prompts and sets up hooks.
 func setupHooksInteractive(vaultPath string, autoAccept bool) {
-	if autoAccept || confirm("  Set up Claude Code hooks?", true) {
+	// Use friendlier prompt text for non-developers
+	if autoAccept || confirm("  Connect to Claude Code? (recommended)", true) {
 		if err := SetupHooks(vaultPath); err != nil {
-			fmt.Printf("  %s!%s Could not set up hooks: %v\n",
+			fmt.Printf("  %s!%s Could not set up connection: %v\n",
 				cli.Yellow, cli.Reset, err)
 		}
 	} else {
-		fmt.Println("  Skipped. Run 'same setup hooks' later.")
+		fmt.Println("  Skipped. Run 'same setup hooks' later if needed.")
 	}
 }

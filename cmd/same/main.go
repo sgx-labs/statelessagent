@@ -45,8 +45,18 @@ func newEmbedProvider() (embedding.Provider, error) {
 func main() {
 	root := &cobra.Command{
 		Use:   "same",
-		Short: "Stateless Agent Memory Engine",
-		Long:  "SAME — semantic search, context surfacing, and memory for markdown knowledge bases.",
+		Short: "Give your AI a memory of your project",
+		Long: `SAME (Stateless Agent Memory Engine) gives your AI a memory.
+
+Your AI will remember your project decisions, your preferences, and what you've
+built together across sessions. No more re-explaining everything.
+
+Quick Start:
+  same init     Set up SAME for your project (run this first)
+  same status   See what SAME is tracking
+  same doctor   Check if everything is working
+
+Need help? https://discord.gg/GZGHtrrKF2`,
 		CompletionOptions: cobra.CompletionOptions{
 			DisableDefaultCmd: true,
 		},
@@ -562,7 +572,8 @@ func runRelated(notePath string, topK int, jsonOut bool) error {
 func doctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
-		Short: "Check system health: vault, database, Ollama, hooks",
+		Short: "Check if everything is working correctly",
+		Long:  "Runs health checks on your SAME setup: verifies Ollama is running, your notes are indexed, and search is working.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDoctor()
 		},
@@ -637,20 +648,20 @@ func runDoctor() error {
 	})
 
 	// 3. Embedding provider
-	check("Embedding provider", "check config or 'ollama serve'", func() (string, error) {
+	check("Ollama connection", "make sure Ollama is running (look for llama icon)", func() (string, error) {
 		embedClient, err := newEmbedProvider()
 		if err != nil {
-			return "", fmt.Errorf("provider error: %v", err)
+			return "", fmt.Errorf("cannot connect: %v", err)
 		}
-		vec, err := embedClient.GetQueryEmbedding("test")
+		_, err = embedClient.GetQueryEmbedding("test")
 		if err != nil {
-			return "", fmt.Errorf("connection refused")
+			return "", fmt.Errorf("Ollama not responding - is it running?")
 		}
-		return fmt.Sprintf("%s, %d-dim", embedClient.Name(), len(vec)), nil
+		return fmt.Sprintf("connected via %s", embedClient.Name()), nil
 	})
 
 	// 4. Vector search
-	check("Vector search", "run 'same reindex'", func() (string, error) {
+	check("Search working", "run 'same reindex' to rebuild", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
 			return "", err
@@ -677,7 +688,7 @@ func runDoctor() error {
 	})
 
 	// 5. Context surfacing
-	check("Context surfacing", "'same search <query>' to test", func() (string, error) {
+	check("Finding relevant notes", "try 'same search <query>' to test", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
 			return "", err
@@ -704,7 +715,7 @@ func runDoctor() error {
 	})
 
 	// 6. Private content excluded
-	check("Private content excluded", "'same reindex --force' to purge", func() (string, error) {
+	check("Private folders hidden", "'same reindex --force' to refresh", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
 			return "", err
@@ -723,7 +734,7 @@ func runDoctor() error {
 	})
 
 	// 7. Ollama localhost only
-	check("Ollama localhost only", "set OLLAMA_URL to localhost", func() (string, error) {
+	check("Data stays local", "Ollama should run on your computer, not a remote server", func() (string, error) {
 		url := config.OllamaURL()
 		if !strings.Contains(url, "localhost") && !strings.Contains(url, "127.0.0.1") && !strings.Contains(url, "::1") {
 			return "", fmt.Errorf("non-localhost: %s", url)
@@ -1157,8 +1168,16 @@ func initCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Interactive setup wizard — get SAME running in one command",
-		Long:  "Checks Ollama, detects your notes, indexes them, and configures Claude Code hooks and MCP.",
+		Short: "Set up SAME for your project (start here)",
+		Long: `The setup wizard walks you through connecting SAME to your project.
+
+What it does:
+  1. Checks that Ollama is running (needed for local AI processing)
+  2. Finds your notes/markdown files
+  3. Indexes them so your AI can search them
+  4. Connects to your AI tools (Claude, Cursor, etc.)
+
+Run this command from inside your project folder.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return setup.RunInit(setup.InitOptions{
 				Yes:     yes,
@@ -1177,8 +1196,13 @@ func initCmd() *cobra.Command {
 func statusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
-		Short: "Show SAME status at a glance",
-		Long:  "Like 'git status' — shows vault info, index state, Ollama, hooks, MCP, and last session.",
+		Short: "See what SAME is tracking in your project",
+		Long: `Shows you the current state of SAME for your project:
+  - How many notes are indexed
+  - Whether Ollama is running
+  - Which AI tool integrations are active
+
+Run this anytime to see if SAME is working.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runStatus()
 		},

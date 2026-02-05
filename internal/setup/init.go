@@ -142,15 +142,25 @@ func checkOllama() error {
 	// Check if Ollama is running
 	resp, err := httpClient.Get(ollamaURL + "/api/tags")
 	if err != nil {
-		fmt.Printf("  %s✗%s Not running at %s\n\n",
-			cli.Yellow, cli.Reset, ollamaURL)
-		fmt.Println("  Install Ollama:")
-		fmt.Println("    macOS:   brew install ollama")
-		fmt.Println("    Linux:   curl -fsSL https://ollama.ai/install.sh | sh")
-		fmt.Println("    Windows: https://ollama.ai/download")
+		fmt.Printf("  %s✗%s Ollama is not running\n\n",
+			cli.Yellow, cli.Reset)
+		fmt.Println("  SAME needs Ollama (a free app) to understand your notes.")
 		fmt.Println()
-		fmt.Println("  Then: ollama serve && ollama pull nomic-embed-text")
-		return fmt.Errorf("Ollama required. Start it and re-run 'same init'")
+		fmt.Println("  To fix this:")
+		fmt.Println()
+		fmt.Println("  If you haven't installed Ollama yet:")
+		fmt.Println("    1. Go to https://ollama.ai")
+		fmt.Println("    2. Download and install it (like any other app)")
+		fmt.Println("    3. Open Ollama - you'll see a llama icon appear")
+		fmt.Println()
+		fmt.Println("  If Ollama is already installed:")
+		fmt.Println("    - Look for the llama icon in your menu bar (Mac) or system tray (Windows)")
+		fmt.Println("    - If you don't see it, open the Ollama app")
+		fmt.Println()
+		fmt.Println("  Once the llama icon appears, run 'same init' again.")
+		fmt.Println()
+		fmt.Println("  Need help? Join our Discord: https://discord.gg/GZGHtrrKF2")
+		return fmt.Errorf("Ollama not running. Start Ollama and try 'same init' again")
 	}
 	defer resp.Body.Close()
 

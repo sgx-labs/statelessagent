@@ -100,12 +100,13 @@ func MCPInstalled(vaultPath string) bool {
 
 // setupMCPInteractive prompts and sets up MCP.
 func setupMCPInteractive(vaultPath string, autoAccept bool) {
-	if autoAccept || confirm("  Register MCP server?", true) {
+	// Use friendlier prompt text for non-developers
+	if autoAccept || confirm("  Connect to Cursor/Windsurf? (recommended)", true) {
 		if err := SetupMCP(vaultPath); err != nil {
-			fmt.Printf("  %s!%s Could not set up MCP: %v\n",
+			fmt.Printf("  %s!%s Could not set up connection: %v\n",
 				cli.Yellow, cli.Reset, err)
 		}
 	} else {
-		fmt.Println("  Skipped. Run 'same setup mcp' later.")
+		fmt.Println("  Skipped. Run 'same setup mcp' later if needed.")
 	}
 }
