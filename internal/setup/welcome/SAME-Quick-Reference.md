@@ -17,9 +17,15 @@ same log             # Recent SAME activity
 ## Search & Explore
 
 ```bash
-same search "auth decisions"     # Search from CLI
-same related path/to/note.md     # Find similar notes
+same search "auth decisions"           # Search from CLI
+same search "auth" --top-k 15          # Dig deeper (more results)
+same related path/to/note.md           # Find similar notes
 ```
+
+**Tip:** If your AI didn't find something you know exists, just say:
+- "Search my notes more broadly for X"
+- "Look harder for anything about Y"
+- "Try searching for [alternate term]"
 
 ## Configuration
 

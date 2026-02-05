@@ -61,6 +61,30 @@ search_notes("JWT implementation")
 search_notes("security decisions")
 ```
 
+### 3. Dig Deeper When Needed
+
+If the user says something like "it's definitely in my notes" or "search harder":
+
+```
+# Default search returns 5 results
+search_notes("authentication", top_k=5)
+
+# Dig deeper with more results
+search_notes("authentication", top_k=15)
+
+# Try alternate phrasings
+search_notes("auth")
+search_notes("login")
+search_notes("user authentication")
+```
+
+**When to dig deeper:**
+- User says the answer should be in their notes
+- Initial search returned nothing relevant
+- Topic might use different terminology
+
+**Tip:** If you find nothing, tell the user: "I searched for X but didn't find it. Want me to try different terms, or is this something we should document?"
+
 ### 3. Always Acknowledge What You Used
 
 When surfaced context helps, tell the user:
