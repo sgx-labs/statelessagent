@@ -73,6 +73,11 @@ fi
 curl -fsSL "$URL" -o "$OUTPUT"
 chmod +x "$OUTPUT"
 
+# Clear macOS quarantine attributes (prevents Gatekeeper from blocking unsigned binaries)
+if [ "$OS" = "Darwin" ]; then
+  xattr -cr "$OUTPUT" 2>/dev/null || true
+fi
+
 # Verify the binary runs
 if ! "$OUTPUT" version >/dev/null 2>&1; then
   echo "WARNING: Binary downloaded but failed to execute."
