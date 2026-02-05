@@ -392,7 +392,9 @@ func warnCloudSync(vaultPath string, autoAccept bool) bool {
 	fmt.Println()
 	fmt.Println("  Recommendations:")
 	fmt.Println("    • Use SAME from one computer at a time")
-	fmt.Println("    • Or add .same/ to your cloud service's ignore list")
+	fmt.Println("    • Add .same/ to your cloud service's ignore list")
+	fmt.Println("    • Or use Obsidian Sync instead — it handles vault")
+	fmt.Println("      syncing properly and won't conflict with SAME")
 	fmt.Println()
 
 	if autoAccept {
