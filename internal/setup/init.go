@@ -8,7 +8,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -34,6 +36,99 @@ const (
 	LevelDev       ExperienceLevel = "dev"
 )
 
+// checkDependencies verifies Go 1.23+ and CGO are available.
+// This is only needed if the user is building from source.
+func checkDependencies() error {
+	// Check if 'go' is available
+	goPath, err := exec.LookPath("go")
+	if err != nil {
+		// No Go installed — that's fine if using a pre-built binary
+		return nil
+	}
+
+	// Get Go version
+	out, err := exec.Command(goPath, "version").Output()
+	if err != nil {
+		return nil // Can't check, assume it's fine
+	}
+
+	// Parse version from "go version go1.23.4 darwin/arm64"
+	versionStr := string(out)
+	re := regexp.MustCompile(`go(\d+)\.(\d+)`)
+	matches := re.FindStringSubmatch(versionStr)
+	if len(matches) < 3 {
+		return nil // Can't parse, assume it's fine
+	}
+
+	var major, minor int
+	fmt.Sscanf(matches[1], "%d", &major)
+	fmt.Sscanf(matches[2], "%d", &minor)
+
+	if major < 1 || (major == 1 && minor < 23) {
+		cli.Section("Dependencies")
+		fmt.Printf("  %s✗%s Go %d.%d detected (SAME requires Go 1.23+)\n\n",
+			cli.Yellow, cli.Reset, major, minor)
+		fmt.Println("  If you installed SAME via Homebrew or a binary,")
+		fmt.Println("  you can ignore this and continue.")
+		fmt.Println()
+		fmt.Println("  If you're building from source, upgrade Go:")
+		fmt.Println()
+		// Platform-specific instructions
+		if strings.Contains(strings.ToLower(versionStr), "darwin") {
+			fmt.Printf("  %sMac:%s\n", cli.Bold, cli.Reset)
+			fmt.Println("    brew upgrade go")
+			fmt.Println()
+			fmt.Println("  Or download from https://go.dev/dl/")
+		} else if strings.Contains(strings.ToLower(versionStr), "windows") {
+			fmt.Printf("  %sWindows:%s\n", cli.Bold, cli.Reset)
+			fmt.Println("    1. Download Go 1.23+ from https://go.dev/dl/")
+			fmt.Println("    2. Run the installer")
+			fmt.Println("    3. Restart your terminal")
+		} else {
+			fmt.Printf("  %sLinux:%s\n", cli.Bold, cli.Reset)
+			fmt.Println("    # Remove old version")
+			fmt.Println("    sudo rm -rf /usr/local/go")
+			fmt.Println()
+			fmt.Println("    # Download and install Go 1.23+")
+			fmt.Println("    wget https://go.dev/dl/go1.23.4.linux-amd64.tar.gz")
+			fmt.Println("    sudo tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz")
+			fmt.Println()
+			fmt.Println("    # Add to PATH (add to ~/.bashrc or ~/.zshrc)")
+			fmt.Println("    export PATH=$PATH:/usr/local/go/bin")
+		}
+		fmt.Println()
+	}
+
+	// Check CGO_ENABLED (only matters for building from source)
+	env := os.Getenv("CGO_ENABLED")
+	if env == "0" {
+		if major >= 1 && minor >= 23 {
+			cli.Section("Dependencies")
+		}
+		fmt.Printf("  %s✗%s CGO_ENABLED=0 detected\n\n",
+			cli.Yellow, cli.Reset)
+		fmt.Println("  SAME requires CGO for SQLite with vector search.")
+		fmt.Println()
+		fmt.Println("  To fix:")
+		fmt.Println()
+		if strings.Contains(strings.ToLower(versionStr), "windows") {
+			fmt.Printf("  %sWindows:%s\n", cli.Bold, cli.Reset)
+			fmt.Println("    1. Install MinGW-w64 or TDM-GCC")
+			fmt.Println("    2. Run: set CGO_ENABLED=1")
+			fmt.Println("    3. Rebuild SAME")
+		} else {
+			fmt.Printf("  %sMac/Linux:%s\n", cli.Bold, cli.Reset)
+			fmt.Println("    export CGO_ENABLED=1")
+			fmt.Println()
+			fmt.Println("  Then rebuild SAME:")
+			fmt.Println("    go build -o same ./cmd/same")
+		}
+		fmt.Println()
+	}
+
+	return nil
+}
+
 // RunInit executes the interactive setup wizard.
 func RunInit(opts InitOptions) error {
 	version := opts.Version
@@ -41,6 +136,9 @@ func RunInit(opts InitOptions) error {
 		version = "dev"
 	}
 	cli.Banner(version)
+
+	// Check dependencies (Go version, CGO)
+	checkDependencies()
 
 	// Ask experience level first (unless auto-accepting)
 	experience := LevelVibeCoder // default
@@ -59,6 +157,11 @@ func RunInit(opts InitOptions) error {
 	vaultPath, err := detectVault(opts.Yes)
 	if err != nil {
 		return err
+	}
+
+	// Warn about cloud sync
+	if !warnCloudSync(vaultPath, opts.Yes) {
+		return fmt.Errorf("setup cancelled")
 	}
 
 	// Indexing
@@ -254,6 +357,50 @@ func pullModel(ollamaURL, model string) error {
 	return scanner.Err()
 }
 
+// isCloudSyncedPath checks if a path is inside a cloud-synced folder.
+func isCloudSyncedPath(path string) (bool, string) {
+	absPath, _ := filepath.Abs(path)
+	lowerPath := strings.ToLower(absPath)
+
+	cloudIndicators := map[string]string{
+		"dropbox":         "Dropbox",
+		"onedrive":        "OneDrive",
+		"google drive":    "Google Drive",
+		"icloud":          "iCloud",
+		"mobile documents": "iCloud",
+	}
+
+	for indicator, name := range cloudIndicators {
+		if strings.Contains(lowerPath, indicator) {
+			return true, name
+		}
+	}
+	return false, ""
+}
+
+// warnCloudSync warns about cloud-synced folders if detected.
+func warnCloudSync(vaultPath string, autoAccept bool) bool {
+	isCloud, provider := isCloudSyncedPath(vaultPath)
+	if !isCloud {
+		return true // proceed
+	}
+
+	fmt.Printf("\n  %s⚠%s This folder appears to be in %s.\n\n",
+		cli.Yellow, cli.Reset, provider)
+	fmt.Println("  Cloud-synced folders can cause database conflicts when")
+	fmt.Println("  multiple devices access the same SAME database.")
+	fmt.Println()
+	fmt.Println("  Recommendations:")
+	fmt.Println("    • Use SAME from one computer at a time")
+	fmt.Println("    • Or add .same/ to your cloud service's ignore list")
+	fmt.Println()
+
+	if autoAccept {
+		return true
+	}
+	return confirm("  Continue anyway?", false)
+}
+
 // detectVault finds or prompts for the vault path.
 func detectVault(autoAccept bool) (string, error) {
 	cwd, err := os.Getwd()
@@ -381,6 +528,26 @@ func promptForPath() (string, error) {
 
 // runIndex indexes the vault with a progress bar.
 func runIndex(vaultPath string, verbose bool) (*indexer.Stats, error) {
+	// Count files first for time estimate
+	noteCount := indexer.CountMarkdownFiles(vaultPath)
+
+	// Show time estimate for large vaults
+	if noteCount > 500 {
+		estMinutes := (noteCount * 50) / 1000 / 60 // ~50ms per note
+		if estMinutes < 1 {
+			estMinutes = 1
+		}
+		fmt.Printf("  Found %s notes. Estimated time: ~%d minute(s)\n\n",
+			cli.FormatNumber(noteCount), estMinutes)
+	}
+
+	if noteCount > 5000 {
+		fmt.Printf("  %s⚠%s Large vault detected.\n", cli.Yellow, cli.Reset)
+		fmt.Println("  Initial indexing may take 10+ minutes.")
+		fmt.Println("  After this, SAME only re-indexes changed files.")
+		fmt.Println()
+	}
+
 	// Ensure data dir exists
 	dataDir := filepath.Join(vaultPath, ".same", "data")
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
