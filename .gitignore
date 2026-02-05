@@ -41,8 +41,8 @@ Thumbs.db
 .vercel
 .env*.local
 
-# Private website content (deployed but not open-sourced)
-website/commercialcleaningplaybook/
-website/brief/
+# Private website content (investor-facing pages stay private)
+website/brief/index.html
+website/brief/investors/
 website/sgx-labs/
 website/playbook/
