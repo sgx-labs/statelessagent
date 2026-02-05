@@ -3,6 +3,7 @@ package setup
 
 import (
 	"bufio"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +20,9 @@ import (
 	"github.com/sgx-labs/statelessagent/internal/indexer"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
+
+//go:embed welcome/*.md
+var welcomeNotes embed.FS
 
 // InitOptions controls the init wizard behavior.
 type InitOptions struct {
@@ -163,6 +167,9 @@ func RunInit(opts InitOptions) error {
 	if !warnCloudSync(vaultPath, opts.Yes) {
 		return fmt.Errorf("setup cancelled")
 	}
+
+	// Copy welcome notes (before indexing so they get included)
+	copyWelcomeNotes(vaultPath)
 
 	// Indexing
 	cli.Section("Indexing")
@@ -401,6 +408,54 @@ func warnCloudSync(vaultPath string, autoAccept bool) bool {
 		return true
 	}
 	return confirm("  Continue anyway?", false)
+}
+
+// copyWelcomeNotes copies the embedded welcome notes to the vault.
+func copyWelcomeNotes(vaultPath string) {
+	destDir := filepath.Join(vaultPath, ".same", "welcome")
+
+	// Check if welcome notes already exist
+	if _, err := os.Stat(destDir); err == nil {
+		// Already copied, skip
+		return
+	}
+
+	// Create the directory
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		// Silently skip if we can't create the directory
+		return
+	}
+
+	// Read and copy each welcome note
+	entries, err := welcomeNotes.ReadDir("welcome")
+	if err != nil {
+		return
+	}
+
+	copied := 0
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+
+		content, err := welcomeNotes.ReadFile("welcome/" + entry.Name())
+		if err != nil {
+			continue
+		}
+
+		destPath := filepath.Join(destDir, entry.Name())
+		if err := os.WriteFile(destPath, content, 0o644); err != nil {
+			continue
+		}
+		copied++
+	}
+
+	if copied > 0 {
+		fmt.Printf("  %s✓%s Added %d welcome notes to .same/welcome/\n",
+			cli.Green, cli.Reset, copied)
+		fmt.Printf("    %sThese show SAME's recommended note format%s\n",
+			cli.Dim, cli.Reset)
+	}
 }
 
 // detectVault finds or prompts for the vault path.
