@@ -17,6 +17,7 @@ import (
 
 	"github.com/sgx-labs/statelessagent/internal/cli"
 	"github.com/sgx-labs/statelessagent/internal/config"
+	"github.com/sgx-labs/statelessagent/internal/embedding"
 	"github.com/sgx-labs/statelessagent/internal/indexer"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
@@ -230,19 +231,37 @@ func RunInit(opts InitOptions) error {
 	fmt.Println()
 	fmt.Printf("  Run %ssame scope%s to review anytime.\n", cli.Bold, cli.Reset)
 
+	// Test search to prove it works
+	cli.Section("Testing")
+	testResult := runTestSearch(vaultPath)
+	if testResult != "" {
+		fmt.Printf("  %s✓%s Search working!\n", cli.Green, cli.Reset)
+		fmt.Printf("    Query: %s\"how does SAME work\"%s\n", cli.Dim, cli.Reset)
+		fmt.Printf("    Found: %s%s%s\n", cli.Bold, testResult, cli.Reset)
+	} else {
+		fmt.Printf("  %s✓%s Search ready\n", cli.Green, cli.Reset)
+	}
+
+	// The big moment
 	fmt.Println()
-	fmt.Printf("  %sSAME is now active.%s When you use Claude Code:\n", cli.Bold, cli.Reset)
 	fmt.Println()
-	fmt.Printf("  %s→%s Your prompts get matched to relevant notes\n", cli.Cyan, cli.Reset)
-	fmt.Printf("  %s→%s Decisions get extracted and saved\n", cli.Cyan, cli.Reset)
-	fmt.Printf("  %s→%s Session handoffs keep context across sessions\n", cli.Cyan, cli.Reset)
-	fmt.Printf("  %s→%s Notes that help get boosted (feedback loop)\n", cli.Cyan, cli.Reset)
-	fmt.Printf("  %s→%s Stale notes get flagged for review\n", cli.Cyan, cli.Reset)
+	fmt.Printf("  %s══════════════════════════════════════════════════════%s\n", cli.Cyan, cli.Reset)
 	fmt.Println()
-	fmt.Printf("  Try it: run %sclaude%s and ask about something\n", cli.Bold, cli.Reset)
-	fmt.Printf("  in your notes.\n")
+	fmt.Printf("  %s%s  ✦  NOW YOUR AI REMEMBERS  ✦  %s\n", cli.Bold, cli.Cyan, cli.Reset)
 	fmt.Println()
-	fmt.Printf("  Run %ssame status%s anytime.\n", cli.Bold, cli.Reset)
+	fmt.Printf("  %s══════════════════════════════════════════════════════%s\n", cli.Cyan, cli.Reset)
+	fmt.Println()
+	fmt.Println()
+	fmt.Printf("  %sWhat happens next:%s\n", cli.Bold, cli.Reset)
+	fmt.Println()
+	fmt.Printf("  %s→%s Open your AI tool (Claude Code, Cursor, etc.)\n", cli.Cyan, cli.Reset)
+	fmt.Printf("  %s→%s Ask about something in your notes\n", cli.Cyan, cli.Reset)
+	fmt.Printf("  %s→%s Watch SAME surface the right context automatically\n", cli.Cyan, cli.Reset)
+	fmt.Println()
+	fmt.Printf("  Your AI will remember your decisions, your architecture,\n")
+	fmt.Printf("  your preferences — across every session.\n")
+	fmt.Println()
+	fmt.Printf("  Run %ssame status%s anytime to check on things.\n", cli.Bold, cli.Reset)
 
 	// Privacy at the end
 	cli.Section("Privacy")
@@ -799,4 +818,42 @@ func generateConfigWithExperience(vaultPath string, experience ExperienceLevel) 
 			cli.Dim, cli.Reset)
 	}
 	return nil
+}
+
+// runTestSearch performs a quick search to verify everything works.
+// Returns the title of the first result, or empty string on failure.
+func runTestSearch(vaultPath string) string {
+	// Open the database
+	db, err := store.Open()
+	if err != nil {
+		return ""
+	}
+	defer db.Close()
+
+	// Create embedding provider
+	ec := config.EmbeddingProviderConfig()
+	provider, err := embedding.NewProvider(embedding.ProviderConfig{
+		Provider:   ec.Provider,
+		Model:      ec.Model,
+		APIKey:     ec.APIKey,
+		BaseURL:    config.OllamaURL(),
+		Dimensions: ec.Dimensions,
+	})
+	if err != nil {
+		return ""
+	}
+
+	// Embed a test query
+	vec, err := provider.GetQueryEmbedding("how does SAME work")
+	if err != nil {
+		return ""
+	}
+
+	// Search
+	results, err := db.VectorSearch(vec, store.SearchOptions{TopK: 1})
+	if err != nil || len(results) == 0 {
+		return ""
+	}
+
+	return results[0].Title
 }
