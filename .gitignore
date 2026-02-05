@@ -38,3 +38,11 @@ Thumbs.db
 # The eval framework code (internal/eval/) is tracked,
 # but user-specific test data stays local.
 /eval/
+.vercel
+.env*.local
+
+# Private website content (deployed but not open-sourced)
+website/commercialcleaningplaybook/
+website/brief/
+website/sgx-labs/
+website/playbook/
