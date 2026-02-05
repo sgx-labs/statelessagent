@@ -82,6 +82,7 @@ Need help? https://discord.gg/GZGHtrrKF2`,
 	root.AddCommand(configCmd())
 	root.AddCommand(setupSubCmd())
 	root.AddCommand(displayCmd())
+	root.AddCommand(profileCmd())
 
 	// Global --vault flag
 	root.PersistentFlags().StringVar(&config.VaultOverride, "vault", "", "Vault name or path (overrides auto-detect)")
@@ -1594,6 +1595,114 @@ func setDisplayMode(mode string) error {
 
 	fmt.Printf("\nSaved to: %s\n", cli.ShortenHome(cfgPath))
 	fmt.Println("Change takes effect on next prompt.")
+	return nil
+}
+
+// ---------- profile ----------
+
+func profileCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "profile",
+		Short: "Switch between search precision presets",
+		Long: `Control how SAME balances precision vs coverage when surfacing notes.
+
+Profiles:
+  precise   Fewer results, higher relevance threshold (uses fewer tokens)
+  balanced  Default balance of relevance and coverage
+  broad     More results, lower threshold (uses ~2x more tokens)
+
+Example: same profile use precise`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return showCurrentProfile()
+		},
+	}
+
+	useCmd := &cobra.Command{
+		Use:   "use [profile]",
+		Short: "Switch to a profile (precise, balanced, broad)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return setProfile(args[0])
+		},
+	}
+	cmd.AddCommand(useCmd)
+
+	return cmd
+}
+
+func showCurrentProfile() error {
+	current := config.CurrentProfile()
+
+	cli.Header("SAME Profile")
+	fmt.Println()
+
+	for _, name := range []string{"precise", "balanced", "broad"} {
+		p := config.BuiltinProfiles[name]
+		marker := "  "
+		if name == current {
+			marker = fmt.Sprintf("%s→%s ", cli.Cyan, cli.Reset)
+		}
+
+		tokenNote := ""
+		if p.TokenWarning != "" {
+			tokenNote = fmt.Sprintf(" %s(%s)%s", cli.Dim, p.TokenWarning, cli.Reset)
+		}
+
+		fmt.Printf("  %s%-10s %s%s\n", marker, name, p.Description, tokenNote)
+	}
+
+	if current == "custom" {
+		fmt.Printf("\n  %s→ custom%s (manually configured values)\n", cli.Cyan, cli.Reset)
+	}
+
+	fmt.Println()
+	fmt.Printf("  Change with: %ssame profile use <name>%s\n", cli.Bold, cli.Reset)
+	fmt.Println()
+
+	return nil
+}
+
+func setProfile(profileName string) error {
+	vp := config.VaultPath()
+	if vp == "" {
+		return userError("No vault found", "Run 'same init' first")
+	}
+
+	profile, ok := config.BuiltinProfiles[profileName]
+	if !ok {
+		return userError(
+			fmt.Sprintf("Unknown profile: %s", profileName),
+			"Available: precise, balanced, broad",
+		)
+	}
+
+	// Show warning for broad profile
+	if profileName == "broad" {
+		fmt.Printf("\n  %s⚠ Token usage warning:%s\n", cli.Yellow, cli.Reset)
+		fmt.Println("  The 'broad' profile surfaces more notes per query,")
+		fmt.Println("  which uses approximately 2x more tokens.")
+		fmt.Println()
+	}
+
+	if err := config.SetProfile(vp, profileName); err != nil {
+		return fmt.Errorf("update config: %w", err)
+	}
+
+	fmt.Printf("\n  %s✓%s Profile set to: %s%s%s\n", cli.Green, cli.Reset, cli.Bold, profileName, cli.Reset)
+	fmt.Printf("    %s\n", profile.Description)
+
+	if profile.TokenWarning != "" {
+		fmt.Printf("    %s%s%s\n", cli.Dim, profile.TokenWarning, cli.Reset)
+	}
+
+	fmt.Println()
+	fmt.Printf("  Settings applied:\n")
+	fmt.Printf("    max_results:         %d\n", profile.MaxResults)
+	fmt.Printf("    distance_threshold:  %.1f\n", profile.DistanceThreshold)
+	fmt.Printf("    composite_threshold: %.2f\n", profile.CompositeThreshold)
+	fmt.Println()
+	fmt.Println("  Change takes effect on next prompt.")
+
 	return nil
 }
 

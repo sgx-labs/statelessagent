@@ -677,6 +677,96 @@ func DisplayMode() string {
 	return cfg.Display.Mode
 }
 
+// Profile represents a preset configuration for memory engine behavior.
+type Profile struct {
+	Name               string
+	Description        string
+	MaxResults         int
+	DistanceThreshold  float64
+	CompositeThreshold float64
+	TokenWarning       string // warning about token usage
+}
+
+// BuiltinProfiles defines the available profile presets.
+var BuiltinProfiles = map[string]Profile{
+	"precise": {
+		Name:               "precise",
+		Description:        "Fewer, highly relevant results",
+		MaxResults:         2,
+		DistanceThreshold:  14.0,
+		CompositeThreshold: 0.75,
+		TokenWarning:       "Uses fewer tokens per query",
+	},
+	"balanced": {
+		Name:               "balanced",
+		Description:        "Default balance of relevance and coverage",
+		MaxResults:         2,
+		DistanceThreshold:  16.2,
+		CompositeThreshold: 0.65,
+		TokenWarning:       "",
+	},
+	"broad": {
+		Name:               "broad",
+		Description:        "More context, casts a wider net",
+		MaxResults:         4,
+		DistanceThreshold:  18.0,
+		CompositeThreshold: 0.55,
+		TokenWarning:       "Uses ~2x more tokens per query",
+	},
+}
+
+// CurrentProfile returns the name of the current profile based on config values,
+// or "custom" if values don't match any builtin profile.
+func CurrentProfile() string {
+	cfg := loadConfigSafe()
+	if cfg == nil {
+		return "balanced"
+	}
+
+	for name, p := range BuiltinProfiles {
+		if cfg.Memory.MaxResults == p.MaxResults &&
+			cfg.Memory.DistanceThreshold == p.DistanceThreshold &&
+			cfg.Memory.CompositeThreshold == p.CompositeThreshold {
+			return name
+		}
+	}
+	return "custom"
+}
+
+// SetProfile applies a profile's settings to the config file.
+func SetProfile(vaultPath, profileName string) error {
+	profile, ok := BuiltinProfiles[profileName]
+	if !ok {
+		return fmt.Errorf("unknown profile: %s (available: precise, balanced, broad)", profileName)
+	}
+
+	cfgPath := ConfigFilePath(vaultPath)
+
+	// Load existing config or create default
+	cfg, err := LoadConfig()
+	if err != nil {
+		cfg = DefaultConfig()
+	}
+
+	// Apply profile settings
+	cfg.Memory.MaxResults = profile.MaxResults
+	cfg.Memory.DistanceThreshold = profile.DistanceThreshold
+	cfg.Memory.CompositeThreshold = profile.CompositeThreshold
+
+	// Marshal to TOML
+	var buf bytes.Buffer
+	encoder := toml.NewEncoder(&buf)
+	if err := encoder.Encode(cfg); err != nil {
+		return fmt.Errorf("encode config: %w", err)
+	}
+
+	// Ensure directory exists
+	os.MkdirAll(filepath.Dir(cfgPath), 0o755)
+
+	// Write file
+	return os.WriteFile(cfgPath, buf.Bytes(), 0o644)
+}
+
 // SetDisplayMode updates the display mode in the config file.
 func SetDisplayMode(vaultPath, mode string) error {
 	cfgPath := ConfigFilePath(vaultPath)
