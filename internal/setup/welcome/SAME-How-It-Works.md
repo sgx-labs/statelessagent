@@ -45,6 +45,34 @@ The AI sees a snippet like:
 - **Usage patterns** — Notes that help get boosted over time
 - **Staleness** — Old notes get flagged for review
 
+## Token Costs & Vault Growth
+
+**Good news: More notes ≠ more tokens per query.**
+
+SAME surfaces a fixed number of results regardless of vault size:
+
+| Setting | Default | Effect |
+|---------|---------|--------|
+| `max_results` | 2 | Only top 2 notes surfaced |
+| `max_token_budget` | 800 | Cap on injected tokens |
+
+A vault with 100 notes costs the same per-query as one with 10,000 notes. More notes just means better search precision.
+
+**What grows over time:**
+- Database size (`.same/data/vault.db`)
+- Handoff files in `sessions/` folder
+- Decision log (`decisions.md`)
+
+**Maintenance tips:**
+- Old handoffs can be archived/deleted (they're just markdown)
+- Stale notes get flagged — review and update or delete them
+- Use `same profile use precise` if surfacing too much
+
+**Profiles for token control:**
+- `precise` — Stricter matching, fewer tokens
+- `balanced` — Default
+- `broad` — More context, ~2x tokens
+
 ## Privacy
 
 - All processing happens locally via Ollama
