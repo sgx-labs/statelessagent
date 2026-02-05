@@ -286,9 +286,9 @@ func SurfacingVerbose(notes []SurfacedNote, totalVault int) {
 		}
 	}
 
-	// Footer
+	// Footer with mode hints
 	fmt.Fprintf(os.Stderr, "%s│%s│%s\n", Cyan, strings.Repeat(" ", boxWidth), Reset)
-	footerRight := "same quiet ↵"
+	footerRight := "SAME_COMPACT=1 for less · SAME_QUIET=1 to hide"
 	footerPad := boxWidth - runeLen(footerRight) - 1
 	fmt.Fprintf(os.Stderr, "%s│%s%s%s │%s\n",
 		Cyan, strings.Repeat(" ", footerPad), Dim, footerRight, Reset)

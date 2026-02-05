@@ -91,9 +91,10 @@ func runContextSurfacing(db *store.DB, input *HookInput) *HookOutput {
 		return nil
 	}
 
-	// Check display mode: SAME_QUIET suppresses output, SAME_VERBOSE shows full box
+	// Check display mode: SAME_QUIET suppresses output, SAME_COMPACT shows one-liner
+	// Default is full box (verbose)
 	quietMode := os.Getenv("SAME_QUIET") == "1" || os.Getenv("SAME_QUIET") == "true"
-	verboseMode := os.Getenv("SAME_VERBOSE") == "1" || os.Getenv("SAME_VERBOSE") == "true"
+	compactMode := os.Getenv("SAME_COMPACT") == "1" || os.Getenv("SAME_COMPACT") == "true"
 
 	// Load configurable memory parameters once per invocation
 	maxResults := config.MemoryMaxResults()
@@ -182,8 +183,11 @@ func runContextSurfacing(db *store.DB, input *HookInput) *HookOutput {
 
 	// Display surfacing feedback to stderr
 	if !quietMode {
-		if verboseMode {
-			// Build display notes
+		if compactMode {
+			// Compact mode (one-liner)
+			cli.SurfacingCompact(len(included), len(candidates))
+		} else {
+			// Full box (default)
 			var displayNotes []cli.SurfacedNote
 			for _, s := range included {
 				displayNotes = append(displayNotes, cli.SurfacedNote{
@@ -204,9 +208,6 @@ func runContextSurfacing(db *store.DB, input *HookInput) *HookOutput {
 				})
 			}
 			cli.SurfacingVerbose(displayNotes, totalVault)
-		} else {
-			// Compact mode (default)
-			cli.SurfacingCompact(len(included), len(candidates))
 		}
 	}
 
