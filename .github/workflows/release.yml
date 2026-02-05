@@ -18,11 +18,7 @@ jobs:
             goarch: arm64
             suffix: darwin-arm64
             cc: ""
-          - os: macos-15-large
-            goos: darwin
-            goarch: amd64
-            suffix: darwin-amd64
-            cc: ""
+          # darwin-amd64 removed - Intel Macs rare, no free CI runner
           - os: ubuntu-latest
             goos: linux
             goarch: amd64
@@ -99,6 +95,5 @@ jobs:
           generate_release_notes: true
           files: |
             artifacts/same-darwin-arm64/same-darwin-arm64
-            artifacts/same-darwin-amd64/same-darwin-amd64
             artifacts/same-linux-amd64/same-linux-amd64
             artifacts/same-windows-amd64.exe/same-windows-amd64.exe
