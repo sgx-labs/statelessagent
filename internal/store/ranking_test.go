@@ -82,7 +82,7 @@ func TestTitleOverlapScore(t *testing.T) {
 		{
 			name:   "edit distance matching",
 			terms:  []string{"kubernetes"},
-			title:  "Kubernetes Hub",
+			title:  "Kuberntes Hub",
 			path:   "",
 			wantGT: 0.40, // edit distance 1 match
 			wantLT: 0.60,
