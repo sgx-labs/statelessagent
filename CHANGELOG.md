@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.5.3 — Push Protection & Display Fixes
+
+Safety rails for multi-agent workflows.
+
+### Added
+
+- **Push protection** — Prevents accidental pushes to wrong repos when running multiple agent instances
+  - `same push-allow [repo]` creates one-time push ticket
+  - `same guard settings set push-protect on` enables with auto-hook install
+  - `same guard settings set push-timeout N` configures ticket expiry (10-300s)
+  - Works across multiple Claude instances sharing same machine
+- **Simple display mode** — Clean list output that works in all terminals (now default)
+  - Set `SAME_BOX=1` for fancy Unicode box output
+
+### Changed
+
+- Context surfacing output is now a simple list by default (better terminal compatibility)
+- Guard settings now show push protection status and hook installation state
+
+---
+
 ## v0.5.2 — Self-Update
 
 One-command updates, no more curl.

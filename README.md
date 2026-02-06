@@ -178,6 +178,7 @@ Yes. `same vault add work ~/work-notes && same vault default work`.
 - `_PRIVATE/` directories excluded from indexing and context surfacing
 - Snippets scanned for prompt injection patterns before injection
 - Path traversal blocked in MCP `get_note` tool
+- **Push protection** — `same guard settings set push-protect on` requires explicit `same push-allow` before git push (prevents accidental pushes when running multiple agents)
 
 ## Building from Source
 

@@ -617,12 +617,12 @@ func runGuardSettingsShow() error {
 		fmt.Printf("  Push protect: %s✓ on%s (timeout: %ds)\n", cli.Green, cli.Reset, cfg.PushProtect.Timeout)
 		// Check if hook is installed
 		if hookInstalled, _ := isPushHookInstalled(); hookInstalled {
-			fmt.Printf("                %shook installed%s\n", cli.Dim, cli.Reset)
+			fmt.Printf("                %shook installed — run 'same push-allow' before each push%s\n", cli.Dim, cli.Reset)
 		} else {
 			fmt.Printf("                %s⚠ hook not installed (run: same guard push-install)%s\n", cli.Yellow, cli.Reset)
 		}
 	} else {
-		fmt.Printf("  Push protect: %s✗ off%s\n", cli.Dim, cli.Reset)
+		fmt.Printf("  Push protect: %s✗ off%s %s(recommended for multi-agent workflows)%s\n", cli.Dim, cli.Reset, cli.Dim, cli.Reset)
 	}
 
 	// PII Patterns
@@ -807,12 +807,15 @@ TICKET="${TMPBASE}push-ticket-$REPO"
 
 if [ ! -f "$TICKET" ]; then
     echo ""
-    echo "❌ Push blocked by SAME Guard"
+    echo "❌ Push blocked — authorization required"
     echo ""
-    echo "   Run: same push-allow $REPO"
+    echo "   This safety check prevents accidental pushes to the wrong repo"
+    echo "   when running multiple AI agents."
     echo ""
-    echo "   This creates a one-time ticket to authorize the push."
-    echo "   Bypass with: git push --no-verify (emergency only)"
+    echo "   To authorize this push:"
+    echo "     same push-allow $REPO"
+    echo ""
+    echo "   Then run your push command again."
     echo ""
     exit 1
 fi
