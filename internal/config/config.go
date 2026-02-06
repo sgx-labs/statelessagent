@@ -793,3 +793,62 @@ func SetDisplayMode(vaultPath, mode string) error {
 	// Write file
 	return os.WriteFile(cfgPath, buf.Bytes(), 0o644)
 }
+
+// VerboseEnabled returns true when verbose monitoring is active.
+func VerboseEnabled() bool {
+	if os.Getenv("SAME_VERBOSE") != "" {
+		return true
+	}
+	_, err := os.Stat(filepath.Join(DataDir(), "verbose"))
+	return err == nil
+}
+
+// MachineName returns the user-configured machine name, or falls back to hostname.
+func MachineName() string {
+	cfg := loadUserConfig()
+	if cfg.MachineName != "" {
+		return cfg.MachineName
+	}
+	if h, err := os.Hostname(); err == nil {
+		return h
+	}
+	return "unknown"
+}
+
+// SetMachineName saves the user's preferred machine name.
+func SetMachineName(name string) error {
+	cfg := loadUserConfig()
+	cfg.MachineName = name
+	return saveUserConfig(cfg)
+}
+
+// userConfig holds user-level preferences (not vault-specific).
+type userConfig struct {
+	MachineName string           `json:"machine_name,omitempty"`
+	Guard       *json.RawMessage `json:"guard,omitempty"`
+}
+
+func userConfigPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "same", "config.json")
+}
+
+func loadUserConfig() userConfig {
+	data, err := os.ReadFile(userConfigPath())
+	if err != nil {
+		return userConfig{}
+	}
+	var cfg userConfig
+	json.Unmarshal(data, &cfg)
+	return cfg
+}
+
+func saveUserConfig(cfg userConfig) error {
+	path := userConfigPath()
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
+}

@@ -80,6 +80,30 @@ func (db *DB) MarkReferenced(id int64) error {
 	return err
 }
 
+// DecisionRecord represents a context surfacing gate decision.
+type DecisionRecord struct {
+	SessionID     string   `json:"session_id"`
+	PromptSnippet string   `json:"prompt_snippet"`
+	Mode          string   `json:"mode"`
+	JaccardScore  float64  `json:"jaccard_score"`
+	Decision      string   `json:"decision"`
+	InjectedPaths []string `json:"injected_paths,omitempty"`
+}
+
+// InsertDecision logs a context surfacing gate decision.
+func (db *DB) InsertDecision(rec *DecisionRecord) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	pathsJSON, _ := json.Marshal(rec.InjectedPaths)
+	_, err := db.conn.Exec(`
+		INSERT INTO context_decisions (session_id, timestamp, prompt_snippet, mode, jaccard_score, decision, injected_paths)
+		VALUES (?, datetime('now'), ?, ?, ?, ?, ?)`,
+		rec.SessionID, rec.PromptSnippet, rec.Mode, rec.JaccardScore, rec.Decision, string(pathsJSON),
+	)
+	return err
+}
+
 func scanUsage(rows interface {
 	Next() bool
 	Scan(dest ...interface{}) error

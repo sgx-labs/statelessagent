@@ -82,6 +82,44 @@ func (db *DB) Conn() *sql.DB {
 	return db.conn
 }
 
+// SessionStateGet retrieves a value from session_state by session ID and key.
+// Returns empty string and false if not found.
+func (db *DB) SessionStateGet(sessionID, key string) (string, bool) {
+	var value string
+	err := db.conn.QueryRow(
+		`SELECT value FROM session_state WHERE session_id = ? AND key = ?`,
+		sessionID, key,
+	).Scan(&value)
+	if err != nil {
+		return "", false
+	}
+	return value, true
+}
+
+// SessionStateSet upserts a value in session_state.
+func (db *DB) SessionStateSet(sessionID, key, value string) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	_, err := db.conn.Exec(
+		`INSERT INTO session_state (session_id, key, value, updated_at)
+		 VALUES (?, ?, ?, unixepoch())
+		 ON CONFLICT(session_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+		sessionID, key, value,
+	)
+	return err
+}
+
+// SessionStateCleanup removes session_state rows older than maxAge seconds.
+func (db *DB) SessionStateCleanup(maxAgeSeconds int64) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	_, err := db.conn.Exec(
+		`DELETE FROM session_state WHERE updated_at < unixepoch() - ?`,
+		maxAgeSeconds,
+	)
+	return err
+}
+
 func (db *DB) migrate() error {
 	migrations := []string{
 		`CREATE TABLE IF NOT EXISTS vault_notes (
@@ -132,6 +170,33 @@ func (db *DB) migrate() error {
 			was_referenced INTEGER DEFAULT 0
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_context_usage_session ON context_usage(session_id)`,
+
+		`CREATE TABLE IF NOT EXISTS session_state (
+			session_id TEXT NOT NULL,
+			key TEXT NOT NULL,
+			value TEXT NOT NULL DEFAULT '',
+			updated_at INTEGER NOT NULL,
+			PRIMARY KEY (session_id, key)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_session_state_updated ON session_state(updated_at)`,
+
+		`CREATE TABLE IF NOT EXISTS context_decisions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			session_id TEXT NOT NULL,
+			timestamp TEXT NOT NULL,
+			prompt_snippet TEXT NOT NULL,
+			mode TEXT NOT NULL,
+			jaccard_score REAL DEFAULT -1,
+			decision TEXT NOT NULL,
+			injected_paths TEXT DEFAULT '[]'
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_context_decisions_session ON context_decisions(session_id)`,
+
+		`CREATE TABLE IF NOT EXISTS pinned_notes (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			path TEXT NOT NULL UNIQUE,
+			pinned_at INTEGER NOT NULL DEFAULT (unixepoch())
+		)`,
 	}
 
 	for _, m := range migrations {

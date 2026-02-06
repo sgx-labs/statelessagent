@@ -291,5 +291,93 @@ func TestUsageCRUD(t *testing.T) {
 	}
 }
 
+func TestSessionStateCRUD(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Set a value
+	if err := db.SessionStateSet("s1", "topic", "embeddings"); err != nil {
+		t.Fatalf("SessionStateSet: %v", err)
+	}
+
+	// Get it back
+	val, ok := db.SessionStateGet("s1", "topic")
+	if !ok || val != "embeddings" {
+		t.Errorf("expected 'embeddings', got %q (ok=%v)", val, ok)
+	}
+
+	// Get non-existent
+	_, ok = db.SessionStateGet("s1", "missing")
+	if ok {
+		t.Error("expected ok=false for missing key")
+	}
+
+	// Upsert
+	if err := db.SessionStateSet("s1", "topic", "ranking"); err != nil {
+		t.Fatalf("SessionStateSet upsert: %v", err)
+	}
+	val, _ = db.SessionStateGet("s1", "topic")
+	if val != "ranking" {
+		t.Errorf("expected 'ranking' after upsert, got %q", val)
+	}
+}
+
+func TestPinsCRUD(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Pin a note
+	if err := db.PinNote("notes/important.md"); err != nil {
+		t.Fatalf("PinNote: %v", err)
+	}
+
+	// Check isPinned
+	pinned, err := db.IsPinned("notes/important.md")
+	if err != nil || !pinned {
+		t.Errorf("expected pinned=true, got %v (err=%v)", pinned, err)
+	}
+
+	// Get pinned paths
+	paths, err := db.GetPinnedPaths()
+	if err != nil || len(paths) != 1 {
+		t.Errorf("expected 1 pinned path, got %d (err=%v)", len(paths), err)
+	}
+
+	// Unpin
+	if err := db.UnpinNote("notes/important.md"); err != nil {
+		t.Fatalf("UnpinNote: %v", err)
+	}
+	pinned, _ = db.IsPinned("notes/important.md")
+	if pinned {
+		t.Error("expected pinned=false after unpin")
+	}
+}
+
+func TestDecisionInsert(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	rec := &DecisionRecord{
+		SessionID:     "s1",
+		PromptSnippet: "test prompt",
+		Mode:          "exploring",
+		JaccardScore:  0.42,
+		Decision:      "inject",
+		InjectedPaths: []string{"note1.md"},
+	}
+	if err := db.InsertDecision(rec); err != nil {
+		t.Fatalf("InsertDecision: %v", err)
+	}
+}
+
 // Suppress unused import warnings
 var _ = math.Pi
