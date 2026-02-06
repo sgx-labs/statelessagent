@@ -86,6 +86,7 @@ Need help? https://discord.gg/GZGHtrrKF2`,
 	root.AddCommand(profileCmd())
 	root.AddCommand(guardCmd())
 	root.AddCommand(pushAllowCmd())
+	root.AddCommand(ciCmd())
 
 	// Global --vault flag
 	root.PersistentFlags().StringVar(&config.VaultOverride, "vault", "", "Vault name or path (overrides auto-detect)")
