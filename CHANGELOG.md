@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.5.2 — Self-Update
+
+One-command updates, no more curl.
+
+### Added
+
+- **`same update`** — Check for and install the latest version from GitHub releases
+  - Detects platform (darwin-arm64, linux-amd64, windows-amd64)
+  - Downloads correct binary
+  - Replaces itself atomically
+  - `--force` flag to reinstall even if on latest
+- Handles dev builds gracefully (warns instead of failing)
+
+### Changed
+
+- Version check now suggests `same update` instead of curl command
+
+---
+
 ## v0.5.1 — Onboarding & UX Polish
 
 Better first-run experience and vibe-coder friendly commands.
