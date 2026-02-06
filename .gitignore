@@ -20,6 +20,9 @@ data/
 .env
 .env.*
 
+# PII blocklist (contains personal/client identifiers — NEVER track)
+.scripts/.blocklist
+
 # OS
 .DS_Store
 Thumbs.db

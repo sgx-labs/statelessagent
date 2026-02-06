@@ -3,8 +3,7 @@
 # pre-commit-check.sh — Vault Data Leak Prevention
 # ==============================================================================
 # Blocks commits that contain personal identifiers, client-sensitive patterns,
-# or real vault data. SAME references vault structure generically in its code
-# (e.g. _PRIVATE/, 01_Projects/) — that's expected product behavior.
+# or real vault data. Patterns are loaded from .scripts/.blocklist (gitignored).
 #
 # Hard blocks: personal identity, client names, local paths, real API keys.
 # These should NEVER appear anywhere in this repo.
@@ -23,33 +22,29 @@ if [ -t 1 ] 2>/dev/null; then
     RESET="\033[0m"
 fi
 
-# --- Hard block: personal/client data that must NEVER appear ---
-HARD_PATTERNS=(
-    # Personal identifiers
-    "REDACTED"
-    "REDACTED"
-    "REDACTED"
-    "REDACTED"
-    "REDACTED"
-    "REDACTED"
+# --- Load blocklist from external file ---
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BLOCKLIST_FILE="$SCRIPT_DIR/.blocklist"
 
-    # Local paths (real machine paths, not generic references)
-    "/Users/REDACTED"
-    "C:\\\\Users\\\\Sean"
-    "REDACTED"
-    "REDACTED"
-    "REDACTED"
+if [ ! -f "$BLOCKLIST_FILE" ]; then
+    echo -e "${YELLOW}WARNING: No blocklist file found at .scripts/.blocklist${RESET}"
+    echo "  PII scanning is disabled. Create .scripts/.blocklist with one pattern per line."
+    echo "  See .scripts/blocklist.example for the expected format."
+    exit 0
+fi
 
-    # Client-sensitive (load from blocklist if present)
-    "REDACTED_CLIENT"
-    "REDACTED_CLIENT"
-    "REDACTED_CLIENT"
+# Read patterns from file, skip comments and blank lines
+HARD_PATTERNS=()
+while IFS= read -r line; do
+    # Skip comments and blank lines
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line// }" ]] && continue
+    HARD_PATTERNS+=("$line")
+done < "$BLOCKLIST_FILE"
 
-    # Real API keys (actual key prefixes, not documentation references)
-    "sk-ant-api03"
-    "sk-proj-[A-Za-z0-9]{20}"
-    "AIzaSy[A-Za-z0-9]{30}"
-)
+if [ ${#HARD_PATTERNS[@]} -eq 0 ]; then
+    exit 0
+fi
 
 # Build grep pattern
 PATTERN=""
@@ -80,10 +75,6 @@ while IFS= read -r file; do
     case "$lc_file" in
         *.png|*.jpg|*.jpeg|*.gif|*.webp|*.exe|*.dll|*.so|*.dylib|*.wasm) continue ;;
     esac
-
-    # Skip this hook itself
-    [ "$file" = ".scripts/pre-commit-check.sh" ] && continue
-    [ "$file" = ".git/hooks/pre-commit" ] && continue
 
     SCAN_OUTPUT=$(git show ":$file" 2>/dev/null | grep -inE "$PATTERN" 2>/dev/null || true)
 

@@ -1,0 +1,19 @@
+# PII blocklist — copy to .scripts/.blocklist and customize
+# This file is an example. The real .blocklist is gitignored.
+# One pattern per line. Supports grep -E regex syntax.
+
+# Personal identifiers
+# yourname
+# Your Full Name
+
+# Local paths
+# /Users/yourname
+# C:\\\\Users\\\\YourName
+
+# Client-sensitive terms
+# ClientCo
+
+# Real API key prefixes
+sk-ant-api03
+sk-proj-[A-Za-z0-9]{20}
+AIzaSy[A-Za-z0-9]{30}
