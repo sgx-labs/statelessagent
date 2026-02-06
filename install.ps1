@@ -1,5 +1,5 @@
 # SAME installer for Windows PowerShell
-# Usage: irm statelessagent.com/install.ps1 | iex
+# Usage: irm https://statelessagent.com/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
