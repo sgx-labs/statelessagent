@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -33,6 +34,8 @@ Run 'same guard install' to set up the git pre-commit hook.`,
 	cmd.AddCommand(guardBlocklistCmd())
 	cmd.AddCommand(guardAllowCmd())
 	cmd.AddCommand(guardSettingsCmd())
+	cmd.AddCommand(guardPushInstallCmd())
+	cmd.AddCommand(guardPushUninstallCmd())
 
 	return cmd
 }
@@ -609,6 +612,19 @@ func runGuardSettingsShow() error {
 	// Soft mode
 	fmt.Printf("  Soft blocks:  %s\n", cfg.SoftMode)
 
+	// Push protection
+	if cfg.PushProtect.Enabled {
+		fmt.Printf("  Push protect: %s✓ on%s (timeout: %ds)\n", cli.Green, cli.Reset, cfg.PushProtect.Timeout)
+		// Check if hook is installed
+		if hookInstalled, _ := isPushHookInstalled(); hookInstalled {
+			fmt.Printf("                %shook installed%s\n", cli.Dim, cli.Reset)
+		} else {
+			fmt.Printf("                %s⚠ hook not installed (run: same guard push-install)%s\n", cli.Yellow, cli.Reset)
+		}
+	} else {
+		fmt.Printf("  Push protect: %s✗ off%s\n", cli.Dim, cli.Reset)
+	}
+
 	// PII Patterns
 	fmt.Printf("\n  PII Patterns:\n")
 	type patRow struct {
@@ -634,9 +650,24 @@ func runGuardSettingsShow() error {
 	}
 
 	fmt.Printf("\n  Change: same guard settings set <key> on|off\n")
-	fmt.Printf("  Keys:   guard, pii, blocklist, path-filter, soft-mode, email, phone, ssn, local_path, api_key, aws_key, private_key\n\n")
+	fmt.Printf("  Keys:   guard, pii, blocklist, path-filter, soft-mode, push-protect, push-timeout,\n")
+	fmt.Printf("          email, phone, ssn, local_path, api_key, aws_key, private_key\n\n")
 
 	return nil
+}
+
+// isPushHookInstalled checks if the SAME push hook is installed in the current repo.
+func isPushHookInstalled() (bool, error) {
+	gitRoot, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return false, err
+	}
+	hookPath := filepath.Join(strings.TrimSpace(string(gitRoot)), ".git", "hooks", "pre-push")
+	content, err := os.ReadFile(hookPath)
+	if err != nil {
+		return false, nil
+	}
+	return strings.Contains(string(content), "SAME Guard pre-push"), nil
 }
 
 func runGuardSettingsSet(key, value string) error {
@@ -648,6 +679,22 @@ func runGuardSettingsSet(key, value string) error {
 		return err
 	}
 	fmt.Printf("  %s✓%s Set %s = %s\n", cli.Green, cli.Reset, key, value)
+
+	// Auto-install/uninstall push hook when push-protect is toggled
+	if key == "push-protect" || key == "push_protect" {
+		boolVal := value == "on" || value == "true" || value == "yes"
+		if boolVal {
+			fmt.Println("  Installing push protection hook...")
+			if err := runGuardPushInstall(true); err != nil {
+				fmt.Printf("  %s!%s Could not install hook: %v\n", cli.Yellow, cli.Reset, err)
+			}
+		} else {
+			fmt.Println("  Removing push protection hook...")
+			if err := runGuardPushUninstall(); err != nil {
+				fmt.Printf("  %s!%s Could not remove hook: %v\n", cli.Yellow, cli.Reset, err)
+			}
+		}
+	}
 	return nil
 }
 
@@ -657,5 +704,188 @@ func runGuardSettingsReset() error {
 		return err
 	}
 	fmt.Printf("  %s✓%s Guard settings reset to defaults.\n", cli.Green, cli.Reset)
+	return nil
+}
+
+// --- Push protection ---
+
+// pushAllowCmd is a top-level command for creating push tickets.
+func pushAllowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "push-allow [repo]",
+		Short: "Create a one-time push ticket for a repo",
+		Long: `Create a one-time push ticket that allows a single git push.
+
+If repo is not specified, auto-detects from the current directory.
+The ticket expires after 60 seconds or after one push.
+
+This command works with the pre-push hook installed by 'same guard push-install'.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var repo string
+			if len(args) > 0 {
+				repo = args[0]
+			} else {
+				// Auto-detect from current git remote
+				out, err := exec.Command("git", "remote", "get-url", "origin").Output()
+				if err != nil {
+					return fmt.Errorf("not in a git repo or no origin remote. Specify repo name explicitly")
+				}
+				url := strings.TrimSpace(string(out))
+				// Extract repo name from URL
+				repo = filepath.Base(strings.TrimSuffix(url, ".git"))
+			}
+			return createPushTicket(repo)
+		},
+	}
+}
+
+func createPushTicket(repo string) error {
+	cfg := guard.LoadGuardConfig()
+	timeout := cfg.PushProtect.Timeout
+	if timeout == 0 {
+		timeout = 60 // default
+	}
+
+	ticketPath := filepath.Join(os.TempDir(), fmt.Sprintf("push-ticket-%s", repo))
+
+	// Create ticket with timestamp:timeout format
+	content := fmt.Sprintf("%d:%d", time.Now().Unix(), timeout)
+	if err := os.WriteFile(ticketPath, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("create ticket: %w", err)
+	}
+
+	fmt.Printf("  %s✓%s Push ticket created for %s%s%s\n", cli.Green, cli.Reset, cli.Cyan, repo, cli.Reset)
+	fmt.Printf("  Ticket expires in %d seconds or after one push.\n", timeout)
+	return nil
+}
+
+func guardPushInstallCmd() *cobra.Command {
+	var force bool
+	cmd := &cobra.Command{
+		Use:   "push-install",
+		Short: "Install git pre-push hook for push protection",
+		Long: `Install a pre-push hook that requires explicit authorization before pushing.
+
+After installation, all pushes require running 'same push-allow' first.
+This prevents accidental pushes to the wrong repo, especially when running
+multiple agent instances.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runGuardPushInstall(force)
+		},
+	}
+	cmd.Flags().BoolVar(&force, "force", false, "Overwrite existing hook")
+	return cmd
+}
+
+func runGuardPushInstall(force bool) error {
+	gitRoot, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return fmt.Errorf("not a git repository")
+	}
+	root := strings.TrimSpace(string(gitRoot))
+	hookPath := filepath.Join(root, ".git", "hooks", "pre-push")
+
+	if _, err := os.Stat(hookPath); err == nil && !force {
+		return fmt.Errorf("pre-push hook already exists. Use --force to overwrite")
+	}
+
+	hook := `#!/bin/sh
+# SAME Guard pre-push hook
+# Installed by: same guard push-install
+# Requires 'same push-allow' before each push.
+
+REPO=$(basename $(git remote get-url origin 2>/dev/null) .git 2>/dev/null)
+if [ -z "$REPO" ]; then
+    echo "Warning: Could not determine repo name. Allowing push."
+    exit 0
+fi
+
+# Use TMPDIR if set (macOS), fall back to /tmp
+TMPBASE="${TMPDIR:-/tmp}"
+TICKET="${TMPBASE}push-ticket-$REPO"
+
+if [ ! -f "$TICKET" ]; then
+    echo ""
+    echo "❌ Push blocked by SAME Guard"
+    echo ""
+    echo "   Run: same push-allow $REPO"
+    echo ""
+    echo "   This creates a one-time ticket to authorize the push."
+    echo "   Bypass with: git push --no-verify (emergency only)"
+    echo ""
+    exit 1
+fi
+
+# Parse ticket: format is "timestamp:timeout"
+TICKET_CONTENT=$(cat "$TICKET")
+TICKET_TIME=$(echo "$TICKET_CONTENT" | cut -d: -f1)
+TICKET_TIMEOUT=$(echo "$TICKET_CONTENT" | cut -d: -f2)
+[ -z "$TICKET_TIMEOUT" ] && TICKET_TIMEOUT=60
+
+NOW=$(date +%s)
+AGE=$((NOW - TICKET_TIME))
+if [ "$AGE" -gt "$TICKET_TIMEOUT" ]; then
+    rm -f "$TICKET"
+    echo ""
+    echo "❌ Push ticket expired (>${TICKET_TIMEOUT}s). Run: same push-allow $REPO"
+    echo ""
+    exit 1
+fi
+
+# Consume ticket (single-use)
+rm -f "$TICKET"
+
+echo "✓ Push authorized for $REPO"
+`
+
+	if err := os.MkdirAll(filepath.Dir(hookPath), 0o755); err != nil {
+		return fmt.Errorf("create hooks dir: %w", err)
+	}
+	if err := os.WriteFile(hookPath, []byte(hook), 0o755); err != nil {
+		return fmt.Errorf("write hook: %w", err)
+	}
+
+	fmt.Printf("  %s✓%s Pre-push hook installed at %s\n", cli.Green, cli.Reset, hookPath)
+	fmt.Printf("  All pushes now require: same push-allow <repo>\n")
+	fmt.Printf("  Bypass with: git push --no-verify (emergency only)\n")
+	return nil
+}
+
+func guardPushUninstallCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "push-uninstall",
+		Short: "Remove the git pre-push hook",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runGuardPushUninstall()
+		},
+	}
+}
+
+func runGuardPushUninstall() error {
+	gitRoot, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return fmt.Errorf("not a git repository")
+	}
+	root := strings.TrimSpace(string(gitRoot))
+	hookPath := filepath.Join(root, ".git", "hooks", "pre-push")
+
+	content, err := os.ReadFile(hookPath)
+	if os.IsNotExist(err) {
+		fmt.Println("  No pre-push hook found.")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	if !strings.Contains(string(content), "SAME Guard pre-push") {
+		return fmt.Errorf("pre-push hook exists but was not installed by SAME. Remove manually if needed")
+	}
+
+	if err := os.Remove(hookPath); err != nil {
+		return err
+	}
+	fmt.Printf("  %s✓%s Pre-push hook removed.\n", cli.Green, cli.Reset)
 	return nil
 }

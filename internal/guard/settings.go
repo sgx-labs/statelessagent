@@ -10,11 +10,18 @@ import (
 // GuardConfig holds user-level guard preferences.
 // Stored at ~/.config/same/config.json under the "guard" key.
 type GuardConfig struct {
-	Enabled    bool        `json:"enabled"`
-	PII        PIIConfig   `json:"pii"`
-	Blocklist  ToggleBlock `json:"blocklist"`
-	PathFilter ToggleBlock `json:"path_filter"`
-	SoftMode   string      `json:"soft_mode"` // "block" or "warn"
+	Enabled     bool           `json:"enabled"`
+	PII         PIIConfig      `json:"pii"`
+	Blocklist   ToggleBlock    `json:"blocklist"`
+	PathFilter  ToggleBlock    `json:"path_filter"`
+	SoftMode    string         `json:"soft_mode"` // "block" or "warn"
+	PushProtect PushProtectCfg `json:"push_protect"`
+}
+
+// PushProtectCfg controls push protection (requires same push-allow before git push).
+type PushProtectCfg struct {
+	Enabled bool `json:"enabled"`
+	Timeout int  `json:"timeout"` // seconds, default 60
 }
 
 // PIIConfig controls which PII pattern families are active.
@@ -55,9 +62,10 @@ func DefaultGuardConfig() GuardConfig {
 				PrivateKey: true,
 			},
 		},
-		Blocklist:  ToggleBlock{Enabled: true},
-		PathFilter: ToggleBlock{Enabled: true},
-		SoftMode:   "block",
+		Blocklist:   ToggleBlock{Enabled: true},
+		PathFilter:  ToggleBlock{Enabled: true},
+		SoftMode:    "block",
+		PushProtect: PushProtectCfg{Enabled: false, Timeout: 60}, // off by default, user opts in
 	}
 }
 
@@ -132,6 +140,17 @@ func (c *GuardConfig) SetKey(key, value string) error {
 		c.PII.Patterns.AWSKey = boolVal
 	case "private_key":
 		c.PII.Patterns.PrivateKey = boolVal
+	case "push-protect", "push_protect":
+		c.PushProtect.Enabled = boolVal
+	case "push-timeout", "push_timeout":
+		var timeout int
+		if _, err := fmt.Sscanf(value, "%d", &timeout); err != nil {
+			return fmt.Errorf("push-timeout must be a number (seconds), got %q", value)
+		}
+		if timeout < 10 || timeout > 300 {
+			return fmt.Errorf("push-timeout must be between 10 and 300 seconds")
+		}
+		c.PushProtect.Timeout = timeout
 	default:
 		return fmt.Errorf("unknown setting key: %q", key)
 	}
