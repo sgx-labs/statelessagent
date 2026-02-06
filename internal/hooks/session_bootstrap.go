@@ -31,6 +31,11 @@ func runSessionBootstrap(db *store.DB, input *HookInput) *HookOutput {
 	cleanStaleInstances(sessionID)
 	registerInstance(sessionID, "")
 
+	// Check for graduation tips (shown to stderr)
+	if tip := CheckGraduation(db); tip != "" {
+		fmt.Fprint(os.Stderr, tip)
+	}
+
 	var sections []string
 
 	// Priority 0a: Previous session summary (from Claude Code's session index)

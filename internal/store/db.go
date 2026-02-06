@@ -197,6 +197,12 @@ func (db *DB) migrate() error {
 			path TEXT NOT NULL UNIQUE,
 			pinned_at INTEGER NOT NULL DEFAULT (unixepoch())
 		)`,
+
+		// Milestones track user progress and which tips have been shown
+		`CREATE TABLE IF NOT EXISTS milestones (
+			key TEXT PRIMARY KEY,
+			shown_at INTEGER NOT NULL DEFAULT (unixepoch())
+		)`,
 	}
 
 	for _, m := range migrations {
