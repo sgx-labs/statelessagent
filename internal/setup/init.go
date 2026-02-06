@@ -197,6 +197,7 @@ func RunInit(opts InitOptions) error {
 		setupHooksInteractive(vaultPath, opts.Yes)
 	}
 	setupMCPInteractive(vaultPath, opts.Yes)
+	setupGuardInteractive(vaultPath, opts.Yes)
 
 	// Setup complete + summary box
 	dbPath := filepath.Join(vaultPath, ".same", "data", "vault.db")
