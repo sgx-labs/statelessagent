@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.5.5 — Configurable Noise Filtering
+
+Removed hardcoded vault structure assumptions. SAME no longer expects specific folder names.
+
+### Changed
+
+- **Session bootstrap** walks the entire vault for decision files instead of hardcoded directories
+- **Noise path filtering** is now user-configurable via `[vault] noise_paths` in config.toml or `SAME_NOISE_PATHS` env var (defaults to empty — no paths filtered)
+- Genericized all test fixtures and code comments
+
+### Added
+
+- `noise_paths` config field and `SAME_NOISE_PATHS` env var for filtering low-value paths from context surfacing
+
+### Breaking
+
+- Noise filtering no longer applies by default. If you relied on implicit filtering, add `noise_paths = ["experiments/", "raw_outputs/"]` to your `[vault]` config.
+
+---
+
 ## v0.5.4 — Windows Installer Overhaul
 
 Fixed critical Windows installation issues.
