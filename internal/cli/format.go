@@ -194,14 +194,9 @@ func SurfacingEmpty(total int) {
 		Cyan, Cyan, Reset, Dim, total, Reset)
 }
 
-// SurfacingVerbose prints surfaced notes. Uses simple list by default,
-// or fancy box if SAME_BOX=1 is set.
+// SurfacingVerbose prints surfaced notes using the visual feedback box.
 func SurfacingVerbose(notes []SurfacedNote, totalVault int) {
-	if os.Getenv("SAME_BOX") == "1" || os.Getenv("SAME_BOX") == "true" {
-		surfacingBox(notes, totalVault)
-		return
-	}
-	surfacingSimple(notes, totalVault)
+	surfacingBox(notes, totalVault)
 }
 
 // surfacingSimple prints a clean, simple list format that works in all terminals.

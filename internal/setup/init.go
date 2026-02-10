@@ -768,11 +768,11 @@ func askExperienceLevel() ExperienceLevel {
 	fmt.Println()
 	fmt.Printf("    %s1%s) I'm new to coding / using AI to build %s(recommended)%s\n",
 		cli.Cyan, cli.Reset, cli.Dim, cli.Reset)
-	fmt.Printf("       %s→ Full details, friendly messages%s\n", cli.Dim, cli.Reset)
+	fmt.Printf("       %s→ Full details, visual feedback box%s\n", cli.Dim, cli.Reset)
 	fmt.Println()
 	fmt.Printf("    %s2%s) I'm an experienced developer\n",
 		cli.Cyan, cli.Reset)
-	fmt.Printf("       %s→ Compact output, less hand-holding%s\n", cli.Dim, cli.Reset)
+	fmt.Printf("       %s→ Compact output, less noise%s\n", cli.Dim, cli.Reset)
 	fmt.Println()
 	fmt.Print("  Choice [1]: ")
 
@@ -784,11 +784,13 @@ func askExperienceLevel() ExperienceLevel {
 	line = strings.TrimSpace(line)
 
 	if line == "2" {
-		fmt.Printf("\n  %s→ Developer mode: compact output, terse messages%s\n", cli.Green, cli.Reset)
+		fmt.Printf("\n  %s→ Developer mode: compact output%s\n", cli.Green, cli.Reset)
+		fmt.Printf("    %sUse 'same display full' for the visual box, 'same display quiet' for silent%s\n", cli.Dim, cli.Reset)
 		return LevelDev
 	}
 
-	fmt.Printf("\n  %s→ Friendly mode: full details, guided help%s\n", cli.Green, cli.Reset)
+	fmt.Printf("\n  %s→ Full mode: visual feedback box showing what SAME surfaced%s\n", cli.Green, cli.Reset)
+	fmt.Printf("    %sUse 'same display compact' for less output%s\n", cli.Dim, cli.Reset)
 	return LevelVibeCoder
 }
 

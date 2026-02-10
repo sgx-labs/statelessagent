@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.5.6 — Box Mode Default
+
+The visual feedback box is now the default display for `full` mode — no env var needed.
+
+### Changed
+
+- **Box is now default** — `full` display mode shows the cyan Unicode box automatically (previously required `SAME_BOX=1`)
+- **Setup messaging updated** — experience level descriptions now mention the visual box and how to switch modes
+- **Removed `SAME_BOX` env var** — no longer needed; `same display full` always shows the box
+
+---
+
 ## v0.5.5 — Configurable Noise Filtering
 
 Removed hardcoded vault structure assumptions. SAME no longer expects specific folder names.
@@ -53,8 +65,7 @@ Safety rails for multi-agent workflows.
   - `same guard settings set push-protect on` enables with auto-hook install
   - `same guard settings set push-timeout N` configures ticket expiry (10-300s)
   - Works across multiple Claude instances sharing same machine
-- **Simple display mode** — Clean list output that works in all terminals (now default)
-  - Set `SAME_BOX=1` for fancy Unicode box output
+- **Visual feedback box** — Unicode box output showing surfaced notes, match terms, and token counts
 - **CI setup for vibe coders** — `same ci init` creates GitHub Actions workflow
   - Auto-detects project type (Go, Node, Python)
   - `same ci explain` teaches what CI is
@@ -62,7 +73,7 @@ Safety rails for multi-agent workflows.
 
 ### Changed
 
-- Context surfacing output is now a simple list by default (better terminal compatibility)
+- Context surfacing output uses the visual feedback box for `full` mode
 - Guard settings now show push protection status and hook installation state
 
 ---
@@ -152,8 +163,8 @@ SAME is now a standalone Go project, decoupled from any specific vault infrastru
 - **Data directory moved**: `.scripts/same/data/` → `.same/data/`. Run `same reindex --force` after updating.
 - **Plugins path moved**: `.scripts/same/plugins.json` → `.same/plugins.json`.
 - **Go module renamed**: now `github.com/sgx-labs/statelessagent`.
-- **Default handoff directory**: Changed from `07_Journal/Sessions` to `sessions`. Override with `SAME_HANDOFF_DIR`.
-- **Default decision log**: Changed from `decisions_and_conclusions.md` to `decisions.md`. Override with `SAME_DECISION_LOG`.
+- **Default handoff directory**: Now `sessions`. Override with `SAME_HANDOFF_DIR`.
+- **Default decision log**: Now `decisions.md`. Override with `SAME_DECISION_LOG`.
 
 ### Added
 
