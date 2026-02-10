@@ -50,11 +50,15 @@ func Reindex(db *store.DB, force bool) (*Stats, error) {
 func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stats, error) {
 	vaultPath := config.VaultPath()
 	ec := config.EmbeddingProviderConfig()
+	ollamaURL, err := config.OllamaURL()
+	if err != nil {
+		return nil, fmt.Errorf("ollama URL: %w", err)
+	}
 	embedClient, err := embedding.NewProvider(embedding.ProviderConfig{
 		Provider:   ec.Provider,
 		Model:      ec.Model,
 		APIKey:     ec.APIKey,
-		BaseURL:    config.OllamaURL(),
+		BaseURL:    ollamaURL,
 		Dimensions: ec.Dimensions,
 	})
 	if err != nil {

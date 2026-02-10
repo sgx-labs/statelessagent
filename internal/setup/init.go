@@ -834,11 +834,15 @@ func runTestSearch(vaultPath string) string {
 
 	// Create embedding provider
 	ec := config.EmbeddingProviderConfig()
+	ollamaURL, err := config.OllamaURL()
+	if err != nil {
+		return ""
+	}
 	provider, err := embedding.NewProvider(embedding.ProviderConfig{
 		Provider:   ec.Provider,
 		Model:      ec.Model,
 		APIKey:     ec.APIKey,
-		BaseURL:    config.OllamaURL(),
+		BaseURL:    ollamaURL,
 		Dimensions: ec.Dimensions,
 	})
 	if err != nil {

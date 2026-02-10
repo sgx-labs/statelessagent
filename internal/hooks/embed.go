@@ -1,6 +1,8 @@
 package hooks
 
 import (
+	"fmt"
+
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/embedding"
 )
@@ -17,7 +19,11 @@ func newEmbedProvider() (embedding.Provider, error) {
 
 	// For ollama, merge the base URL from the [ollama] section
 	if cfg.Provider == "ollama" || cfg.Provider == "" {
-		cfg.BaseURL = config.OllamaURL()
+		ollamaURL, err := config.OllamaURL()
+		if err != nil {
+			return nil, fmt.Errorf("ollama URL: %w", err)
+		}
+		cfg.BaseURL = ollamaURL
 	}
 
 	return embedding.NewProvider(cfg)

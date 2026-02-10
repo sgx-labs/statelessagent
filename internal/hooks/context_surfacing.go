@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -226,10 +227,38 @@ func verboseDecision(decision, mode string, jaccard float64, prompt string, titl
 	fmt.Fprintf(&buf, "%s╰──────────────────── %ssame verbose off%s %sto disable %s─╯%s\n",
 		b, cCyan, r, b, b, r)
 
-	if f, err := os.OpenFile(verboseLogPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
-		f.WriteString(buf.String())
-		f.Close()
+	writeVerboseLog(buf.String())
+}
+
+// writeVerboseLog appends content to the verbose log file with size-based rotation.
+// If the log exceeds 5MB, it keeps only the last ~1MB before appending.
+// Uses 0o600 permissions (owner-only) since the log may contain prompt snippets.
+func writeVerboseLog(content string) {
+	logPath := verboseLogPath()
+
+	const maxSize = 5 * 1024 * 1024  // 5MB
+	const keepSize = 1 * 1024 * 1024  // 1MB
+
+	// Check if rotation is needed
+	if info, err := os.Stat(logPath); err == nil && info.Size() > maxSize {
+		data, err := os.ReadFile(logPath)
+		if err == nil && len(data) > keepSize {
+			// Keep the last 1MB
+			truncated := data[len(data)-keepSize:]
+			// Find the first newline to avoid splitting mid-line
+			if idx := bytes.IndexByte(truncated, '\n'); idx >= 0 {
+				truncated = truncated[idx+1:]
+			}
+			os.WriteFile(logPath, truncated, 0o600)
+		}
 	}
+
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	f.WriteString(content)
+	f.Close()
 }
 
 // logDecision records a context surfacing gate decision to the DB
@@ -335,11 +364,22 @@ func runContextSurfacing(db *store.DB, input *HookInput) *HookOutput {
 	embedProvider, err := newEmbedProvider()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "same: embedding provider: %v\n", err)
-		return nil
+		return &HookOutput{
+			HookSpecificOutput: &HookSpecific{
+				HookEventName:     "UserPromptSubmit",
+				AdditionalContext: diagNoEmbed,
+			},
+		}
 	}
 	queryVec, err := embedProvider.GetQueryEmbedding(prompt)
 	if err != nil {
-		return nil
+		fmt.Fprintf(os.Stderr, "same: embed query failed: %v\n", err)
+		return &HookOutput{
+			HookSpecificOutput: &HookSpecific{
+				HookEventName:     "UserPromptSubmit",
+				AdditionalContext: diagNoEmbed,
+			},
+		}
 	}
 
 	var candidates []scored

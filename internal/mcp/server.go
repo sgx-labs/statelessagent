@@ -45,11 +45,15 @@ func Serve() error {
 	defer db.Close()
 
 	ec := config.EmbeddingProviderConfig()
+	ollamaURL, err := config.OllamaURL()
+	if err != nil {
+		return fmt.Errorf("ollama URL: %w", err)
+	}
 	embedClient, err = embedding.NewProvider(embedding.ProviderConfig{
 		Provider:   ec.Provider,
 		Model:      ec.Model,
 		APIKey:     ec.APIKey,
-		BaseURL:    config.OllamaURL(),
+		BaseURL:    ollamaURL,
 		Dimensions: ec.Dimensions,
 	})
 	if err != nil {

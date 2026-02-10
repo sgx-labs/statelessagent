@@ -16,6 +16,22 @@ import (
 // maxTranscriptSize is the maximum transcript file size we'll process (50 MB).
 const maxTranscriptSize = 50 * 1024 * 1024
 
+// AI-facing diagnostic messages. These are pre-written constants — no raw Go
+// error strings leak to the AI (could contain paths or internal state).
+const diagNoDB = `<same-diagnostic>
+SAME cannot open its database. The user's vault may not be initialized.
+Suggested actions for the user:
+- Run "same init" to set up SAME
+- Run "same doctor" to diagnose issues
+</same-diagnostic>`
+
+const diagNoEmbed = `<same-diagnostic>
+SAME cannot connect to the embedding provider. Ollama may not be running.
+Suggested actions for the user:
+- Check if Ollama is running (look for the llama icon in the menu bar)
+- Run "same doctor" to diagnose issues
+</same-diagnostic>`
+
 // HookInput is the JSON input from Claude Code hooks.
 type HookInput struct {
 	Prompt          string `json:"prompt,omitempty"`
@@ -74,6 +90,22 @@ func Run(hookName string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "same hook %s: cannot open database: %v\n", hookName, err)
 		fmt.Fprintf(os.Stderr, "  Hint: run 'same init' or 'same doctor' to diagnose\n")
+		// Return diagnostic output so the AI knows what happened
+		eventName := hookEventMap[hookName]
+		if eventName == "" {
+			eventName = "UserPromptSubmit"
+		}
+		output := &HookOutput{
+			HookSpecificOutput: &HookSpecific{
+				HookEventName:     eventName,
+				AdditionalContext: diagNoDB,
+			},
+		}
+		data, jsonErr := json.Marshal(output)
+		if jsonErr == nil {
+			os.Stdout.Write(data)
+			os.Stdout.Write([]byte("\n"))
+		}
 		return
 	}
 	defer db.Close()

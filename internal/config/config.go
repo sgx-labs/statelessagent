@@ -558,9 +558,19 @@ func SafeVaultSubpath(relativePath string) (string, bool) {
 	return absPath, true
 }
 
+// Sentinel errors for consistent messaging across CLI and hooks.
+var (
+	// ErrNoVault is returned when no vault path can be resolved.
+	ErrNoVault = fmt.Errorf("no vault found — run 'same init' or set VAULT_PATH")
+	// ErrNoDatabase is returned when the SAME database cannot be opened.
+	ErrNoDatabase = fmt.Errorf("cannot open SAME database — run 'same init' or 'same doctor' to diagnose")
+	// ErrOllamaNotLocal is returned when the Ollama URL points to a non-localhost host.
+	ErrOllamaNotLocal = fmt.Errorf("OLLAMA_URL must point to localhost for security")
+)
+
 // OllamaURL returns the validated Ollama API URL.
-// Panics if the URL does not point to localhost.
-func OllamaURL() string {
+// Returns an error if the URL is invalid or does not point to localhost.
+func OllamaURL() (string, error) {
 	raw := os.Getenv("OLLAMA_URL")
 	if raw == "" {
 		if cfg := loadConfigSafe(); cfg != nil && cfg.Ollama.URL != "" {
@@ -571,13 +581,13 @@ func OllamaURL() string {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		panic(fmt.Sprintf("invalid OLLAMA_URL: %v", err))
+		return "", fmt.Errorf("invalid OLLAMA_URL: %w", err)
 	}
 	host := u.Hostname()
 	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
-		panic(fmt.Sprintf("OLLAMA_URL must point to localhost for security. Got: %s", host))
+		return "", fmt.Errorf("%w: got %s", ErrOllamaNotLocal, host)
 	}
-	return raw
+	return raw, nil
 }
 
 // DBPath returns the path to the SQLite database file.

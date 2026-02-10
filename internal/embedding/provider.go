@@ -42,7 +42,7 @@ type ProviderConfig struct {
 func NewProvider(cfg ProviderConfig) (Provider, error) {
 	switch cfg.Provider {
 	case "", "ollama":
-		return newOllamaProvider(cfg), nil
+		return newOllamaProvider(cfg)
 	case "openai":
 		return newOpenAIProvider(cfg)
 	default:

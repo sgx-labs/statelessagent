@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.6.0 — Production Polish
+
+Error handling, AI diagnostics, and reliability improvements.
+
+### Fixed
+
+- **Replaced all panics with errors** — `OllamaURL()` and `validateLocalhostOnly()` now return errors instead of crashing the process on bad URLs
+- **Verbose log permissions** — changed from 0o644 to 0o600 (owner-only)
+
+### Added
+
+- **AI-facing diagnostics** — when hooks fail (DB missing, Ollama down), the AI agent now sees `<same-diagnostic>` blocks with suggested user actions instead of silent failure
+- **Ollama retry with backoff** — 3 attempts with exponential backoff (0/2/4s) for 5xx and network errors; 4xx errors fail immediately
+- **Verbose log rotation** — logs rotate at 5MB (keeps last 1MB) to prevent unbounded growth
+- **5 new `same doctor` checks** — config file validity, hook installation, DB integrity, index freshness, log file size
+- **Tests for config and embedding packages** — `config_test.go` and `ollama_test.go` covering URL validation, retry behavior, model defaults, and error constants
+
+### Changed
+
+- **Consistent error messages** — all vault/database errors use shared `ErrNoVault`, `ErrNoDatabase`, `ErrOllamaNotLocal` constants
+- **README expanded** — added display modes, push protection, and troubleshooting sections
+
+---
+
 ## v0.5.6 — Box Mode Default
 
 The visual feedback box is now the default display for `full` mode — no env var needed.

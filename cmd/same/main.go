@@ -33,11 +33,15 @@ var Version = "dev"
 // newEmbedProvider creates an embedding provider from config.
 func newEmbedProvider() (embedding.Provider, error) {
 	ec := config.EmbeddingProviderConfig()
+	ollamaURL, err := config.OllamaURL()
+	if err != nil {
+		return nil, fmt.Errorf("ollama URL: %w", err)
+	}
 	return embedding.NewProvider(embedding.ProviderConfig{
 		Provider:   ec.Provider,
 		Model:      ec.Model,
 		APIKey:     ec.APIKey,
-		BaseURL:    config.OllamaURL(),
+		BaseURL:    ollamaURL,
 		Dimensions: ec.Dimensions,
 	})
 }
@@ -434,8 +438,7 @@ func mcpCmd() *cobra.Command {
 func runReindex(force bool) error {
 	db, err := store.Open()
 	if err != nil {
-		return userError("Cannot open SAME database",
-			"Run 'same init' to set up, or check VAULT_PATH")
+		return config.ErrNoDatabase
 	}
 	defer db.Close()
 
@@ -452,8 +455,7 @@ func runReindex(force bool) error {
 func runStats() error {
 	db, err := store.Open()
 	if err != nil {
-		return userError("Cannot open SAME database",
-			"Run 'same init' to set up, or 'same doctor' to diagnose")
+		return config.ErrNoDatabase
 	}
 	defer db.Close()
 
@@ -487,8 +489,7 @@ func searchCmd() *cobra.Command {
 func runSearch(query string, topK int, domain string, jsonOut bool) error {
 	db, err := store.Open()
 	if err != nil {
-		return userError("Cannot open SAME database",
-			"Run 'same init' to set up, or 'same doctor' to diagnose")
+		return config.ErrNoDatabase
 	}
 	defer db.Close()
 
@@ -800,11 +801,102 @@ func runDoctor() error {
 
 	// 7. Ollama localhost only
 	check("Data stays local", "Ollama should run on your computer, not a remote server", func() (string, error) {
-		url := config.OllamaURL()
-		if !strings.Contains(url, "localhost") && !strings.Contains(url, "127.0.0.1") && !strings.Contains(url, "::1") {
-			return "", fmt.Errorf("non-localhost: %s", url)
+		ollamaURL, err := config.OllamaURL()
+		if err != nil {
+			return "", err
+		}
+		if !strings.Contains(ollamaURL, "localhost") && !strings.Contains(ollamaURL, "127.0.0.1") && !strings.Contains(ollamaURL, "::1") {
+			return "", fmt.Errorf("non-localhost: %s", ollamaURL)
 		}
 		return "", nil
+	})
+
+	// 8. Config file validity
+	check("Config file", "check .same/config.toml for syntax errors", func() (string, error) {
+		_, err := config.LoadConfig()
+		if err != nil {
+			return "", err
+		}
+		return "", nil
+	})
+
+	// 9. Hook installation
+	check("Hooks installed", "run 'same init' or 'same setup hooks'", func() (string, error) {
+		vp := config.VaultPath()
+		if vp == "" {
+			return "", fmt.Errorf("no vault to check")
+		}
+		settingsPath := filepath.Join(vp, ".claude", "settings.json")
+		if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
+			return "", fmt.Errorf("no .claude/settings.json found")
+		}
+		hookStatus := setup.HooksInstalled(vp)
+		activeCount := 0
+		for _, v := range hookStatus {
+			if v {
+				activeCount++
+			}
+		}
+		if activeCount == 0 {
+			return "", fmt.Errorf("no SAME hooks found in settings")
+		}
+		return fmt.Sprintf("%d hooks active", activeCount), nil
+	})
+
+	// 10. Database integrity (orphaned chunks)
+	check("Database integrity", "run 'same reindex' to rebuild", func() (string, error) {
+		db, err := store.Open()
+		if err != nil {
+			return "", fmt.Errorf("cannot open")
+		}
+		defer db.Close()
+		var orphaned int
+		err = db.Conn().QueryRow(`
+			SELECT COUNT(*) FROM vault_chunks c
+			LEFT JOIN vault_notes n ON c.note_path = n.path AND c.chunk_id = n.chunk_id
+			WHERE n.path IS NULL
+		`).Scan(&orphaned)
+		if err != nil {
+			return "", nil // table may not exist yet, not an error
+		}
+		if orphaned > 0 {
+			return "", fmt.Errorf("%d orphaned chunks", orphaned)
+		}
+		return "", nil
+	})
+
+	// 11. Index freshness
+	check("Index freshness", "run 'same reindex' to update", func() (string, error) {
+		db, err := store.Open()
+		if err != nil {
+			return "", fmt.Errorf("cannot open")
+		}
+		defer db.Close()
+		age, err := db.IndexAge()
+		if err != nil {
+			return "", nil // no index yet
+		}
+		if age > 7*24*time.Hour {
+			return "", fmt.Errorf("last indexed %s ago", formatDuration(age))
+		}
+		return fmt.Sprintf("last indexed %s ago", formatDuration(age)), nil
+	})
+
+	// 12. Log file size
+	check("Log file size", "rotation keeps logs under 5MB automatically", func() (string, error) {
+		logPath := filepath.Join(config.DataDir(), "verbose.log")
+		info, err := os.Stat(logPath)
+		if os.IsNotExist(err) {
+			return "no log file", nil
+		}
+		if err != nil {
+			return "", nil
+		}
+		sizeMB := float64(info.Size()) / (1024 * 1024)
+		if sizeMB > 10 {
+			return "", fmt.Errorf("verbose.log is %.1f MB", sizeMB)
+		}
+		return fmt.Sprintf("%.1f MB", sizeMB), nil
 	})
 
 	cli.Box([]string{
@@ -1280,8 +1372,7 @@ Run this anytime to see if SAME is working.`,
 func runStatus() error {
 	vp := config.VaultPath()
 	if vp == "" {
-		return userError("No vault found",
-			"Run 'same init' to set up, or set VAULT_PATH")
+		return config.ErrNoVault
 	}
 
 	cli.Header("SAME Status")
@@ -1317,16 +1408,21 @@ func runStatus() error {
 	}
 
 	// Ollama (same line block, no extra blank line)
-	httpClient := &http.Client{Timeout: time.Second}
-	ollamaURL := config.OllamaURL()
-	resp, err := httpClient.Get(ollamaURL + "/api/tags")
-	if err != nil {
-		fmt.Printf("  Ollama:  %snot running%s\n",
-			cli.Red, cli.Reset)
+	ollamaURL, ollamaErr := config.OllamaURL()
+	if ollamaErr != nil {
+		fmt.Printf("  Ollama:  %sinvalid URL%s (%v)\n",
+			cli.Red, cli.Reset, ollamaErr)
 	} else {
-		resp.Body.Close()
-		fmt.Printf("  Ollama:  %srunning%s (%s)\n",
-			cli.Green, cli.Reset, config.EmbeddingModel)
+		httpClient := &http.Client{Timeout: time.Second}
+		resp, err := httpClient.Get(ollamaURL + "/api/tags")
+		if err != nil {
+			fmt.Printf("  Ollama:  %snot running%s\n",
+				cli.Red, cli.Reset)
+		} else {
+			resp.Body.Close()
+			fmt.Printf("  Ollama:  %srunning%s (%s)\n",
+				cli.Green, cli.Reset, config.EmbeddingModel)
+		}
 	}
 
 	// Hooks
@@ -1405,8 +1501,7 @@ func logCmd() *cobra.Command {
 func runLog(lastN int, jsonOut bool) error {
 	db, err := store.Open()
 	if err != nil {
-		return userError("Cannot open SAME database",
-			"Run 'same init' to set up, or 'same doctor' to diagnose")
+		return config.ErrNoDatabase
 	}
 	defer db.Close()
 
@@ -1545,8 +1640,7 @@ func setupSubCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			vp := config.VaultPath()
 			if vp == "" {
-				return userError("No vault found",
-					"Run 'same init' to set up, or set VAULT_PATH")
+				return config.ErrNoVault
 			}
 			if removeHooks {
 				return setup.RemoveHooks(vp)
@@ -1564,8 +1658,7 @@ func setupSubCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			vp := config.VaultPath()
 			if vp == "" {
-				return userError("No vault found",
-					"Run 'same init' to set up, or set VAULT_PATH")
+				return config.ErrNoVault
 			}
 			if removeMCP {
 				return setup.RemoveMCP(vp)
@@ -1635,7 +1728,7 @@ Example: same display compact`,
 func setDisplayMode(mode string) error {
 	vp := config.VaultPath()
 	if vp == "" {
-		return userError("No vault found", "Run 'same init' first")
+		return config.ErrNoVault
 	}
 
 	// Update config file
@@ -1728,7 +1821,7 @@ func showCurrentProfile() error {
 func setProfile(profileName string) error {
 	vp := config.VaultPath()
 	if vp == "" {
-		return userError("No vault found", "Run 'same init' first")
+		return config.ErrNoVault
 	}
 
 	profile, ok := config.BuiltinProfiles[profileName]

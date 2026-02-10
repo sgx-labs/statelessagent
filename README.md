@@ -205,6 +205,76 @@ SAME exposes 6 tools via MCP:
 
 </details>
 
+<details>
+<summary><strong>Display Modes</strong></summary>
+
+Control how much SAME shows when surfacing context:
+
+| Mode | Command | Description |
+|------|---------|-------------|
+| **full** | `same display full` | Box with note titles, match terms, token counts (default) |
+| **compact** | `same display compact` | One-line summary: "surfaced 2 of 847 memories" |
+| **quiet** | `same display quiet` | Silent — context injected with no visual output |
+
+Display mode is saved to `.same/config.toml` and takes effect on the next prompt.
+
+</details>
+
+<details>
+<summary><strong>Push Protection (Guard)</strong></summary>
+
+Prevent accidental git pushes when running multiple AI agents on the same machine.
+
+```bash
+# Enable push protection
+same guard settings set push-protect on
+
+# Before pushing, explicitly allow it
+same push-allow
+
+# Check guard status
+same guard status
+```
+
+When enabled, a pre-push git hook blocks pushes unless a one-time ticket has been created via `same push-allow`. Tickets expire after 30 seconds by default (configurable via `same guard settings set push-timeout N`).
+
+</details>
+
+<details>
+<summary><strong>Troubleshooting</strong></summary>
+
+**"No vault found"**
+SAME can't find your notes directory. Fix:
+- Run `same init` from inside your notes folder
+- Or set `VAULT_PATH=/path/to/notes` in your environment
+- Or use `same vault add myproject /path/to/notes`
+
+**"Ollama not responding"**
+The embedding provider is unreachable. Fix:
+- Check if Ollama is running (look for the llama icon)
+- Test with: `curl http://localhost:11434/api/tags`
+- If using a non-default port, set `OLLAMA_URL=http://localhost:<port>`
+
+**Hooks not firing**
+Context isn't being surfaced during Claude Code sessions. Fix:
+- Run `same setup hooks` to reinstall hooks
+- Verify with `same status` (hooks should show as "active")
+- Check `.claude/settings.json` exists in your project
+
+**Context not surfacing**
+Hooks fire but no notes appear. Fix:
+- Run `same doctor` to check all components
+- Run `same reindex` if your notes have changed
+- Try `same search "your query"` to test search directly
+- Check if display mode is set to "quiet": `same config show`
+
+**"Cannot open SAME database"**
+The SQLite database is missing or corrupted. Fix:
+- Run `same init` to set up from scratch
+- Or run `same reindex --force` to rebuild the index
+
+</details>
+
 ## FAQ
 
 **Do I need Obsidian?**
