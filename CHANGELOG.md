@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.7.1 — Retrieval Diagnostics & Reliability
+
+Self-diagnosing retrieval, manual feedback, auto-repair, and keyword fallback.
+
+### Added
+
+- **Doctor retrieval diagnostics** — 3 new `same doctor` checks: embedding config mismatch (#13), SQLite PRAGMA integrity (#14), retrieval utilization rate (#15)
+- **`same repair`** — one-command database recovery: backs up `same.db`, force-rebuilds the index, and confirms. The go-to command when something breaks.
+- **`same feedback`** — manual thumbs-up/down for notes: `same feedback "path" up` boosts confidence +0.2 and access +5; `same feedback "path" down` penalizes confidence -0.3. Supports glob-style paths.
+- **FTS5 keyword fallback** — when Ollama is down or slow, context surfacing falls back to SQLite FTS5 full-text search instead of failing silently. Lower quality than semantic search but functional.
+- **Usage data pruning** — `context_usage` and `context_decisions` records older than 90 days are pruned during reindex to prevent unbounded growth
+- **Reindex metadata** — stores `last_reindex_time` and `same_version` in `schema_meta` after each reindex
+
+### Changed
+
+- **Schema version 2** — adds FTS5 virtual table (`vault_notes_fts`) for keyword fallback; auto-migrates from v1
+- **Context surfacing resilience** — embedding failures now trigger keyword fallback instead of returning diagnostic error to AI
+
+---
+
 ## v0.7.0 — Foundation + Safety
 
 Schema migrations, embedding mismatch guard, hook timeout, and config surfacing.

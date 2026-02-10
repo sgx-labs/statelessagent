@@ -388,19 +388,19 @@ Suggested actions for the user:
 	}
 
 	queryVec, err := embedProvider.GetQueryEmbedding(prompt)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "same: embed query failed: %v\n", err)
-		return &HookOutput{
-			HookSpecificOutput: &HookSpecific{
-				HookEventName:     "UserPromptSubmit",
-				AdditionalContext: diagNoEmbed,
-			},
-		}
+	embeddingFailed := err != nil
+
+	if embeddingFailed {
+		fmt.Fprintf(os.Stderr, "same: embed query failed, falling back to keyword search: %v\n", err)
+		writeVerboseLog(fmt.Sprintf("Embedding failed: %v — using FTS5 keyword fallback\n", err))
 	}
 
 	var candidates []scored
 
-	if isRecency {
+	if embeddingFailed {
+		// FTS5 keyword fallback: search without embeddings
+		candidates = keywordFallbackSearch(db)
+	} else if isRecency {
 		candidates = recencyHybridSearch(db, queryVec)
 	} else {
 		candidates = standardSearch(db, queryVec)
@@ -1054,6 +1054,65 @@ func standardSearch(db *store.DB, queryVec []float32) []scored {
 		return candidates[i].composite > candidates[j].composite
 	})
 
+	return candidates
+}
+
+// keywordFallbackSearch uses FTS5 full-text search when embedding provider is unavailable.
+// Quality is lower than semantic search but functional.
+func keywordFallbackSearch(db *store.DB) []scored {
+	prompt := keyTermsPrompt
+	if prompt == "" {
+		return nil
+	}
+
+	results, err := db.FTS5Search(prompt, store.SearchOptions{TopK: maxResults})
+	if err != nil {
+		// FTS5 table may not exist yet — fall back to LIKE-based keyword search
+		terms := store.ExtractSearchTerms(prompt)
+		if len(terms) == 0 {
+			return nil
+		}
+		kwResults, kwErr := db.KeywordSearch(terms, maxResults)
+		if kwErr != nil || len(kwResults) == 0 {
+			return nil
+		}
+		var candidates []scored
+		for _, r := range kwResults {
+			if shouldSkipPath(r.Path) {
+				continue
+			}
+			snippet := r.Text
+			if len(snippet) > int(maxSnippetChars) {
+				snippet = snippet[:maxSnippetChars]
+			}
+			candidates = append(candidates, scored{
+				path:        r.Path,
+				title:       r.Title,
+				contentType: r.ContentType,
+				confidence:  r.Confidence,
+				snippet:     sanitizeSnippet(snippet),
+				composite:   0.5,
+				semantic:    0,
+			})
+		}
+		return candidates
+	}
+
+	var candidates []scored
+	for _, r := range results {
+		if shouldSkipPath(r.Path) {
+			continue
+		}
+		candidates = append(candidates, scored{
+			path:        r.Path,
+			title:       r.Title,
+			contentType: r.ContentType,
+			confidence:  r.Confidence,
+			snippet:     sanitizeSnippet(r.Snippet),
+			composite:   0.5,
+			semantic:    0,
+		})
+	}
 	return candidates
 }
 

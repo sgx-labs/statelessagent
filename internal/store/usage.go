@@ -104,6 +104,32 @@ func (db *DB) InsertDecision(rec *DecisionRecord) error {
 	return err
 }
 
+// PruneUsageData deletes context_usage and context_decisions records older than
+// the given number of days. Returns the total number of rows deleted.
+func (db *DB) PruneUsageData(olderThanDays int) (int64, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	cutoff := fmt.Sprintf("-%d days", olderThanDays)
+	var total int64
+
+	res, err := db.conn.Exec(`DELETE FROM context_usage WHERE timestamp < datetime('now', ?)`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("prune context_usage: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	total += n
+
+	res, err = db.conn.Exec(`DELETE FROM context_decisions WHERE timestamp < datetime('now', ?)`, cutoff)
+	if err != nil {
+		return total, fmt.Errorf("prune context_decisions: %w", err)
+	}
+	n, _ = res.RowsAffected()
+	total += n
+
+	return total, nil
+}
+
 func scanUsage(rows interface {
 	Next() bool
 	Scan(dest ...interface{}) error

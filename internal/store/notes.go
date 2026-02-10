@@ -323,6 +323,22 @@ func (db *DB) RecentNotes(limit int) ([]NoteRecord, error) {
 	return scanNotes(rows)
 }
 
+// AdjustConfidence sets the confidence for all chunks of a note at the given path.
+func (db *DB) AdjustConfidence(path string, newConfidence float64) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	_, err := db.conn.Exec("UPDATE vault_notes SET confidence = ? WHERE path = ?", newConfidence, path)
+	return err
+}
+
+// SetAccessBoost increments the access_count by boost for all chunks at the given path.
+func (db *DB) SetAccessBoost(path string, boost int) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	_, err := db.conn.Exec("UPDATE vault_notes SET access_count = access_count + ? WHERE path = ?", boost, path)
+	return err
+}
+
 // ParseTags parses the JSON tags string into a slice.
 func ParseTags(tagsJSON string) []string {
 	var tags []string

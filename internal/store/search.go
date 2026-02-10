@@ -806,6 +806,76 @@ func ExtractSearchTerms(query string) []string {
 	return terms
 }
 
+// FTS5Search performs a full-text search using the FTS5 index with BM25 ranking.
+// Used as a fallback when embedding provider is unavailable.
+// Returns an error if FTS5 is not available.
+func (db *DB) FTS5Search(query string, opts SearchOptions) ([]SearchResult, error) {
+	if !db.ftsAvailable {
+		return nil, fmt.Errorf("FTS5 not available")
+	}
+	if opts.TopK <= 0 {
+		opts.TopK = 10
+	}
+
+	// FTS5 query: quote to handle special chars, use implicit AND between terms
+	terms := ExtractSearchTerms(query)
+	if len(terms) == 0 {
+		return nil, nil
+	}
+	ftsQuery := strings.Join(terms, " ")
+
+	rows, err := db.conn.Query(`
+		SELECT n.path, n.title, n.chunk_heading, n.text,
+			n.domain, n.workstream, n.tags, n.content_type, n.confidence, n.modified
+		FROM vault_notes_fts f
+		JOIN vault_notes n ON n.id = f.rowid
+		WHERE vault_notes_fts MATCH ?
+		ORDER BY bm25(vault_notes_fts) ASC
+		LIMIT ?`,
+		ftsQuery, opts.TopK*3,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("FTS5 search: %w", err)
+	}
+	defer rows.Close()
+
+	seen := make(map[string]bool)
+	var results []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		var modified float64
+		if err := rows.Scan(
+			&r.Path, &r.Title, &r.ChunkHeading, &r.Snippet,
+			&r.Domain, &r.Workstream, &r.Tags, &r.ContentType, &r.Confidence, &modified,
+		); err != nil {
+			continue
+		}
+		// Dedup by path
+		if seen[r.Path] {
+			continue
+		}
+		seen[r.Path] = true
+
+		if len(r.Snippet) > 500 {
+			r.Snippet = r.Snippet[:500]
+		}
+		r.Score = 0.5 // FTS results get a baseline score
+		r.Distance = 0
+
+		// Apply metadata filters
+		if opts.Domain != "" && !strings.EqualFold(r.Domain, opts.Domain) {
+			continue
+		}
+
+		results = append(results, r)
+		if len(results) >= opts.TopK {
+			break
+		}
+	}
+
+	return results, rows.Err()
+}
+
 func round3(f float64) float64 {
 	return float64(int(f*1000+0.5)) / 1000
 }

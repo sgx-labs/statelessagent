@@ -433,10 +433,10 @@ func TestSchemaVersion(t *testing.T) {
 	}
 	defer db.Close()
 
-	// After migrate(), version should be 1 (migrateV1 ran)
+	// After migrate(), version should be 2 (migrateV1 + migrateV2 ran)
 	v := db.SchemaVersion()
-	if v != 1 {
-		t.Errorf("expected schema version 1, got %d", v)
+	if v != 2 {
+		t.Errorf("expected schema version 2, got %d", v)
 	}
 }
 
@@ -512,6 +512,231 @@ func TestEmbeddingMetaGuardPartialMeta(t *testing.T) {
 	if err := db.CheckEmbeddingMeta("openai", "text-embedding-3-large", 1024); err == nil {
 		t.Error("expected error for dimension mismatch with partial meta")
 	}
+}
+
+func TestIntegrityCheck(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// A fresh database should pass integrity check
+	if err := db.IntegrityCheck(); err != nil {
+		t.Errorf("expected integrity check to pass, got: %v", err)
+	}
+}
+
+func TestLastReindexTime(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// No reindex time initially
+	if v := db.LastReindexTime(); v != "" {
+		t.Errorf("expected empty, got %q", v)
+	}
+
+	// Set it
+	if err := db.SetMeta("last_reindex_time", "2026-01-15T10:00:00Z"); err != nil {
+		t.Fatalf("SetMeta: %v", err)
+	}
+	if v := db.LastReindexTime(); v != "2026-01-15T10:00:00Z" {
+		t.Errorf("expected timestamp, got %q", v)
+	}
+}
+
+func TestAdjustConfidence(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	vec := make([]float32, 768)
+	rec := &NoteRecord{
+		Path: "notes/test.md", Title: "Test", Tags: "[]", ChunkID: 0,
+		ChunkHeading: "(full)", Text: "content", Modified: 1700000000,
+		ContentHash: "abc", ContentType: "note", Confidence: 0.5,
+	}
+	if err := db.InsertNote(rec, vec); err != nil {
+		t.Fatalf("InsertNote: %v", err)
+	}
+
+	// Boost confidence
+	if err := db.AdjustConfidence("notes/test.md", 0.7); err != nil {
+		t.Fatalf("AdjustConfidence: %v", err)
+	}
+
+	notes, err := db.GetNoteByPath("notes/test.md")
+	if err != nil || len(notes) == 0 {
+		t.Fatalf("GetNoteByPath: %v", err)
+	}
+	if notes[0].Confidence != 0.7 {
+		t.Errorf("expected confidence 0.7, got %.2f", notes[0].Confidence)
+	}
+}
+
+func TestSetAccessBoost(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	vec := make([]float32, 768)
+	rec := &NoteRecord{
+		Path: "notes/test.md", Title: "Test", Tags: "[]", ChunkID: 0,
+		ChunkHeading: "(full)", Text: "content", Modified: 1700000000,
+		ContentHash: "abc", ContentType: "note", Confidence: 0.5, AccessCount: 2,
+	}
+	if err := db.InsertNote(rec, vec); err != nil {
+		t.Fatalf("InsertNote: %v", err)
+	}
+
+	// Boost access count by 5
+	if err := db.SetAccessBoost("notes/test.md", 5); err != nil {
+		t.Fatalf("SetAccessBoost: %v", err)
+	}
+
+	notes, err := db.GetNoteByPath("notes/test.md")
+	if err != nil || len(notes) == 0 {
+		t.Fatalf("GetNoteByPath: %v", err)
+	}
+	if notes[0].AccessCount != 7 {
+		t.Errorf("expected access count 7, got %d", notes[0].AccessCount)
+	}
+}
+
+func TestPruneUsageData(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Insert an old usage record
+	if err := db.InsertUsage(&UsageRecord{
+		SessionID:       "s-old",
+		Timestamp:       "2020-01-01T00:00:00Z",
+		HookName:        "context_surfacing",
+		InjectedPaths:   []string{"old.md"},
+		EstimatedTokens: 100,
+	}); err != nil {
+		t.Fatalf("InsertUsage: %v", err)
+	}
+
+	// Insert a recent usage record
+	if err := db.InsertUsage(&UsageRecord{
+		SessionID:       "s-new",
+		Timestamp:       "2026-01-01T00:00:00Z",
+		HookName:        "context_surfacing",
+		InjectedPaths:   []string{"new.md"},
+		EstimatedTokens: 200,
+	}); err != nil {
+		t.Fatalf("InsertUsage: %v", err)
+	}
+
+	// Prune old data (90 days)
+	pruned, err := db.PruneUsageData(90)
+	if err != nil {
+		t.Fatalf("PruneUsageData: %v", err)
+	}
+	if pruned < 1 {
+		t.Errorf("expected at least 1 pruned, got %d", pruned)
+	}
+
+	// Verify only recent record remains
+	records, err := db.GetRecentUsage(10)
+	if err != nil {
+		t.Fatalf("GetRecentUsage: %v", err)
+	}
+	for _, r := range records {
+		if r.SessionID == "s-old" {
+			t.Error("old record should have been pruned")
+		}
+	}
+}
+
+func TestRebuildFTS(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	vec := make([]float32, 768)
+	rec := &NoteRecord{
+		Path: "notes/search-test.md", Title: "Architecture Decisions", Tags: "[]", ChunkID: 0,
+		ChunkHeading: "(full)", Text: "We decided to use SQLite for the database layer.", Modified: 1700000000,
+		ContentHash: "abc", ContentType: "decision", Confidence: 0.8,
+	}
+	if err := db.InsertNote(rec, vec); err != nil {
+		t.Fatalf("InsertNote: %v", err)
+	}
+
+	// RebuildFTS is a no-op if FTS5 is unavailable (shouldn't error)
+	if err := db.RebuildFTS(); err != nil {
+		t.Fatalf("RebuildFTS: %v", err)
+	}
+
+	if !db.FTSAvailable() {
+		t.Log("FTS5 not available in test environment, skipping FTS search test")
+		return
+	}
+
+	// FTS5 search should find the note
+	results, err := db.FTS5Search("architecture SQLite database", SearchOptions{TopK: 5})
+	if err != nil {
+		t.Fatalf("FTS5Search: %v", err)
+	}
+	if len(results) == 0 {
+		t.Error("expected at least one FTS5 result")
+	}
+	if len(results) > 0 && results[0].Path != "notes/search-test.md" {
+		t.Errorf("expected search-test.md, got %s", results[0].Path)
+	}
+}
+
+func TestFTS5SearchUnavailable(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	if !db.FTSAvailable() {
+		// FTS5 not available — FTS5Search should return error
+		_, err := db.FTS5Search("test query", SearchOptions{TopK: 5})
+		if err == nil {
+			t.Error("expected error when FTS5 not available")
+		}
+		return
+	}
+
+	// FTS5 available — search on empty index should return nil
+	results, err := db.FTS5Search("nonexistent query", SearchOptions{TopK: 5})
+	if err != nil {
+		t.Logf("FTS5Search on empty: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(results))
+	}
+}
+
+func TestFTSAvailableFlag(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// FTSAvailable() should return a boolean without error
+	// On macOS in-memory, FTS5 may not be available
+	available := db.FTSAvailable()
+	t.Logf("FTS5 available: %v", available)
 }
 
 // Suppress unused import warnings

@@ -21,8 +21,9 @@ func init() {
 
 // DB wraps a SQLite connection with sqlite-vec support.
 type DB struct {
-	conn *sql.DB
-	mu   sync.Mutex // serialize writes
+	conn         *sql.DB
+	mu           sync.Mutex // serialize writes
+	ftsAvailable bool       // true if FTS5 module is available
 }
 
 // Open opens or creates the database at the configured path.
@@ -225,6 +226,7 @@ func (db *DB) migrate() error {
 		fn      func() error
 	}{
 		{1, db.migrateV1}, // establishes version tracking baseline
+		{2, db.migrateV2}, // FTS5 full-text search table
 	}
 	for _, m := range versionedMigrations {
 		if currentVersion < m.version {
@@ -242,6 +244,27 @@ func (db *DB) migrate() error {
 
 // migrateV1 is a no-op that establishes version 1 as the baseline.
 func (db *DB) migrateV1() error {
+	return nil
+}
+
+// migrateV2 creates an FTS5 virtual table for keyword fallback search.
+// Uses content sync (content=vault_notes) so the FTS index stores only
+// tokens, not full text — no storage duplication.
+// FTS5 may not be available on all SQLite builds (e.g., macOS system SQLite
+// in-memory databases). Migration is best-effort — failure is non-fatal.
+func (db *DB) migrateV2() error {
+	_, err := db.conn.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS vault_notes_fts USING fts5(
+		path, title, text,
+		content=vault_notes, content_rowid=id
+	)`)
+	if err != nil {
+		// FTS5 not available — skip silently, keyword fallback will use LIKE-based search
+		db.ftsAvailable = false
+		return nil
+	}
+	db.ftsAvailable = true
+	// Populate from existing data
+	_, _ = db.conn.Exec(`INSERT INTO vault_notes_fts(vault_notes_fts) VALUES('rebuild')`)
 	return nil
 }
 
@@ -290,6 +313,43 @@ func (db *DB) SetEmbeddingMeta(provider, model string, dims int) error {
 		return err
 	}
 	return db.SetMeta("embed_dims", strconv.Itoa(dims))
+}
+
+// FTSAvailable returns true if the FTS5 module is available.
+func (db *DB) FTSAvailable() bool {
+	return db.ftsAvailable
+}
+
+// RebuildFTS rebuilds the FTS5 index from the vault_notes table.
+// Called after bulk inserts during reindex. No-op if FTS5 is unavailable.
+func (db *DB) RebuildFTS() error {
+	if !db.ftsAvailable {
+		return nil
+	}
+	_, err := db.conn.Exec(`INSERT INTO vault_notes_fts(vault_notes_fts) VALUES('rebuild')`)
+	return err
+}
+
+// IntegrityCheck runs SQLite PRAGMA integrity_check and returns an error if corruption is detected.
+func (db *DB) IntegrityCheck() error {
+	var result string
+	err := db.conn.QueryRow("PRAGMA integrity_check").Scan(&result)
+	if err != nil {
+		return fmt.Errorf("integrity check query failed: %w", err)
+	}
+	if result != "ok" {
+		return fmt.Errorf("integrity check failed: %s", result)
+	}
+	return nil
+}
+
+// LastReindexTime returns the timestamp of the last reindex, or empty string if unknown.
+func (db *DB) LastReindexTime() string {
+	v, ok := db.GetMeta("last_reindex_time")
+	if !ok {
+		return ""
+	}
+	return v
 }
 
 // CheckEmbeddingMeta compares the given embedding config against what was used

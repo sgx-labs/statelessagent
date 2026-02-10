@@ -17,6 +17,9 @@ import (
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
+// Version is set by cmd/same to record which SAME version performed the reindex.
+var Version string
+
 // Stats holds reindex statistics.
 type Stats struct {
 	TotalFiles       int    `json:"total_files"`
@@ -187,6 +190,18 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 	embedName := embedClient.Name()
 	embedDims := embedClient.Dimensions()
 	_ = db.SetEmbeddingMeta(embedName, ec.Model, embedDims)
+
+	// Record reindex timestamp and version for doctor diagnostics
+	_ = db.SetMeta("last_reindex_time", time.Now().UTC().Format(time.RFC3339))
+	if Version != "" {
+		_ = db.SetMeta("same_version", Version)
+	}
+
+	// Rebuild FTS5 index after bulk insert
+	_ = db.RebuildFTS()
+
+	// Prune old usage data (90 days)
+	_, _ = db.PruneUsageData(90)
 
 	// Save stats to file
 	saveStats(stats)

@@ -91,6 +91,8 @@ Need help? https://discord.gg/GZGHtrrKF2`,
 	root.AddCommand(guardCmd())
 	root.AddCommand(pushAllowCmd())
 	root.AddCommand(ciCmd())
+	root.AddCommand(repairCmd())
+	root.AddCommand(feedbackCmd())
 
 	// Global --vault flag
 	root.PersistentFlags().StringVar(&config.VaultOverride, "vault", "", "Vault name or path (overrides auto-detect)")
@@ -442,6 +444,7 @@ func runReindex(force bool) error {
 	}
 	defer db.Close()
 
+	indexer.Version = Version
 	stats, err := indexer.Reindex(db, force)
 	if err != nil {
 		return err
@@ -912,6 +915,65 @@ func runDoctor() error {
 			return "", fmt.Errorf("verbose.log is %.1f MB", sizeMB)
 		}
 		return fmt.Sprintf("%.1f MB", sizeMB), nil
+	})
+
+	// 13. Embedding config
+	check("Embedding config", "run 'same reindex --force' if model changed", func() (string, error) {
+		db, err := store.Open()
+		if err != nil {
+			return "", fmt.Errorf("cannot open")
+		}
+		defer db.Close()
+		embedClient, err := newEmbedProvider()
+		if err != nil {
+			return "", fmt.Errorf("cannot create provider: %v", err)
+		}
+		if mismatchErr := db.CheckEmbeddingMeta(embedClient.Name(), "", embedClient.Dimensions()); mismatchErr != nil {
+			return "", mismatchErr
+		}
+		provider, _ := db.GetMeta("embed_provider")
+		dims, _ := db.GetMeta("embed_dims")
+		if provider == "" {
+			return "no metadata stored yet", nil
+		}
+		return fmt.Sprintf("%s, %s dims", provider, dims), nil
+	})
+
+	// 14. SQLite integrity (PRAGMA)
+	check("SQLite integrity", "run 'same repair' to rebuild", func() (string, error) {
+		db, err := store.Open()
+		if err != nil {
+			return "", fmt.Errorf("cannot open")
+		}
+		defer db.Close()
+		return "", db.IntegrityCheck()
+	})
+
+	// 15. Retrieval utilization
+	check("Retrieval utilization", "try different queries or adjust your profile", func() (string, error) {
+		db, err := store.Open()
+		if err != nil {
+			return "", fmt.Errorf("cannot open")
+		}
+		defer db.Close()
+		usage, err := db.GetRecentUsage(5)
+		if err != nil || len(usage) == 0 {
+			return "no usage data yet", nil
+		}
+		total := 0
+		referenced := 0
+		for _, u := range usage {
+			total++
+			if u.WasReferenced {
+				referenced++
+			}
+		}
+		rate := float64(referenced) / float64(total)
+		detail := fmt.Sprintf("%.0f%% of injected context was used", rate*100)
+		if rate < 0.20 {
+			return "", fmt.Errorf("low utilization (%.0f%%) — most injected context is being ignored", rate*100)
+		}
+		return detail, nil
 	})
 
 	cli.Box([]string{
@@ -1884,6 +1946,174 @@ func setProfile(profileName string) error {
 	fmt.Printf("    composite_threshold: %.2f\n", profile.CompositeThreshold)
 	fmt.Println()
 	fmt.Println("  Change takes effect on next prompt.")
+
+	return nil
+}
+
+// ---------- repair ----------
+
+func repairCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "repair",
+		Short: "Back up and rebuild the database",
+		Long: `Creates a backup of same.db and force-rebuilds the index.
+
+This is the go-to command when something seems broken. It:
+  1. Copies same.db to same.db.bak
+  2. Runs a full force reindex
+
+After repair, verify with 'same doctor'.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runRepair()
+		},
+	}
+}
+
+func runRepair() error {
+	cli.Header("SAME Repair")
+	fmt.Println()
+
+	dbPath := config.DBPath()
+
+	// Step 1: Back up
+	bakPath := dbPath + ".bak"
+	fmt.Printf("  Backing up database...")
+	if _, err := os.Stat(dbPath); err == nil {
+		src, err := os.ReadFile(dbPath)
+		if err != nil {
+			fmt.Printf(" %sfailed%s\n", cli.Red, cli.Reset)
+			return fmt.Errorf("read database: %w", err)
+		}
+		if err := os.WriteFile(bakPath, src, 0o644); err != nil {
+			fmt.Printf(" %sfailed%s\n", cli.Red, cli.Reset)
+			return fmt.Errorf("write backup: %w", err)
+		}
+		fmt.Printf(" %s✓%s\n", cli.Green, cli.Reset)
+		fmt.Printf("  Backup saved to %s\n", cli.ShortenHome(bakPath))
+	} else {
+		fmt.Printf(" %sskipped%s (no existing database)\n", cli.Yellow, cli.Reset)
+	}
+
+	// Step 2: Force reindex
+	fmt.Printf("\n  Rebuilding index...\n")
+	if err := runReindex(true); err != nil {
+		return fmt.Errorf("reindex failed: %w", err)
+	}
+
+	fmt.Println()
+	fmt.Printf("  %s✓%s Repair complete.\n", cli.Green, cli.Reset)
+	fmt.Printf("  Run %ssame doctor%s to verify.\n", cli.Bold, cli.Reset)
+	fmt.Printf("\n  Backup saved to %s — delete after verifying repair.\n", cli.ShortenHome(bakPath))
+	cli.Footer()
+	return nil
+}
+
+// ---------- feedback ----------
+
+func feedbackCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "feedback [path] [up|down]",
+		Short: "Boost or penalize a note's retrieval confidence",
+		Long: `Manually adjust how likely a note is to be surfaced.
+
+  same feedback "projects/plan.md" up     Boost confidence
+  same feedback "projects/plan.md" down   Penalize confidence
+  same feedback "projects/*" down         Glob-style path matching
+
+'up' increases confidence by 0.2 and boosts access count.
+'down' decreases confidence by 0.3 (harsh penalty, near-zero floor).`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runFeedback(args[0], args[1])
+		},
+	}
+	return cmd
+}
+
+func runFeedback(pathPattern, direction string) error {
+	if direction != "up" && direction != "down" {
+		return userError(
+			fmt.Sprintf("Unknown direction: %s", direction),
+			"Use 'up' or 'down'",
+		)
+	}
+
+	db, err := store.Open()
+	if err != nil {
+		return config.ErrNoDatabase
+	}
+	defer db.Close()
+
+	// Convert glob to SQL LIKE pattern
+	likePattern := strings.ReplaceAll(pathPattern, "*", "%")
+
+	// Get matching notes (chunk_id=0 for dedup)
+	rows, err := db.Conn().Query(
+		`SELECT path, title, confidence, access_count FROM vault_notes WHERE path LIKE ? AND chunk_id = 0 ORDER BY path`,
+		likePattern,
+	)
+	if err != nil {
+		return fmt.Errorf("query notes: %w", err)
+	}
+	defer rows.Close()
+
+	type noteInfo struct {
+		path       string
+		title      string
+		confidence float64
+		accessCount int
+	}
+	var notes []noteInfo
+	for rows.Next() {
+		var n noteInfo
+		if err := rows.Scan(&n.path, &n.title, &n.confidence, &n.accessCount); err != nil {
+			continue
+		}
+		notes = append(notes, n)
+	}
+
+	if len(notes) == 0 {
+		return fmt.Errorf("no notes matching %q found in index", pathPattern)
+	}
+
+	for _, n := range notes {
+		oldConf := n.confidence
+		var newConf float64
+		var boostMsg string
+
+		if direction == "up" {
+			newConf = oldConf + 0.2
+			if newConf > 1.0 {
+				newConf = 1.0
+			}
+			if err := db.AdjustConfidence(n.path, newConf); err != nil {
+				fmt.Fprintf(os.Stderr, "  error adjusting %s: %v\n", n.path, err)
+				continue
+			}
+			if err := db.SetAccessBoost(n.path, 5); err != nil {
+				fmt.Fprintf(os.Stderr, "  error boosting %s: %v\n", n.path, err)
+			}
+			boostMsg = fmt.Sprintf("Boosted '%s' — confidence: %.2f → %.2f, access +5",
+				n.title, oldConf, newConf)
+		} else {
+			newConf = oldConf - 0.3
+			if newConf < 0.05 {
+				newConf = 0.05
+			}
+			if err := db.AdjustConfidence(n.path, newConf); err != nil {
+				fmt.Fprintf(os.Stderr, "  error adjusting %s: %v\n", n.path, err)
+				continue
+			}
+			boostMsg = fmt.Sprintf("Penalized '%s' — confidence: %.2f → %.2f",
+				n.title, oldConf, newConf)
+		}
+
+		fmt.Printf("  %s\n", boostMsg)
+	}
+
+	if len(notes) > 1 {
+		fmt.Printf("\n  Adjusted %d notes.\n", len(notes))
+	}
 
 	return nil
 }
