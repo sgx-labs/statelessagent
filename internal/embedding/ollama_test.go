@@ -131,9 +131,13 @@ func TestGetEmbedding_5xxRetries(t *testing.T) {
 			w.Write([]byte("service unavailable"))
 			return
 		}
-		// Succeed on third attempt
+		// Succeed on third attempt (non-zero vector to pass validation)
+		vec := make([]float32, 768)
+		for i := range vec {
+			vec[i] = float32(i+1) * 0.001
+		}
 		resp := ollamaEmbeddingResponse{
-			Embedding: make([]float32, 768),
+			Embedding: vec,
 		}
 		json.NewEncoder(w).Encode(resp)
 	}))
@@ -186,15 +190,20 @@ func TestGetEmbedding_500WithLongText_Truncates(t *testing.T) {
 		json.NewDecoder(r.Body).Decode(&req)
 
 		// Simulate context overflow: reject prompts > 8000 chars, accept shorter.
-		// GetEmbedding truncation halves the text on 500, so 10000 → 5000 → succeeds.
+		// GetEmbedding truncation halves the text on 500, so 10000 -> 5000 -> succeeds.
 		if len(req.Prompt) > 8000 {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("context too long"))
 			return
 		}
 
+		// Return non-zero vector to pass validation
+		vec := make([]float32, 768)
+		for i := range vec {
+			vec[i] = float32(i+1) * 0.001
+		}
 		resp := ollamaEmbeddingResponse{
-			Embedding: make([]float32, 768),
+			Embedding: vec,
 		}
 		json.NewEncoder(w).Encode(resp)
 	}))

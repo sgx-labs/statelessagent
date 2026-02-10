@@ -127,17 +127,37 @@ func (db *DB) VectorSearch(queryVec []float32, opts SearchOptions) ([]SearchResu
 		return nil, nil
 	}
 
-	// Normalize distances to 0-1 scores
-	minDist := deduped[0].distance
-	maxDist := deduped[len(deduped)-1].distance
-	distRange := maxDist - minDist
-	if distRange <= 0 {
-		distRange = 1.0
-	}
+	// Score results using absolute distance thresholds combined with relative
+	// normalization. Pure relative scoring makes the top result always 1.0
+	// even when nothing is relevant. Instead, we use an absolute distance
+	// ceiling (absDistCeiling) as the reference point so that results near
+	// the ceiling score low regardless of relative position.
+	//
+	// absDistCeiling = 20.0 chosen to be above the maxDistance eval threshold
+	// (16.3) so that relevant results score well, while off-topic results
+	// (distance > 18) get appropriately low scores.
+	const absDistCeiling = 20.0
 
 	results := make([]SearchResult, 0, len(deduped))
 	for _, r := range deduped {
-		score := 1.0 - ((r.distance - minDist) / distRange)
+		// Absolute score: 1.0 at distance 0, 0.0 at absDistCeiling
+		absScore := 1.0 - (r.distance / absDistCeiling)
+		if absScore < 0 {
+			absScore = 0
+		}
+
+		// Relative score within this result set (preserves original ranking signal)
+		minDist := deduped[0].distance
+		maxDist := deduped[len(deduped)-1].distance
+		distRange := maxDist - minDist
+		if distRange <= 0 {
+			distRange = 1.0
+		}
+		relScore := 1.0 - ((r.distance - minDist) / distRange)
+
+		// Blend: 70% absolute + 30% relative. This ensures poor absolute
+		// results score low while still differentiating within a result set.
+		score := 0.7*absScore + 0.3*relScore
 
 		snippet := r.text
 		if len(snippet) > 500 {
@@ -259,13 +279,15 @@ func (db *DB) KeywordSearch(terms []string, limit int) ([]RawSearchResult, error
 
 	scoreExpr := strings.Join(matchExprs, " + ")
 
+	// Use EXISTS instead of IN for better query planning — SQLite can
+	// short-circuit once it finds the first matching chunk for each path.
 	query := fmt.Sprintf(`
 		SELECT 0 as distance, n.id, n.path, n.title, n.chunk_heading, n.text,
 			n.domain, n.workstream, n.tags, n.content_type, n.confidence, n.modified
 		FROM vault_notes n
-		WHERE n.chunk_id = 0 AND n.path NOT LIKE '_PRIVATE/%%' AND n.path IN (
-			SELECT DISTINCT n2.path FROM vault_notes n2
-			WHERE (%s)
+		WHERE n.chunk_id = 0 AND n.path NOT LIKE '_PRIVATE/%%' AND EXISTS (
+			SELECT 1 FROM vault_notes n2
+			WHERE n2.path = n.path AND (%s)
 		)
 		ORDER BY (%s) DESC, n.modified DESC
 		LIMIT ?`,
@@ -660,11 +682,18 @@ func (db *DB) FuzzyTitleSearch(terms []string, limit int) ([]RawSearchResult, er
 		return nil, nil
 	}
 
+	// Limit the scan to avoid full table scan on large vaults.
+	// We fetch more than needed since post-filtering reduces the set.
+	scanLimit := limit * 10
+	if scanLimit < 200 {
+		scanLimit = 200
+	}
 	rows, err := db.conn.Query(`
 		SELECT 0 as distance, n.id, n.path, n.title, n.chunk_heading, n.text,
 			n.domain, n.workstream, n.tags, n.content_type, n.confidence, n.modified
-		FROM vault_notes n WHERE n.chunk_id = 0
-		ORDER BY n.modified DESC`)
+		FROM vault_notes n WHERE n.chunk_id = 0 AND n.path NOT LIKE '_PRIVATE/%'
+		ORDER BY n.modified DESC
+		LIMIT ?`, scanLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -817,12 +846,14 @@ func (db *DB) FTS5Search(query string, opts SearchOptions) ([]SearchResult, erro
 		opts.TopK = 10
 	}
 
-	// FTS5 query: quote to handle special chars, use implicit AND between terms
+	// FTS5 query: use OR between terms so partial matches are included.
+	// BM25 ranking naturally scores documents with more matching terms higher,
+	// so multi-term matches rank above single-term matches without requiring AND.
 	terms := ExtractSearchTerms(query)
 	if len(terms) == 0 {
 		return nil, nil
 	}
-	ftsQuery := strings.Join(terms, " ")
+	ftsQuery := strings.Join(terms, " OR ")
 
 	rows, err := db.conn.Query(`
 		SELECT n.path, n.title, n.chunk_heading, n.text,

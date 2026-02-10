@@ -157,6 +157,11 @@ func (p *OllamaProvider) doEmbedRequest(prompt string) ([]float32, error) {
 		return nil, fmt.Errorf("empty embedding returned")
 	}
 
+	// Validate dimension and zero-vector (E4, E5)
+	if err := validateEmbedding(result.Embedding, p.dims); err != nil {
+		return nil, err
+	}
+
 	return result.Embedding, nil
 }
 

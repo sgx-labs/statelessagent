@@ -53,17 +53,21 @@ func Reindex(db *store.DB, force bool) (*Stats, error) {
 func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stats, error) {
 	vaultPath := config.VaultPath()
 	ec := config.EmbeddingProviderConfig()
-	ollamaURL, err := config.OllamaURL()
-	if err != nil {
-		return nil, fmt.Errorf("ollama URL: %w", err)
-	}
-	embedClient, err := embedding.NewProvider(embedding.ProviderConfig{
+	provCfg := embedding.ProviderConfig{
 		Provider:   ec.Provider,
 		Model:      ec.Model,
 		APIKey:     ec.APIKey,
-		BaseURL:    ollamaURL,
 		Dimensions: ec.Dimensions,
-	})
+	}
+	// Only pass the Ollama URL to the Ollama provider
+	if provCfg.Provider == "ollama" || provCfg.Provider == "" {
+		ollamaURL, err := config.OllamaURL()
+		if err != nil {
+			return nil, fmt.Errorf("ollama URL: %w", err)
+		}
+		provCfg.BaseURL = ollamaURL
+	}
+	embedClient, err := embedding.NewProvider(provCfg)
 	if err != nil {
 		return nil, fmt.Errorf("embedding provider: %w", err)
 	}
@@ -91,10 +95,13 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 		}
 	}
 
-	// Build work queue of files that need indexing
+	// Build work queue of files that need indexing.
+	// In incremental mode, we read file content to check the hash. Cache the
+	// content so buildRecords doesn't need to re-read it (saves one syscall per file).
 	type fileWork struct {
 		path    string
 		relPath string
+		content []byte // cached content from hash check (nil in force mode)
 	}
 	var work []fileWork
 	for _, fp := range mdFiles {
@@ -111,9 +118,10 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 				stats.SkippedUnchanged++
 				continue
 			}
+			work = append(work, fileWork{path: fp, relPath: relPath, content: content})
+		} else {
+			work = append(work, fileWork{path: fp, relPath: relPath})
 		}
-
-		work = append(work, fileWork{path: fp, relPath: relPath})
 	}
 
 	// Process files with a worker pool (4 goroutines)
@@ -127,7 +135,7 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 		go func() {
 			defer wg.Done()
 			for w := range workCh {
-				records, embeddings, err := buildRecords(w.path, w.relPath, vaultPath, embedClient)
+				records, embeddings, err := buildRecordsWithContent(w.path, w.relPath, vaultPath, embedClient, w.content)
 				resultCh <- embResult{
 					Records:    records,
 					Embeddings: embeddings,
@@ -190,10 +198,14 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 	stats.NotesInIndex = noteCount
 	stats.ChunksInIndex = chunkCount
 
-	// Record embedding metadata so mismatch guard can detect config changes
+	// Record embedding metadata so mismatch guard can detect config changes.
+	// Use embedClient.Model() (resolved name) so it matches CheckEmbeddingMeta
+	// which also uses client.Model(). Previously stored ec.Model which could be
+	// an empty string, causing false mismatch errors.
 	embedName := embedClient.Name()
+	embedModel := embedClient.Model()
 	embedDims := embedClient.Dimensions()
-	_ = db.SetEmbeddingMeta(embedName, ec.Model, embedDims)
+	_ = db.SetEmbeddingMeta(embedName, embedModel, embedDims)
 	_ = db.SetMeta("index_mode", "full")
 
 	// Record reindex timestamp and version for doctor diagnostics
@@ -240,7 +252,7 @@ func GetStats(db *store.DB) map[string]interface{} {
 	var result map[string]interface{}
 	json.Unmarshal(data, &result)
 	result["embedding_model"] = config.EmbeddingModel
-	result["embedding_dimensions"] = config.EmbeddingDim
+	result["embedding_dimensions"] = config.EmbeddingDim()
 	enrichStats(result)
 	return result
 }
@@ -261,6 +273,33 @@ func enrichStats(result map[string]interface{}) {
 	}
 }
 
+// IndexSingleFile indexes (or re-indexes) a single file into the database.
+// Deletes any existing chunks for the file's relative path, then inserts new ones.
+// This avoids the overhead of a full vault reindex when only one file changed.
+func IndexSingleFile(database *store.DB, filePath, relPath, vaultPath string, embedClient embedding.Provider) error {
+	records, embeddings, err := buildRecords(filePath, relPath, vaultPath, embedClient)
+	if err != nil {
+		return fmt.Errorf("build records: %w", err)
+	}
+	if len(records) == 0 {
+		return nil
+	}
+
+	// Remove old chunks for this path before inserting new ones
+	if err := database.DeleteByPath(relPath); err != nil {
+		return fmt.Errorf("delete old chunks: %w", err)
+	}
+
+	if err := database.BulkInsertNotes(records, embeddings); err != nil {
+		return fmt.Errorf("insert notes: %w", err)
+	}
+
+	// Rebuild FTS for the updated content
+	_ = database.RebuildFTS()
+
+	return nil
+}
+
 // BuildRecordsForFile builds note records and embeddings for a single file.
 // Exported for use by the watcher.
 func BuildRecordsForFile(filePath, relPath, vaultPath string, embedClient embedding.Provider) ([]store.NoteRecord, [][]float32, error) {
@@ -268,9 +307,18 @@ func BuildRecordsForFile(filePath, relPath, vaultPath string, embedClient embedd
 }
 
 func buildRecords(filePath, relPath, vaultPath string, embedClient embedding.Provider) ([]store.NoteRecord, [][]float32, error) {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read file: %w", err)
+	return buildRecordsWithContent(filePath, relPath, vaultPath, embedClient, nil)
+}
+
+// buildRecordsWithContent builds records, optionally using pre-read content to avoid a second read.
+func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient embedding.Provider, cachedContent []byte) ([]store.NoteRecord, [][]float32, error) {
+	content := cachedContent
+	if content == nil {
+		var err error
+		content, err = os.ReadFile(filePath)
+		if err != nil {
+			return nil, nil, fmt.Errorf("read file: %w", err)
+		}
 	}
 
 	parsed := ParseNote(string(content))

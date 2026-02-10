@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,20 +33,95 @@ import (
 // Version is set at build time via ldflags.
 var Version = "dev"
 
+// compareSemver compares two semver strings (without "v" prefix).
+// Returns -1 if a < b, 0 if a == b, 1 if a > b.
+// Falls back to string comparison if parsing fails.
+func compareSemver(a, b string) int {
+	parseSemver := func(s string) (major, minor, patch int, ok bool) {
+		// Strip any pre-release suffix (e.g., "1.2.3-beta")
+		if idx := strings.IndexByte(s, '-'); idx >= 0 {
+			s = s[:idx]
+		}
+		parts := strings.Split(s, ".")
+		if len(parts) < 1 || len(parts) > 3 {
+			return 0, 0, 0, false
+		}
+		var err error
+		major, err = strconv.Atoi(parts[0])
+		if err != nil {
+			return 0, 0, 0, false
+		}
+		if len(parts) >= 2 {
+			minor, err = strconv.Atoi(parts[1])
+			if err != nil {
+				return 0, 0, 0, false
+			}
+		}
+		if len(parts) >= 3 {
+			patch, err = strconv.Atoi(parts[2])
+			if err != nil {
+				return 0, 0, 0, false
+			}
+		}
+		return major, minor, patch, true
+	}
+
+	aMaj, aMin, aPat, aOK := parseSemver(a)
+	bMaj, bMin, bPat, bOK := parseSemver(b)
+
+	if !aOK || !bOK {
+		// Fallback to string comparison if parsing fails
+		if a < b {
+			return -1
+		}
+		if a > b {
+			return 1
+		}
+		return 0
+	}
+
+	if aMaj != bMaj {
+		if aMaj < bMaj {
+			return -1
+		}
+		return 1
+	}
+	if aMin != bMin {
+		if aMin < bMin {
+			return -1
+		}
+		return 1
+	}
+	if aPat != bPat {
+		if aPat < bPat {
+			return -1
+		}
+		return 1
+	}
+	return 0
+}
+
 // newEmbedProvider creates an embedding provider from config.
+// Only passes the Ollama base URL to the Ollama provider; OpenAI uses its own default.
 func newEmbedProvider() (embedding.Provider, error) {
 	ec := config.EmbeddingProviderConfig()
-	ollamaURL, err := config.OllamaURL()
-	if err != nil {
-		return nil, fmt.Errorf("ollama URL: %w", err)
-	}
-	return embedding.NewProvider(embedding.ProviderConfig{
+	cfg := embedding.ProviderConfig{
 		Provider:   ec.Provider,
 		Model:      ec.Model,
 		APIKey:     ec.APIKey,
-		BaseURL:    ollamaURL,
 		Dimensions: ec.Dimensions,
-	})
+	}
+
+	// Only pass the Ollama URL to the Ollama provider
+	if cfg.Provider == "ollama" || cfg.Provider == "" {
+		ollamaURL, err := config.OllamaURL()
+		if err != nil {
+			return nil, fmt.Errorf("ollama URL: %w", err)
+		}
+		cfg.BaseURL = ollamaURL
+	}
+
+	return embedding.NewProvider(cfg)
 }
 
 func main() {
@@ -166,7 +242,8 @@ func runVersionCheck() error {
 	latestVer := strings.TrimPrefix(release.TagName, "v")
 	currentVer := strings.TrimPrefix(Version, "v")
 
-	if latestVer != currentVer && latestVer > currentVer {
+	// C3: Use semver comparison instead of string comparison
+	if compareSemver(latestVer, currentVer) > 0 {
 		// Output as hook-compatible JSON for SessionStart hook
 		fmt.Printf(`{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"\n\n**SAME update available:** %s → %s\nRun: same update\n\n"}}`, currentVer, latestVer)
 		fmt.Println()
@@ -249,13 +326,14 @@ func runUpdate(force bool) error {
 	fmt.Printf(" %s✓%s\n", cli.Green, cli.Reset)
 	fmt.Printf("  Latest version:  %s%s%s\n", cli.Bold, release.TagName, cli.Reset)
 
-	// Compare versions
-	if latestVer == currentVer && !force {
+	// C3: Use semver comparison instead of string comparison
+	cmp := compareSemver(latestVer, currentVer)
+	if cmp == 0 && !force {
 		fmt.Printf("\n  %s✓%s Already on the latest version.\n\n", cli.Green, cli.Reset)
 		return nil
 	}
 
-	if latestVer <= currentVer && !force {
+	if cmp <= 0 && !force {
 		fmt.Printf("\n  %s✓%s Already up to date.\n\n", cli.Green, cli.Reset)
 		return nil
 	}

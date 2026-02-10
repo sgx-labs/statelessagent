@@ -5,7 +5,10 @@
 //   - openai: OpenAI text-embedding-3-small/large. Requires OPENAI_API_KEY.
 package embedding
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // Provider generates embedding vectors from text.
 // All providers must produce vectors of consistent dimensionality
@@ -51,4 +54,27 @@ func NewProvider(cfg ProviderConfig) (Provider, error) {
 	default:
 		return nil, fmt.Errorf("unknown embedding provider: %q (supported: ollama, openai)", cfg.Provider)
 	}
+}
+
+// validateEmbedding checks that a returned embedding vector is valid:
+//   - correct number of dimensions (if expectedDims > 0)
+//   - not all zeros (which indicates a provider error)
+//
+// Returns an error describing the problem, or nil if valid.
+func validateEmbedding(vec []float32, expectedDims int) error {
+	if expectedDims > 0 && len(vec) != expectedDims {
+		return fmt.Errorf("embedding dimension mismatch: expected %d, got %d", expectedDims, len(vec))
+	}
+	// Check for all-zero vector (indicates provider returned garbage)
+	allZero := true
+	for _, v := range vec {
+		if math.Float32bits(v) != 0 {
+			allZero = false
+			break
+		}
+	}
+	if allZero {
+		return fmt.Errorf("embedding is all zeros (provider returned invalid vector)")
+	}
+	return nil
 }

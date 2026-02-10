@@ -114,18 +114,22 @@ func Watch(db *store.DB) error {
 
 func reindexFiles(db *store.DB, paths []string, vaultPath string) {
 	ec := config.EmbeddingProviderConfig()
-	ollamaURL, err := config.OllamaURL()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "  [ERROR] ollama URL: %v\n", err)
-		return
-	}
-	embedClient, err := embedding.NewProvider(embedding.ProviderConfig{
+	provCfg := embedding.ProviderConfig{
 		Provider:   ec.Provider,
 		Model:      ec.Model,
 		APIKey:     ec.APIKey,
-		BaseURL:    ollamaURL,
 		Dimensions: ec.Dimensions,
-	})
+	}
+	// Only pass the Ollama URL to the Ollama provider
+	if provCfg.Provider == "ollama" || provCfg.Provider == "" {
+		ollamaURL, err := config.OllamaURL()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  [ERROR] ollama URL: %v\n", err)
+			return
+		}
+		provCfg.BaseURL = ollamaURL
+	}
+	embedClient, err := embedding.NewProvider(provCfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  [ERROR] embedding provider: %v\n", err)
 		return
