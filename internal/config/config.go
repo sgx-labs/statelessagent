@@ -105,10 +105,10 @@ func DefaultConfig() *Config {
 			Model:    "", // uses provider-specific default
 		},
 		Memory: MemoryConfig{
-			MaxTokenBudget:     800,
-			MaxResults:         2,
+			MaxTokenBudget:     1600,
+			MaxResults:         4,
 			DistanceThreshold:  16.2,
-			CompositeThreshold: 0.65,
+			CompositeThreshold: 0.35,
 		},
 		Hooks: HooksConfig{
 			ContextSurfacing:  true,
@@ -279,10 +279,10 @@ func generateTOMLContent(vaultPath string) string {
 	b.WriteString("# dimensions = 0                # 0 = use provider default\n\n")
 
 	b.WriteString("[memory]\n")
-	b.WriteString("max_token_budget = 800\n")
-	b.WriteString("max_results = 2\n")
+	b.WriteString("max_token_budget = 1600\n")
+	b.WriteString("max_results = 4\n")
 	b.WriteString("distance_threshold = 16.2\n")
-	b.WriteString("composite_threshold = 0.65\n\n")
+	b.WriteString("composite_threshold = 0.35\n\n")
 
 	b.WriteString("[hooks]\n")
 	b.WriteString("context_surfacing = true\n")
@@ -473,6 +473,11 @@ var defaultSkipDirs = map[string]bool{
 	".claude":      true,
 	".trash":       true,
 	"_PRIVATE":     true,
+}
+
+// SkipFiles are filenames excluded from indexing (meta-docs, not project knowledge).
+var SkipFiles = map[string]bool{
+	"CLAUDE.md": true,
 }
 
 // SkipDirs returns the set of directories to skip during vault walks.
@@ -762,9 +767,9 @@ var BuiltinProfiles = map[string]Profile{
 	"balanced": {
 		Name:               "balanced",
 		Description:        "Default balance of relevance and coverage",
-		MaxResults:         2,
+		MaxResults:         4,
 		DistanceThreshold:  16.2,
-		CompositeThreshold: 0.65,
+		CompositeThreshold: 0.35,
 		TokenWarning:       "",
 	},
 	"broad": {

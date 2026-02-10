@@ -73,8 +73,8 @@ func Watch(db *store.DB) error {
 				return nil
 			}
 
-			// Only care about markdown files
-			if !strings.HasSuffix(event.Name, ".md") {
+			// Only care about markdown files (skip meta-docs)
+			if !strings.HasSuffix(event.Name, ".md") || config.SkipFiles[filepath.Base(event.Name)] {
 				// But watch new directories
 				if event.Has(fsnotify.Create) {
 					if info, err := os.Stat(event.Name); err == nil && info.IsDir() {

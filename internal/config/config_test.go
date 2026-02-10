@@ -106,8 +106,8 @@ func TestLoadConfig_Default(t *testing.T) {
 	if cfg.Display.Mode != "full" {
 		t.Errorf("expected default display mode 'full', got %q", cfg.Display.Mode)
 	}
-	if cfg.Memory.MaxResults != 2 {
-		t.Errorf("expected default max_results 2, got %d", cfg.Memory.MaxResults)
+	if cfg.Memory.MaxResults != 4 {
+		t.Errorf("expected default max_results 4, got %d", cfg.Memory.MaxResults)
 	}
 }
 

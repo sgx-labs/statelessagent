@@ -381,7 +381,7 @@ func walkVault(vaultPath string) []string {
 			}
 			return nil
 		}
-		if strings.HasSuffix(d.Name(), ".md") {
+		if strings.HasSuffix(d.Name(), ".md") && !config.SkipFiles[d.Name()] {
 			files = append(files, path)
 		}
 		return nil
