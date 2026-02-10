@@ -1,13 +1,24 @@
 # SAME — Stateless Agent Memory Engine
 
 [![License: BSL 1.1](https://img.shields.io/badge/License-BSL_1.1-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.23+-00ADD8.svg)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](https://go.dev)
+[![Latest Release](https://img.shields.io/github/v/release/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent/releases)
+[![GitHub Stars](https://img.shields.io/github/stars/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent)
 
 > Every AI session starts from zero. **Not anymore.**
 
 Tired of re-explaining your project architecture, your coding decisions, and where you left off — every single session? SAME gives your AI agent persistent memory across sessions, entirely on your machine.
 
 **Your AI remembers your decisions. Your architecture. Where you left off. Automatically.**
+
+### Why SAME
+
+SAME is a memory engine — a foundation you control and customize to fit your workflow.
+
+- **Local-first** — your notes, decisions, and context never leave your machine. No cloud APIs, no accounts, no API keys
+- **Works immediately** — keyword search runs out of the box. Add [Ollama](https://ollama.ai) for semantic search that understands meaning, not just keywords (recommended)
+- **Single binary** — one `curl` command, no runtimes, no Docker, no package managers
+- **Yours to build on** — SQLite + MCP. Swap embedding providers, adjust retrieval, connect any MCP client. SAME adapts to you, not the other way around
 
 ## Install
 
@@ -40,14 +51,7 @@ export PATH="$HOME/.local/bin:$PATH"  # add to ~/.zshrc to persist
 same init --yes
 ```
 
-**macOS (Intel):**
-```bash
-mkdir -p ~/.local/bin
-curl -fsSL https://github.com/sgx-labs/statelessagent/releases/latest/download/same-darwin-amd64 -o ~/.local/bin/same
-chmod +x ~/.local/bin/same
-export PATH="$HOME/.local/bin:$PATH"
-same init --yes
-```
+**macOS (Intel):** Build from source (see below) or use Rosetta: `arch -arm64 ./same-darwin-arm64`
 
 **Linux (x86_64):**
 ```bash
@@ -67,7 +71,7 @@ same init --yes
 
 </details>
 
-Requires [Ollama](https://ollama.ai) for local embeddings (or configure OpenAI).
+Install [Ollama](https://ollama.ai) for the full semantic search experience (recommended). SAME also works without Ollama using keyword search — you're never blocked.
 
 ## What happens when you use SAME
 
@@ -75,6 +79,7 @@ Requires [Ollama](https://ollama.ai) for local embeddings (or configure OpenAI).
 - **Decisions stick** — architectural choices, coding patterns, and project preferences are extracted and remembered. No more "we already decided to use JWT."
 - **The right notes surface at the right time** — semantic search finds relevant context from your notes and injects it into your AI's context window. No manual copy-pasting.
 - **Notes your AI actually uses get boosted** — a built-in feedback loop tracks which notes the agent references, improving retrieval over time.
+- **Ask questions, get answers** — `same ask` uses a local LLM to answer questions from your notes with source citations. "ChatGPT for your notes" — 100% local.
 - **Pin critical context** — `same pin` ensures your most important notes are always included, regardless of what you're working on.
 - **When something breaks, SAME tells you why** — `same doctor` runs 15 diagnostic checks and tells you exactly what to fix.
 - **Everything stays on your machine** — Ollama embeddings + SQLite. No cloud, no API keys, no accounts.
@@ -91,11 +96,16 @@ SAME indexes your markdown notes into a local SQLite database with vector embedd
 ## Quick start
 
 ```bash
-cd ~/my-notes
-same init
+same demo              # see it in action first (no notes needed)
+cd ~/my-project && same init   # or set up your own project
+same ask "what did we decide about auth?"  # ask questions, get answers
 ```
 
-One command checks Ollama, finds your notes, indexes them, sets up a privacy-first directory structure, and configures your AI tools.
+`same demo` creates a temporary vault and walks you through search and RAG — all in under 60 seconds. Works without Ollama.
+
+`same init` finds your notes (including existing README.md, docs/, etc.), indexes them, and configures your AI tools. Works with or without Ollama.
+
+`same tutorial` — 6 hands-on lessons covering search, decisions, pinning, privacy, RAG, and session handoffs. Run `same tutorial search` to try just one.
 
 ## Works with
 
@@ -134,6 +144,9 @@ Go · SQLite + sqlite-vec · Ollama / OpenAI
 | Command | Description |
 |---------|-------------|
 | `same init` | Set up SAME for your project (start here) |
+| `same demo` | See SAME in action with sample notes |
+| `same tutorial` | Learn SAME features hands-on (6 lessons) |
+| `same ask <question>` | Ask a question, get answers from your notes (RAG) |
 | `same status` | See what SAME is tracking |
 | `same doctor` | Check system health and diagnose issues |
 | `same search <query>` | Search your notes from the command line |
@@ -311,7 +324,7 @@ The SQLite database is missing or corrupted. Fix:
 No. Any directory of `.md` files works.
 
 **Do I need Ollama?**
-By default, yes — SAME uses Ollama for local embeddings. But you can switch to OpenAI embeddings by setting `SAME_EMBED_PROVIDER=openai` and `SAME_EMBED_API_KEY`. If Ollama goes down temporarily, SAME falls back to keyword search automatically.
+Recommended, not required. Ollama gives you semantic search — SAME understands *meaning*, not just keywords. Without Ollama, SAME falls back to keyword search (FTS5) so you're never blocked. You can also use OpenAI embeddings (`SAME_EMBED_PROVIDER=openai`). If Ollama goes down temporarily, SAME falls back to keywords automatically.
 
 **Does it slow down my prompts?**
 50-200ms. Embedding is the bottleneck — search and scoring take <5ms.
@@ -342,7 +355,7 @@ git clone https://github.com/sgx-labs/statelessagent.git
 cd statelessagent && make install
 ```
 
-Requires Go 1.23+ and CGO.
+Requires Go 1.25+ and CGO.
 
 ## Support
 

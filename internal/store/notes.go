@@ -124,6 +124,51 @@ func (db *DB) BulkInsertNotes(records []NoteRecord, embeddings [][]float32) erro
 	return tx.Commit()
 }
 
+// BulkInsertNotesLite inserts note records WITHOUT embeddings (FTS5-only mode).
+// Used when Ollama is not available. Notes are stored for keyword search only.
+func (db *DB) BulkInsertNotesLite(records []NoteRecord) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`
+		INSERT INTO vault_notes (path, title, tags, domain, workstream, chunk_id, chunk_heading,
+			text, modified, content_hash, content_type, review_by, confidence, access_count)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return fmt.Errorf("prepare stmt: %w", err)
+	}
+	defer stmt.Close()
+
+	for i, rec := range records {
+		if _, err := stmt.Exec(
+			rec.Path, rec.Title, rec.Tags, rec.Domain, rec.Workstream,
+			rec.ChunkID, rec.ChunkHeading, rec.Text, rec.Modified,
+			rec.ContentHash, rec.ContentType, rec.ReviewBy, rec.Confidence, rec.AccessCount,
+		); err != nil {
+			return fmt.Errorf("insert note %d: %w", i, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// HasVectors returns true if the vault_notes_vec table has any entries.
+// Used to detect whether SAME is running in full (vector) or lite (FTS5-only) mode.
+func (db *DB) HasVectors() bool {
+	var exists int
+	err := db.conn.QueryRow("SELECT EXISTS(SELECT 1 FROM vault_notes_vec LIMIT 1)").Scan(&exists)
+	if err != nil {
+		return false
+	}
+	return exists == 1
+}
+
 // GetContentHashes returns a map of path → content_hash for all notes.
 // Used for incremental reindexing.
 func (db *DB) GetContentHashes() (map[string]string, error) {

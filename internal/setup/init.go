@@ -152,8 +152,17 @@ func RunInit(opts InitOptions) error {
 
 	// Checking Ollama
 	cli.Section("Ollama")
+	ollamaOK := true
 	if err := checkOllama(); err != nil {
-		return err
+		// Offer lite mode instead of failing
+		fmt.Println()
+		fmt.Printf("  %s→%s You can still use SAME without Ollama (keyword search mode).\n", cli.Cyan, cli.Reset)
+		fmt.Printf("    %sSearch will use keywords instead of AI-powered semantic matching.%s\n", cli.Dim, cli.Reset)
+		fmt.Printf("    %sInstall Ollama later and run 'same reindex' to upgrade.%s\n\n", cli.Dim, cli.Reset)
+		if !opts.Yes && !confirm("  Continue without Ollama?", true) {
+			return fmt.Errorf("setup cancelled — install Ollama from https://ollama.ai and try again")
+		}
+		ollamaOK = false
 	}
 
 	// Finding notes
@@ -176,7 +185,7 @@ func RunInit(opts InitOptions) error {
 
 	// Indexing
 	cli.Section("Indexing")
-	stats, err := runIndex(vaultPath, opts.Verbose)
+	stats, err := runIndex(vaultPath, opts.Verbose, ollamaOK)
 	if err != nil {
 		return err
 	}
@@ -514,6 +523,26 @@ func detectVault(autoAccept bool) (string, error) {
 		}
 	}
 
+	// Check for project documentation (README, docs/, ARCHITECTURE.md, etc.)
+	projectDocs := detectProjectDocs(cwd)
+	if len(projectDocs) > 0 {
+		fmt.Printf("  %s✓%s Detected project documentation:\n", cli.Green, cli.Reset)
+		for _, doc := range projectDocs {
+			info, err := os.Stat(filepath.Join(cwd, doc))
+			if err == nil {
+				sizeKB := float64(info.Size()) / 1024
+				fmt.Printf("    %s (%s%.1f KB%s)\n", doc, cli.Dim, sizeKB, cli.Reset)
+			} else {
+				fmt.Printf("    %s\n", doc)
+			}
+		}
+		fmt.Println()
+		fmt.Printf("  %sYour AI will be able to search these docs.%s\n", cli.Dim, cli.Reset)
+		if autoAccept || confirm("  Index these files?", true) {
+			return cwd, nil
+		}
+	}
+
 	// Check if CWD has markdown files even without a marker
 	count := indexer.CountMarkdownFiles(cwd)
 	if count > 0 {
@@ -523,7 +552,7 @@ func detectVault(autoAccept bool) (string, error) {
 		if autoAccept || confirm("  Use this directory?", true) {
 			return cwd, nil
 		}
-	} else {
+	} else if len(projectDocs) == 0 {
 		fmt.Println("  No vault markers or markdown files found.")
 	}
 
@@ -608,7 +637,8 @@ func promptForPath() (string, error) {
 }
 
 // runIndex indexes the vault with a progress bar.
-func runIndex(vaultPath string, verbose bool) (*indexer.Stats, error) {
+// If useOllama is false, uses lite mode (keyword search only, no embeddings).
+func runIndex(vaultPath string, verbose, useOllama bool) (*indexer.Stats, error) {
 	// Count files first for time estimate
 	noteCount := indexer.CountMarkdownFiles(vaultPath)
 
@@ -672,7 +702,12 @@ func runIndex(vaultPath string, verbose bool) (*indexer.Stats, error) {
 		}
 	}
 
-	stats, err := indexer.ReindexWithProgress(db, true, progress)
+	var stats *indexer.Stats
+	if useOllama {
+		stats, err = indexer.ReindexWithProgress(db, true, progress)
+	} else {
+		stats, err = indexer.ReindexLite(db, true, progress)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("indexing failed: %w", err)
 	}
@@ -927,4 +962,61 @@ func runTestSearch(vaultPath string) string {
 	}
 
 	return results[0].Title
+}
+
+// detectProjectDocs scans a directory for common project documentation files.
+// Returns relative paths of found docs, or nil if none found.
+func detectProjectDocs(dir string) []string {
+	// Known documentation files (check root)
+	rootFiles := []string{
+		"README.md", "readme.md", "Readme.md",
+		"ARCHITECTURE.md", "DESIGN.md", "CONTRIBUTING.md",
+		"CHANGELOG.md", "CLAUDE.md",
+		".cursorrules", ".windsurfrules",
+	}
+
+	// Known documentation directories
+	docDirs := []string{
+		"docs", "documentation", "doc",
+		"ADR", "adr",
+	}
+
+	var found []string
+	seen := make(map[string]bool)
+
+	// Check root-level doc files
+	for _, name := range rootFiles {
+		path := filepath.Join(dir, name)
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			if !seen[name] {
+				seen[name] = true
+				found = append(found, name)
+			}
+		}
+	}
+
+	// Check doc directories (list .md files inside)
+	for _, docDir := range docDirs {
+		dirPath := filepath.Join(dir, docDir)
+		info, err := os.Stat(dirPath)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		entries, err := os.ReadDir(dirPath)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+				continue
+			}
+			relPath := filepath.Join(docDir, e.Name())
+			if !seen[relPath] {
+				seen[relPath] = true
+				found = append(found, relPath)
+			}
+		}
+	}
+
+	return found
 }

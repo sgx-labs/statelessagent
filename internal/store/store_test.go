@@ -1044,5 +1044,162 @@ func TestParseTags(t *testing.T) {
 	}
 }
 
+func TestHasVectors_Empty(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Empty database should report no vectors
+	if db.HasVectors() {
+		t.Error("expected HasVectors=false for empty database")
+	}
+}
+
+func TestHasVectors_WithVectors(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Insert a note with embedding
+	rec := &NoteRecord{
+		Path: "test.md", Title: "Test", Tags: "[]",
+		ChunkID: 0, Text: "test content", Modified: 1700000000,
+		ContentHash: "hash", ContentType: "note", Confidence: 0.5,
+	}
+	vec := make([]float32, 768)
+	vec[0] = 1.0
+
+	if err := db.InsertNote(rec, vec); err != nil {
+		t.Fatalf("InsertNote: %v", err)
+	}
+
+	if !db.HasVectors() {
+		t.Error("expected HasVectors=true after inserting a note with embedding")
+	}
+}
+
+func TestHasVectors_LiteMode(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Insert notes via BulkInsertNotesLite (no embeddings)
+	records := []NoteRecord{
+		{
+			Path: "lite-test.md", Title: "Lite Test", Tags: "[]",
+			ChunkID: 0, Text: "lite content", Modified: 1700000000,
+			ContentHash: "hash", ContentType: "note", Confidence: 0.5,
+		},
+	}
+	if err := db.BulkInsertNotesLite(records); err != nil {
+		t.Fatalf("BulkInsertNotesLite: %v", err)
+	}
+
+	// Notes exist but no vectors
+	count, err := db.NoteCount()
+	if err != nil {
+		t.Fatalf("NoteCount: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 note, got %d", count)
+	}
+
+	if db.HasVectors() {
+		t.Error("expected HasVectors=false after BulkInsertNotesLite")
+	}
+}
+
+func TestBulkInsertNotesLite(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	records := []NoteRecord{
+		{
+			Path: "a.md", Title: "Note A", Tags: `["tag1"]`,
+			Domain: "eng", Workstream: "api",
+			ChunkID: 0, ChunkHeading: "(full)", Text: "content of note A",
+			Modified: 1700000000, ContentHash: "hash-a",
+			ContentType: "note", Confidence: 0.5,
+		},
+		{
+			Path: "b.md", Title: "Note B", Tags: `["tag2"]`,
+			Domain: "eng", Workstream: "api",
+			ChunkID: 0, ChunkHeading: "(full)", Text: "content of note B",
+			Modified: 1700000001, ContentHash: "hash-b",
+			ContentType: "decision", Confidence: 0.7,
+		},
+		{
+			Path: "a.md", Title: "Note A", Tags: `["tag1"]`,
+			Domain: "eng", Workstream: "api",
+			ChunkID: 1, ChunkHeading: "Section 2", Text: "second chunk of note A",
+			Modified: 1700000000, ContentHash: "hash-a",
+			ContentType: "note", Confidence: 0.5,
+		},
+	}
+
+	if err := db.BulkInsertNotesLite(records); err != nil {
+		t.Fatalf("BulkInsertNotesLite: %v", err)
+	}
+
+	// Check counts
+	noteCount, _ := db.NoteCount()
+	chunkCount, _ := db.ChunkCount()
+	if noteCount != 2 {
+		t.Errorf("expected 2 unique notes, got %d", noteCount)
+	}
+	if chunkCount != 3 {
+		t.Errorf("expected 3 chunks, got %d", chunkCount)
+	}
+
+	// Verify notes can be retrieved
+	notes, err := db.GetNoteByPath("a.md")
+	if err != nil {
+		t.Fatalf("GetNoteByPath: %v", err)
+	}
+	if len(notes) != 2 {
+		t.Errorf("expected 2 chunks for a.md, got %d", len(notes))
+	}
+	if notes[0].Title != "Note A" {
+		t.Errorf("expected title 'Note A', got %q", notes[0].Title)
+	}
+
+	// Verify content hashes work for incremental mode
+	hashes, err := db.GetContentHashes()
+	if err != nil {
+		t.Fatalf("GetContentHashes: %v", err)
+	}
+	if hashes["a.md"] != "hash-a" {
+		t.Errorf("expected hash-a for a.md, got %q", hashes["a.md"])
+	}
+	if hashes["b.md"] != "hash-b" {
+		t.Errorf("expected hash-b for b.md, got %q", hashes["b.md"])
+	}
+}
+
+func TestBulkInsertNotesLite_Empty(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Empty insert should not error
+	if err := db.BulkInsertNotesLite(nil); err != nil {
+		t.Fatalf("BulkInsertNotesLite(nil): %v", err)
+	}
+	if err := db.BulkInsertNotesLite([]NoteRecord{}); err != nil {
+		t.Fatalf("BulkInsertNotesLite(empty): %v", err)
+	}
+}
+
 // Suppress unused import warnings
 var _ = math.Pi

@@ -84,10 +84,10 @@ case "$OS" in
         ARCH_NAME="Apple Silicon (M1/M2/M3)"
         ;;
       x86_64)
-        SUFFIX="darwin-amd64"
-        ARCH_NAME="Intel"
-        echo -e "  ${YELLOW}!${RESET} Intel Mac detected. Binary runs via Rosetta."
-        echo "    For a native build: install Go and build from source."
+        SUFFIX="darwin-arm64"
+        ARCH_NAME="Intel (via Rosetta)"
+        echo -e "  ${YELLOW}!${RESET} Intel Mac detected. Installing ARM binary (runs via Rosetta)."
+        echo "    For a native build: git clone and 'make install'."
         echo ""
         ;;
       *)

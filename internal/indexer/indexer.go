@@ -161,7 +161,11 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 
 		// For incremental mode, delete old chunks for this path first
 		if !force {
-			db.DeleteByPath(result.Path)
+			if err := db.DeleteByPath(result.Path); err != nil {
+				fmt.Fprintf(os.Stderr, "  [ERROR] delete %s: %v\n", result.Path, err)
+				stats.Errors++
+				continue
+			}
 		}
 
 		if err := db.BulkInsertNotes(result.Records, result.Embeddings); err != nil {
@@ -190,6 +194,7 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 	embedName := embedClient.Name()
 	embedDims := embedClient.Dimensions()
 	_ = db.SetEmbeddingMeta(embedName, ec.Model, embedDims)
+	_ = db.SetMeta("index_mode", "full")
 
 	// Record reindex timestamp and version for doctor diagnostics
 	_ = db.SetMeta("last_reindex_time", time.Now().UTC().Format(time.RFC3339))
@@ -395,6 +400,172 @@ func relativePath(filePath, vaultPath string) string {
 func sha256Hash(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return fmt.Sprintf("%x", h)
+}
+
+// ReindexLite indexes vault notes WITHOUT generating embeddings (FTS5-only mode).
+// Used when Ollama is unavailable. Notes are parsed, chunked, and stored for keyword search.
+func ReindexLite(db *store.DB, force bool, progress ProgressFunc) (*Stats, error) {
+	vaultPath := config.VaultPath()
+	mdFiles := walkVault(vaultPath)
+	stats := &Stats{
+		TotalFiles: len(mdFiles),
+		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+	}
+
+	var existingHashes map[string]string
+	if !force {
+		var err error
+		existingHashes, err = db.GetContentHashes()
+		if err != nil {
+			existingHashes = make(map[string]string)
+		}
+	}
+
+	if force {
+		if err := db.DeleteAllNotes(); err != nil {
+			return nil, fmt.Errorf("clear existing data: %w", err)
+		}
+	}
+
+	for i, fp := range mdFiles {
+		relPath := relativePath(fp, vaultPath)
+
+		if !force {
+			content, err := os.ReadFile(fp)
+			if err != nil {
+				stats.Errors++
+				continue
+			}
+			hash := sha256Hash(string(content))
+			if existing, ok := existingHashes[relPath]; ok && existing == hash {
+				stats.SkippedUnchanged++
+				if progress != nil {
+					progress(i+1, stats.TotalFiles, relPath)
+				}
+				continue
+			}
+		}
+
+		if !force {
+			if err := db.DeleteByPath(relPath); err != nil {
+				fmt.Fprintf(os.Stderr, "  [ERROR] delete %s: %v\n", relPath, err)
+				stats.Errors++
+				continue
+			}
+		}
+
+		records, err := buildRecordsLite(fp, relPath, vaultPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  [ERROR] %s: %v\n", relPath, err)
+			stats.Errors++
+			continue
+		}
+
+		if len(records) > 0 {
+			if err := db.BulkInsertNotesLite(records); err != nil {
+				fmt.Fprintf(os.Stderr, "  [ERROR] storing %s: %v\n", relPath, err)
+				stats.Errors++
+				continue
+			}
+		}
+
+		stats.NewlyIndexed++
+		if progress != nil {
+			progress(i+1, stats.TotalFiles, relPath)
+		}
+	}
+
+	noteCount, _ := db.NoteCount()
+	chunkCount, _ := db.ChunkCount()
+	stats.NotesInIndex = noteCount
+	stats.ChunksInIndex = chunkCount
+
+	_ = db.SetMeta("last_reindex_time", time.Now().UTC().Format(time.RFC3339))
+	_ = db.SetMeta("index_mode", "lite")
+	if Version != "" {
+		_ = db.SetMeta("same_version", Version)
+	}
+
+	_ = db.RebuildFTS()
+	saveStats(stats)
+
+	return stats, nil
+}
+
+// buildRecordsLite builds note records WITHOUT embeddings.
+func buildRecordsLite(filePath, relPath, vaultPath string) ([]store.NoteRecord, error) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("read file: %w", err)
+	}
+
+	parsed := ParseNote(string(content))
+	meta := parsed.Meta
+	body := parsed.Body
+
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("stat file: %w", err)
+	}
+	mtime := float64(info.ModTime().Unix())
+	contentHash := sha256Hash(body)
+
+	title := meta.Title
+	if title == "" {
+		title = strings.TrimSuffix(filepath.Base(filePath), ".md")
+	}
+
+	tagsJSON, _ := json.Marshal(meta.Tags)
+	if meta.Tags == nil {
+		tagsJSON = []byte("[]")
+	}
+
+	contentType := memory.InferContentType(relPath, meta.ContentType, meta.Tags)
+	reviewBy := strings.TrimSpace(meta.ReviewBy)
+	confidence := memory.ComputeConfidence(contentType, mtime, 0, reviewBy != "")
+
+	var chunks []Chunk
+	if len(body) > config.ChunkTokenThreshold {
+		chunks = ChunkByHeadings(body)
+		var final []Chunk
+		for _, c := range chunks {
+			if len(c.Text) > config.MaxEmbedChars {
+				final = append(final, ChunkBySize(c.Text, config.MaxEmbedChars)...)
+			} else {
+				final = append(final, c)
+			}
+		}
+		chunks = final
+	} else {
+		chunks = []Chunk{{Heading: "(full)", Text: body}}
+	}
+
+	var records []store.NoteRecord
+	for i, chunk := range chunks {
+		text := chunk.Text
+		if len(text) > 10000 {
+			text = text[:10000]
+		}
+
+		records = append(records, store.NoteRecord{
+			Path:         relPath,
+			Title:        title,
+			Tags:         string(tagsJSON),
+			Domain:       meta.Domain,
+			Workstream:   meta.Workstream,
+			ChunkID:      i,
+			ChunkHeading: chunk.Heading,
+			Text:         text,
+			Modified:     mtime,
+			ContentHash:  contentHash,
+			ContentType:  contentType,
+			ReviewBy:     reviewBy,
+			Confidence:   confidence,
+			AccessCount:  0,
+		})
+	}
+
+	return records, nil
 }
 
 func saveStats(stats *Stats) {

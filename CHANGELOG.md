@@ -2,10 +2,15 @@
 
 ## v0.6.0 — Reliability, Privacy & Polish
 
-Self-diagnosing retrieval, pinned notes, keyword fallback, vault privacy structure, and a full polish pass.
+Self-diagnosing retrieval, pinned notes, keyword fallback, vault privacy structure, RAG chat, interactive demo, and a full polish pass.
 
 ### Added
 
+- **`same ask`** — ask questions, get answers FROM your notes with source citations. Uses a local Ollama LLM to synthesize answers from semantically relevant notes. Auto-detects the best available chat model. 100% local, no cloud APIs. Example: `same ask "what did we decide about authentication?"`
+- **`same demo`** — interactive demo that creates a temporary vault with 6 realistic sample notes, indexes them, runs search, and showcases `same ask`. Works without Ollama (keyword-only mode). See SAME in action in under 60 seconds.
+- **`same tutorial`** — modular learn-by-doing system with 6 lessons: semantic search, decisions, pinning, privacy tiers, RAG chat, and session handoffs. Run all lessons (`same tutorial`) or jump to any topic (`same tutorial search`, `same tutorial pin`). Creates real notes and runs real commands — you learn the CLI by using it.
+- **SAME Lite (keyword-only mode)** — SAME now works without Ollama. When Ollama is unavailable, `same init` offers keyword-only mode using SQLite FTS5. All features work — search, ask, demo, tutorial — with keyword matching instead of semantic search. Install Ollama later and `same reindex` upgrades to full semantic mode. Zero dependencies beyond the binary.
+- **Project-aware init** — `same init` now detects existing project documentation (README.md, docs/, ARCHITECTURE.md, CLAUDE.md, .cursorrules, ADR/) and offers to index them. Zero new notes required — your project already has context.
 - **`same pin`** — pin important notes so they're always included in every session: `same pin path/to/note.md`, `same pin list`, `same pin remove path/to/note.md`. Pinned notes inject with maximum priority regardless of query.
 - **`same repair`** — one-command database recovery: backs up `same.db`, force-rebuilds the index, and confirms. The go-to command when something breaks.
 - **`same feedback`** — manual thumbs-up/down for notes: `same feedback "path" up` boosts retrieval confidence; `same feedback "path" down` penalizes. Supports glob-style paths.

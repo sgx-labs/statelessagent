@@ -25,7 +25,7 @@ make test           # run tests
 make install        # install to $GOPATH/bin or /usr/local/bin
 ```
 
-Requires Go 1.23+ and CGO_ENABLED=1.
+Requires Go 1.25+ and CGO_ENABLED=1.
 
 ## Git Protocol
 
