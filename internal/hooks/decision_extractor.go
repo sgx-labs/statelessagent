@@ -34,7 +34,7 @@ func runDecisionExtractor(_ *store.DB, input *HookInput) *HookOutput {
 	// Append to decision log (validate path stays in vault)
 	logPath, ok := config.SafeVaultSubpath(config.DecisionLogPath())
 	if !ok {
-		fmt.Fprintf(os.Stderr, "same: decision log path escapes vault boundary, skipping\n")
+		fmt.Fprintf(os.Stderr, "same: decision log path is outside your notes folder — skipping\n")
 		return nil
 	}
 	count := memory.AppendToDecisionLog(decisions, logPath, "")

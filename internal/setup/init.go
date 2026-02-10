@@ -171,6 +171,9 @@ func RunInit(opts InitOptions) error {
 	// Copy welcome notes (before indexing so they get included)
 	copyWelcomeNotes(vaultPath)
 
+	// Create seed directories
+	createSeedStructure(vaultPath)
+
 	// Indexing
 	cli.Section("Indexing")
 	stats, err := runIndex(vaultPath, opts.Verbose)
@@ -222,6 +225,8 @@ func RunInit(opts InitOptions) error {
 		cli.Bold, cli.Reset,
 		cli.FormatNumber(stats.NotesInIndex), cli.ShortenHome(vaultPath))
 	fmt.Printf("  %sExcluded%s    _PRIVATE/, .obsidian/, .git/, .same/\n",
+		cli.Bold, cli.Reset)
+	fmt.Printf("  %sLocal-only%s  research/ is indexed but gitignored\n",
 		cli.Bold, cli.Reset)
 	fmt.Printf("  %sAgent sees%s  note title + path + 300-char snippet\n",
 		cli.Bold, cli.Reset)
@@ -679,27 +684,54 @@ func runIndex(vaultPath string, verbose bool) (*indexer.Stats, error) {
 }
 
 
-// handleGitignore checks and offers to add .same/data/ to .gitignore.
+// sameGitignoreTemplate is the recommended .gitignore content for SAME vaults.
+const sameGitignoreTemplate = `# SAME — Privacy-first .gitignore
+# Three tiers: system (never commit), private (never index), local-only (indexed but not committed)
+
+# SAME system data (machine-specific, contains embeddings and DB)
+.same/data/
+
+# Private — never commit, never indexed by SAME
+# Put API keys, credentials, and truly secret notes here
+_PRIVATE/
+
+# Local research — indexed by SAME but not committed to git
+# Your AI can search these notes, but they stay on your machine
+# Remove this line if you WANT to version-control your research
+research/
+`
+
+// handleGitignore ensures the vault has a .gitignore with SAME privacy rules.
+// Creates one if it doesn't exist, or appends SAME rules to an existing one.
 func handleGitignore(vaultPath string, autoAccept bool) {
 	gitignorePath := filepath.Join(vaultPath, ".gitignore")
 
-	// Only proceed if .gitignore exists (we don't create one)
 	content, err := os.ReadFile(gitignorePath)
 	if err != nil {
+		// No .gitignore exists — create one with the full template
+		if autoAccept || confirm("\n  Create .gitignore with privacy rules?", true) {
+			if err := os.WriteFile(gitignorePath, []byte(sameGitignoreTemplate), 0o644); err != nil {
+				fmt.Printf("  %s!%s Could not create .gitignore: %v\n",
+					cli.Yellow, cli.Reset, err)
+				return
+			}
+			fmt.Printf("  → Created .gitignore with privacy rules\n")
+			fmt.Printf("    %s.same/data/ (system), _PRIVATE/ (secret), research/ (local-only)%s\n",
+				cli.Dim, cli.Reset)
+		}
 		return
 	}
 
-	// Check if .same/data/ is already ignored
+	// .gitignore exists — check if SAME rules are already present
 	lines := strings.Split(string(content), "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == ".same/data/" || line == ".same/data" || line == ".same/" || line == ".same" {
-			return // already ignored
+			return // already has SAME rules
 		}
 	}
 
-	if autoAccept || confirm("\n  Add .same/data/ to .gitignore?", true) {
-		entry := "\n# SAME database (machine-specific)\n.same/data/\n"
+	if autoAccept || confirm("\n  Add SAME privacy rules to .gitignore?", true) {
 		f, err := os.OpenFile(gitignorePath, os.O_APPEND|os.O_WRONLY, 0o644)
 		if err != nil {
 			fmt.Printf("  %s!%s Could not update .gitignore: %v\n",
@@ -707,8 +739,41 @@ func handleGitignore(vaultPath string, autoAccept bool) {
 			return
 		}
 		defer f.Close()
-		f.WriteString(entry)
-		fmt.Printf("  → Added .same/data/ to .gitignore\n")
+		f.WriteString("\n" + sameGitignoreTemplate)
+		fmt.Printf("  → Added SAME privacy rules to .gitignore\n")
+		fmt.Printf("    %s.same/data/ (system), _PRIVATE/ (secret), research/ (local-only)%s\n",
+			cli.Dim, cli.Reset)
+	}
+}
+
+// createSeedStructure creates the recommended vault directory structure.
+// Only creates directories that don't already exist. Never overwrites.
+func createSeedStructure(vaultPath string) {
+	seedDirs := []struct {
+		path string
+		desc string
+	}{
+		{"sessions", "session handoffs"},
+		{"_PRIVATE", "private notes (not indexed)"},
+	}
+
+	created := 0
+	for _, d := range seedDirs {
+		dir := filepath.Join(vaultPath, d.path)
+		if _, err := os.Stat(dir); err == nil {
+			continue // already exists
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			continue
+		}
+		created++
+	}
+
+	if created > 0 {
+		fmt.Printf("  %s✓%s Created seed directories: sessions/, _PRIVATE/\n",
+			cli.Green, cli.Reset)
+		fmt.Printf("    %ssessions/ = handoff notes, _PRIVATE/ = never indexed%s\n",
+			cli.Dim, cli.Reset)
 	}
 }
 

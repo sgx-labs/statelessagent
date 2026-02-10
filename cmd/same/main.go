@@ -93,6 +93,7 @@ Need help? https://discord.gg/GZGHtrrKF2`,
 	root.AddCommand(ciCmd())
 	root.AddCommand(repairCmd())
 	root.AddCommand(feedbackCmd())
+	root.AddCommand(pinCmd())
 
 	// Global --vault flag
 	root.PersistentFlags().StringVar(&config.VaultOverride, "vault", "", "Vault name or path (overrides auto-detect)")
@@ -373,7 +374,7 @@ func reindexCmd() *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "reindex",
-		Short: "Index vault into SQLite",
+		Short: "Scan your notes and rebuild the search index",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runReindex(force)
 		},
@@ -385,7 +386,7 @@ func reindexCmd() *cobra.Command {
 func statsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stats",
-		Short: "Show index statistics",
+		Short: "Show how many notes are indexed",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runStats()
 		},
@@ -395,7 +396,7 @@ func statsCmd() *cobra.Command {
 func migrateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "migrate",
-		Short: "Re-index from markdown (drops old data)",
+		Short: "Rebuild index from scratch (replaces old data)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runReindex(true)
 		},
@@ -429,7 +430,7 @@ func hookSubCmd(name, short string) *cobra.Command {
 func mcpCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "mcp",
-		Short: "Start MCP stdio server",
+		Short: "Start the AI tool integration server (MCP)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mcpserver.Version = Version
 			return mcpserver.Serve()
@@ -562,7 +563,7 @@ func relatedCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "related [note-path]",
-		Short: "Find notes semantically similar to a given note",
+		Short: "Find notes related to a given note",
 		Long:  "Find notes related to a specific vault note using its stored embedding. Path is relative to vault root.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -656,7 +657,7 @@ func runRelated(notePath string, topK int, jsonOut bool) error {
 func doctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
-		Short: "Check if everything is working correctly",
+		Short: "Check system health and diagnose issues",
 		Long:  "Runs health checks on your SAME setup: verifies Ollama is running, your notes are indexed, and search is working.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDoctor()
@@ -991,7 +992,7 @@ func runDoctor() error {
 func pluginCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "plugin",
-		Short: "Manage hook plugins",
+		Short: "Manage hook extensions",
 	}
 
 	cmd.AddCommand(&cobra.Command{
@@ -1224,7 +1225,7 @@ func runBudget(sessionID string, lastN int, jsonOut bool) error {
 func benchCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "bench",
-		Short: "Run performance benchmarks",
+		Short: "Run search performance benchmarks",
 		Long:  "Measure cold-start, search, embedding, and database performance.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runBench()
@@ -2013,15 +2014,15 @@ func runRepair() error {
 func feedbackCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "feedback [path] [up|down]",
-		Short: "Boost or penalize a note's retrieval confidence",
+		Short: "Tell SAME which notes are helpful (or not)",
 		Long: `Manually adjust how likely a note is to be surfaced.
 
   same feedback "projects/plan.md" up     Boost confidence
   same feedback "projects/plan.md" down   Penalize confidence
   same feedback "projects/*" down         Glob-style path matching
 
-'up' increases confidence by 0.2 and boosts access count.
-'down' decreases confidence by 0.3 (harsh penalty, near-zero floor).`,
+'up' makes the note more likely to appear in future sessions.
+'down' makes it much less likely to appear (strong penalty).`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runFeedback(args[0], args[1])
@@ -2115,6 +2116,146 @@ func runFeedback(pathPattern, direction string) error {
 		fmt.Printf("\n  Adjusted %d notes.\n", len(notes))
 	}
 
+	return nil
+}
+
+// ---------- pin ----------
+
+func pinCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "pin",
+		Short: "Always include a note in every session",
+		Long: `Pin important notes so they're always included when your AI starts a session.
+
+Pinned notes are injected every time, regardless of what you're working on.
+Use this for architecture decisions, coding standards, or project context
+that your AI should always know about.
+
+  same pin path/to/note.md      Pin a note
+  same pin list                 Show all pinned notes
+  same pin remove path/to/note  Unpin a note`,
+	}
+
+	cmd.AddCommand(pinAddCmd())
+	cmd.AddCommand(pinListCmd())
+	cmd.AddCommand(pinRemoveCmd())
+
+	// Allow `same pin <path>` as shorthand for `same pin add <path>`
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if len(args) == 1 {
+			return runPinAdd(args[0])
+		}
+		return cmd.Help()
+	}
+	// Accept arbitrary args so `same pin path/to/note.md` works
+	cmd.Args = cobra.ArbitraryArgs
+
+	return cmd
+}
+
+func pinAddCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "add [path]",
+		Short: "Pin a note",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runPinAdd(args[0])
+		},
+	}
+}
+
+func pinListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "Show all pinned notes",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runPinList()
+		},
+	}
+}
+
+func pinRemoveCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "remove [path]",
+		Short: "Unpin a note",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runPinRemove(args[0])
+		},
+	}
+}
+
+func runPinAdd(path string) error {
+	db, err := store.Open()
+	if err != nil {
+		return config.ErrNoDatabase
+	}
+	defer db.Close()
+
+	// Check if note exists in the index
+	notes, err := db.GetNoteByPath(path)
+	if err != nil || len(notes) == 0 {
+		return fmt.Errorf("note not found in index: %s\n  Make sure the path is relative to your vault root", path)
+	}
+
+	already, _ := db.IsPinned(path)
+	if already {
+		fmt.Printf("  Already pinned: %s\n", path)
+		return nil
+	}
+
+	if err := db.PinNote(path); err != nil {
+		return fmt.Errorf("pin note: %w", err)
+	}
+
+	fmt.Printf("  %s✓%s Pinned: %s\n", cli.Green, cli.Reset, notes[0].Title)
+	fmt.Printf("    %sThis note will be included in every session%s\n", cli.Dim, cli.Reset)
+	return nil
+}
+
+func runPinList() error {
+	db, err := store.Open()
+	if err != nil {
+		return config.ErrNoDatabase
+	}
+	defer db.Close()
+
+	paths, err := db.GetPinnedPaths()
+	if err != nil {
+		return fmt.Errorf("get pinned notes: %w", err)
+	}
+
+	if len(paths) == 0 {
+		fmt.Println("  No pinned notes.")
+		fmt.Printf("  %sPin a note with: same pin path/to/note.md%s\n", cli.Dim, cli.Reset)
+		return nil
+	}
+
+	fmt.Printf("  %sPinned notes%s (always included in sessions):\n\n", cli.Bold, cli.Reset)
+	for _, p := range paths {
+		notes, _ := db.GetNoteByPath(p)
+		title := p
+		if len(notes) > 0 {
+			title = notes[0].Title
+		}
+		fmt.Printf("    %s %s\n", title, cli.Dim+p+cli.Reset)
+	}
+	fmt.Printf("\n  %d pinned note(s).\n", len(paths))
+	return nil
+}
+
+func runPinRemove(path string) error {
+	db, err := store.Open()
+	if err != nil {
+		return config.ErrNoDatabase
+	}
+	defer db.Close()
+
+	if err := db.UnpinNote(path); err != nil {
+		return err
+	}
+
+	fmt.Printf("  %s✓%s Unpinned: %s\n", cli.Green, cli.Reset, path)
 	return nil
 }
 

@@ -1,100 +1,42 @@
 # Changelog
 
-## v0.7.1 — Retrieval Diagnostics & Reliability
+## v0.6.0 — Reliability, Privacy & Polish
 
-Self-diagnosing retrieval, manual feedback, auto-repair, and keyword fallback.
+Self-diagnosing retrieval, pinned notes, keyword fallback, vault privacy structure, and a full polish pass.
 
 ### Added
 
-- **Doctor retrieval diagnostics** — 3 new `same doctor` checks: embedding config mismatch (#13), SQLite PRAGMA integrity (#14), retrieval utilization rate (#15)
+- **`same pin`** — pin important notes so they're always included in every session: `same pin path/to/note.md`, `same pin list`, `same pin remove path/to/note.md`. Pinned notes inject with maximum priority regardless of query.
 - **`same repair`** — one-command database recovery: backs up `same.db`, force-rebuilds the index, and confirms. The go-to command when something breaks.
-- **`same feedback`** — manual thumbs-up/down for notes: `same feedback "path" up` boosts confidence +0.2 and access +5; `same feedback "path" down` penalizes confidence -0.3. Supports glob-style paths.
-- **FTS5 keyword fallback** — when Ollama is down or slow, context surfacing falls back to SQLite FTS5 full-text search instead of failing silently. Lower quality than semantic search but functional.
-- **Usage data pruning** — `context_usage` and `context_decisions` records older than 90 days are pruned during reindex to prevent unbounded growth
-- **Reindex metadata** — stores `last_reindex_time` and `same_version` in `schema_meta` after each reindex
-
-### Changed
-
-- **Schema version 2** — adds FTS5 virtual table (`vault_notes_fts`) for keyword fallback; auto-migrates from v1
-- **Context surfacing resilience** — embedding failures now trigger keyword fallback instead of returning diagnostic error to AI
-
----
-
-## v0.7.0 — Foundation + Safety
-
-Schema migrations, embedding mismatch guard, hook timeout, and config surfacing.
-
-### Added
-
-- **Schema migration system** — `schema_meta` table with version-gated migrations enables safe schema evolution without `reindex --force`; `GetMeta()`/`SetMeta()` for key-value metadata storage
-- **Embedding mismatch guard** — detects when embedding provider/model/dimensions change without reindexing; surfaces clear "run `same reindex --force`" error in CLI commands and hook diagnostics
-- **Hook execution timeout** — 10-second timeout on hook dispatch prevents hung Ollama from blocking prompts; returns `<same-diagnostic>` on timeout instead of hanging
-- **Config section in `same status`** — shows loaded config path, parse errors, or defaults-only state
-- **`ConfigWarning()` and `FindConfigFile()` exports** — public API for config health checks
+- **`same feedback`** — manual thumbs-up/down for notes: `same feedback "path" up` boosts retrieval confidence; `same feedback "path" down` penalizes. Supports glob-style paths.
+- **Vault seed structure** — `same init` now creates a three-tier privacy directory structure: `sessions/` (handoffs), `_PRIVATE/` (never indexed, never committed), plus a `.gitignore` template enforcing privacy boundaries
+- **FTS5 keyword fallback** — when Ollama is down or slow, context surfacing falls back to SQLite FTS5 full-text search instead of failing silently
+- **Doctor retrieval diagnostics** — 8 new `same doctor` checks: embedding config mismatch, SQLite PRAGMA integrity, retrieval utilization rate, config file validity, hook installation, DB integrity, index freshness, log file size
+- **Schema migration system** — `schema_meta` table with version-gated migrations; `GetMeta()`/`SetMeta()` for metadata storage; auto-migrates between schema versions
+- **Embedding mismatch guard** — detects when embedding provider/model/dimensions change without reindexing; surfaces clear guidance
+- **Hook execution timeout** — 10-second timeout prevents hung Ollama from blocking prompts; returns `<same-diagnostic>` on timeout
+- **AI-facing diagnostics** — when hooks fail (DB missing, Ollama down), the AI sees `<same-diagnostic>` blocks with suggested user actions instead of silent failure
+- **Ollama retry with backoff** — 3 attempts with exponential backoff (0/2/4s) for 5xx and network errors
+- **Usage data pruning** — records older than 90 days pruned during reindex
+- **Configurable noise filtering** — `[vault] noise_paths` in config.toml or `SAME_NOISE_PATHS` env var
+- **23 new tests** — store (milestones, pins, delete, recent, access count, tags), search (keyword, content term, fuzzy title, hybrid), indexer (chunking, frontmatter parsing, vault walking)
 
 ### Fixed
 
-- **TOML `skip_dirs` now applied** — `RebuildSkipDirs()` was defined but never called; `LoadConfig()` now applies `[vault] skip_dirs` to the global `SkipDirs` map
-
-### Changed
-
-- **Reindex records embedding metadata** — after successful indexing, provider name, model, and dimensions are stored in `schema_meta` for mismatch detection
-
----
-
-## v0.6.0 — Production Polish
-
-Error handling, AI diagnostics, and reliability improvements.
-
-### Fixed
-
-- **Replaced all panics with errors** — `OllamaURL()` and `validateLocalhostOnly()` now return errors instead of crashing the process on bad URLs
+- **Replaced all panics with errors** — `OllamaURL()` and `validateLocalhostOnly()` now return errors instead of crashing
+- **TOML `skip_dirs` now applied** — `LoadConfig()` applies `[vault] skip_dirs` to the global `SkipDirs` map
 - **Verbose log permissions** — changed from 0o644 to 0o600 (owner-only)
 
-### Added
-
-- **AI-facing diagnostics** — when hooks fail (DB missing, Ollama down), the AI agent now sees `<same-diagnostic>` blocks with suggested user actions instead of silent failure
-- **Ollama retry with backoff** — 3 attempts with exponential backoff (0/2/4s) for 5xx and network errors; 4xx errors fail immediately
-- **Verbose log rotation** — logs rotate at 5MB (keeps last 1MB) to prevent unbounded growth
-- **5 new `same doctor` checks** — config file validity, hook installation, DB integrity, index freshness, log file size
-- **Tests for config and embedding packages** — `config_test.go` and `ollama_test.go` covering URL validation, retry behavior, model defaults, and error constants
-
 ### Changed
 
-- **Consistent error messages** — all vault/database errors use shared `ErrNoVault`, `ErrNoDatabase`, `ErrOllamaNotLocal` constants
-- **README expanded** — added display modes, push protection, and troubleshooting sections
-
----
-
-## v0.5.6 — Box Mode Default
-
-The visual feedback box is now the default display for `full` mode — no env var needed.
-
-### Changed
-
-- **Box is now default** — `full` display mode shows the cyan Unicode box automatically (previously required `SAME_BOX=1`)
-- **Setup messaging updated** — experience level descriptions now mention the visual box and how to switch modes
-- **Removed `SAME_BOX` env var** — no longer needed; `same display full` always shows the box
-
----
-
-## v0.5.5 — Configurable Noise Filtering
-
-Removed hardcoded vault structure assumptions. SAME no longer expects specific folder names.
-
-### Changed
-
-- **Session bootstrap** walks the entire vault for decision files instead of hardcoded directories
-- **Noise path filtering** is now user-configurable via `[vault] noise_paths` in config.toml or `SAME_NOISE_PATHS` env var (defaults to empty — no paths filtered)
-- Genericized all test fixtures and code comments
-
-### Added
-
-- `noise_paths` config field and `SAME_NOISE_PATHS` env var for filtering low-value paths from context surfacing
-
-### Breaking
-
-- Noise filtering no longer applies by default. If you relied on implicit filtering, add `noise_paths = ["experiments/", "raw_outputs/"]` to your `[vault]` config.
+- **Schema version 2** — adds FTS5 virtual table for keyword fallback; auto-migrates from v1
+- **Context surfacing resilience** — embedding failures trigger keyword fallback instead of returning errors
+- **CLI descriptions rewritten** — all user-facing commands use outcome language (e.g. "Scan your notes and rebuild the search index" instead of "Index vault into SQLite")
+- **README overhauled** — pain-first hero section, outcome-focused features, three-tier privacy table, updated CLI reference
+- **MCP tool descriptions improved** — all 6 tools rewritten with agent-oriented "when to use" guidance
+- **Error messages friendlier** — "escapes vault boundary" → "outside your notes folder"; timeouts and connection failures include actionable guidance
+- **Box is now default display** — `full` mode shows the cyan Unicode box automatically
+- **Noise filtering off by default** — add `noise_paths` to config if you want path-based filtering
 
 ---
 

@@ -739,5 +739,310 @@ func TestFTSAvailableFlag(t *testing.T) {
 	t.Logf("FTS5 available: %v", available)
 }
 
+func TestMilestoneShown(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Unknown key should return false
+	if db.MilestoneShown("unknown_key") {
+		t.Errorf("expected MilestoneShown=false for unknown key")
+	}
+
+	// Record the milestone
+	if err := db.RecordMilestone("unknown_key"); err != nil {
+		t.Fatalf("RecordMilestone: %v", err)
+	}
+
+	// Now it should return true
+	if !db.MilestoneShown("unknown_key") {
+		t.Errorf("expected MilestoneShown=true after RecordMilestone")
+	}
+}
+
+func TestRecordMilestone(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Record a milestone
+	if err := db.RecordMilestone("test_milestone"); err != nil {
+		t.Fatalf("RecordMilestone: %v", err)
+	}
+
+	// Record again — should be idempotent (no error)
+	if err := db.RecordMilestone("test_milestone"); err != nil {
+		t.Fatalf("RecordMilestone idempotent: %v", err)
+	}
+
+	// Verify it's still shown
+	if !db.MilestoneShown("test_milestone") {
+		t.Errorf("expected MilestoneShown=true after double RecordMilestone")
+	}
+}
+
+func TestMilestoneAge(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Unknown key should return 0
+	if age := db.MilestoneAge("unknown_key"); age != 0 {
+		t.Errorf("expected MilestoneAge=0 for unknown key, got %v", age)
+	}
+
+	// Record the milestone
+	if err := db.RecordMilestone("age_test"); err != nil {
+		t.Fatalf("RecordMilestone: %v", err)
+	}
+
+	// Age should now be >= 0
+	age := db.MilestoneAge("age_test")
+	if age < 0 {
+		t.Errorf("expected MilestoneAge >= 0, got %v", age)
+	}
+}
+
+func TestClearMilestone(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Record a milestone
+	if err := db.RecordMilestone("clear_test"); err != nil {
+		t.Fatalf("RecordMilestone: %v", err)
+	}
+
+	// Verify it's shown
+	if !db.MilestoneShown("clear_test") {
+		t.Errorf("expected MilestoneShown=true after RecordMilestone")
+	}
+
+	// Clear it
+	if err := db.ClearMilestone("clear_test"); err != nil {
+		t.Fatalf("ClearMilestone: %v", err)
+	}
+
+	// Verify it's no longer shown
+	if db.MilestoneShown("clear_test") {
+		t.Errorf("expected MilestoneShown=false after ClearMilestone")
+	}
+}
+
+func TestGetPinnedNotes(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	vec := make([]float32, 768)
+	rec := &NoteRecord{
+		Path: "notes/pinned.md", Title: "Pinned Note", Tags: "[]", ChunkID: 0,
+		ChunkHeading: "(full)", Text: "pinned content", Modified: 1700000000,
+		ContentHash: "hash1", ContentType: "note", Confidence: 0.5,
+	}
+	if err := db.InsertNote(rec, vec); err != nil {
+		t.Fatalf("InsertNote: %v", err)
+	}
+
+	// Pin the note
+	if err := db.PinNote("notes/pinned.md"); err != nil {
+		t.Fatalf("PinNote: %v", err)
+	}
+
+	// GetPinnedNotes should return the note record
+	pinned, err := db.GetPinnedNotes()
+	if err != nil {
+		t.Fatalf("GetPinnedNotes: %v", err)
+	}
+	if len(pinned) != 1 {
+		t.Fatalf("expected 1 pinned note, got %d", len(pinned))
+	}
+	if pinned[0].Path != "notes/pinned.md" {
+		t.Errorf("expected path notes/pinned.md, got %s", pinned[0].Path)
+	}
+	if pinned[0].Title != "Pinned Note" {
+		t.Errorf("expected title 'Pinned Note', got %s", pinned[0].Title)
+	}
+}
+
+func TestGetLatestHandoff(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	vec := make([]float32, 768)
+
+	// Insert an older handoff
+	rec1 := &NoteRecord{
+		Path: "sessions/handoff-old.md", Title: "Old Handoff", Tags: "[]", ChunkID: 0,
+		ChunkHeading: "(full)", Text: "old handoff content", Modified: 1700000000,
+		ContentHash: "h1", ContentType: "handoff", Confidence: 0.5,
+	}
+	if err := db.InsertNote(rec1, vec); err != nil {
+		t.Fatalf("InsertNote old: %v", err)
+	}
+
+	// Insert a newer handoff
+	rec2 := &NoteRecord{
+		Path: "sessions/handoff-new.md", Title: "New Handoff", Tags: "[]", ChunkID: 0,
+		ChunkHeading: "(full)", Text: "new handoff content", Modified: 1700001000,
+		ContentHash: "h2", ContentType: "handoff", Confidence: 0.5,
+	}
+	if err := db.InsertNote(rec2, vec); err != nil {
+		t.Fatalf("InsertNote new: %v", err)
+	}
+
+	// GetLatestHandoff should return the most recently modified one
+	latest, err := db.GetLatestHandoff()
+	if err != nil {
+		t.Fatalf("GetLatestHandoff: %v", err)
+	}
+	if latest.Path != "sessions/handoff-new.md" {
+		t.Errorf("expected sessions/handoff-new.md, got %s", latest.Path)
+	}
+}
+
+func TestDeleteByPath(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	vec := make([]float32, 768)
+	rec := &NoteRecord{
+		Path: "notes/deleteme.md", Title: "Delete Me", Tags: "[]", ChunkID: 0,
+		ChunkHeading: "(full)", Text: "delete content", Modified: 1700000000,
+		ContentHash: "d1", ContentType: "note", Confidence: 0.5,
+	}
+	if err := db.InsertNote(rec, vec); err != nil {
+		t.Fatalf("InsertNote: %v", err)
+	}
+
+	// Verify it exists
+	notes, err := db.GetNoteByPath("notes/deleteme.md")
+	if err != nil {
+		t.Fatalf("GetNoteByPath: %v", err)
+	}
+	if len(notes) == 0 {
+		t.Fatalf("expected note to exist before delete")
+	}
+
+	// Delete it
+	if err := db.DeleteByPath("notes/deleteme.md"); err != nil {
+		t.Fatalf("DeleteByPath: %v", err)
+	}
+
+	// Verify it's gone
+	notes, err = db.GetNoteByPath("notes/deleteme.md")
+	if err != nil {
+		t.Fatalf("GetNoteByPath after delete: %v", err)
+	}
+	if len(notes) != 0 {
+		t.Errorf("expected 0 notes after delete, got %d", len(notes))
+	}
+}
+
+func TestRecentNotes(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	vec := make([]float32, 768)
+
+	// Insert several notes with different modified times
+	notes := []NoteRecord{
+		{Path: "notes/oldest.md", Title: "Oldest", Tags: "[]", ChunkID: 0, ChunkHeading: "(full)", Text: "oldest", Modified: 1700000000, ContentHash: "a", ContentType: "note", Confidence: 0.5},
+		{Path: "notes/middle.md", Title: "Middle", Tags: "[]", ChunkID: 0, ChunkHeading: "(full)", Text: "middle", Modified: 1700001000, ContentHash: "b", ContentType: "note", Confidence: 0.5},
+		{Path: "notes/newest.md", Title: "Newest", Tags: "[]", ChunkID: 0, ChunkHeading: "(full)", Text: "newest", Modified: 1700002000, ContentHash: "c", ContentType: "note", Confidence: 0.5},
+	}
+	for i := range notes {
+		if err := db.InsertNote(&notes[i], vec); err != nil {
+			t.Fatalf("InsertNote %d: %v", i, err)
+		}
+	}
+
+	// RecentNotes(2) should return 2, ordered most recent first
+	recent, err := db.RecentNotes(2)
+	if err != nil {
+		t.Fatalf("RecentNotes: %v", err)
+	}
+	if len(recent) != 2 {
+		t.Fatalf("expected 2 recent notes, got %d", len(recent))
+	}
+	if recent[0].Path != "notes/newest.md" {
+		t.Errorf("expected newest first, got %s", recent[0].Path)
+	}
+	if recent[1].Path != "notes/middle.md" {
+		t.Errorf("expected middle second, got %s", recent[1].Path)
+	}
+}
+
+func TestIncrementAccessCount(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	vec := make([]float32, 768)
+	rec := &NoteRecord{
+		Path: "notes/access.md", Title: "Access Test", Tags: "[]", ChunkID: 0,
+		ChunkHeading: "(full)", Text: "access content", Modified: 1700000000,
+		ContentHash: "ac1", ContentType: "note", Confidence: 0.5, AccessCount: 0,
+	}
+	if err := db.InsertNote(rec, vec); err != nil {
+		t.Fatalf("InsertNote: %v", err)
+	}
+
+	// Increment access count
+	if err := db.IncrementAccessCount([]string{"notes/access.md"}); err != nil {
+		t.Fatalf("IncrementAccessCount: %v", err)
+	}
+
+	// Verify it's now 1
+	notes, err := db.GetNoteByPath("notes/access.md")
+	if err != nil || len(notes) == 0 {
+		t.Fatalf("GetNoteByPath: %v", err)
+	}
+	if notes[0].AccessCount != 1 {
+		t.Errorf("expected access count 1, got %d", notes[0].AccessCount)
+	}
+}
+
+func TestParseTags(t *testing.T) {
+	// Valid JSON array
+	tags := ParseTags(`["a","b"]`)
+	if len(tags) != 2 || tags[0] != "a" || tags[1] != "b" {
+		t.Errorf("expected [a b], got %v", tags)
+	}
+
+	// Empty string returns empty/nil slice
+	tags = ParseTags("")
+	if len(tags) != 0 {
+		t.Errorf("expected empty slice for empty string, got %v", tags)
+	}
+
+	// Empty JSON array returns empty slice
+	tags = ParseTags("[]")
+	if len(tags) != 0 {
+		t.Errorf("expected empty slice for '[]', got %v", tags)
+	}
+}
+
 // Suppress unused import warnings
 var _ = math.Pi

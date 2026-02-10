@@ -49,3 +49,6 @@ website/brief/index.html
 website/brief/investors/
 website/sgx-labs/
 website/playbook/
+
+# Local research & strategy notes (never commit — may contain competitive intel, PII)
+.research/

@@ -75,37 +75,37 @@ func registerTools(server *mcp.Server) {
 	// search_notes
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_notes",
-		Description: "Search vault notes by semantic similarity.\n\nArgs:\n  query: Natural language search query\n  top_k: Number of results (default 10, max 100)\n\nReturns ranked list of matching notes.",
+		Description: "Search the user's knowledge base for relevant notes, decisions, and context. Use this when you need background on a topic, want to find prior decisions, or need to understand project architecture.\n\nArgs:\n  query: Natural language search query (e.g. 'authentication approach', 'database schema decisions')\n  top_k: Number of results (default 10, max 100)\n\nReturns ranked list of matching notes with titles, paths, and text snippets.",
 	}, handleSearchNotes)
 
 	// search_notes_filtered
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_notes_filtered",
-		Description: "Search vault notes with frontmatter filters.\n\nArgs:\n  query: Natural language search query\n  top_k: Number of results (default 10, max 100)\n  domain: Filter by domain\n  workstream: Filter by workstream\n  tags: Comma-separated tags to filter by\n\nReturns filtered ranked list.",
+		Description: "Search the user's knowledge base with metadata filters. Use this when you want to narrow results by domain (e.g. 'engineering'), workstream (e.g. 'api-redesign'), or tags.\n\nArgs:\n  query: Natural language search query\n  top_k: Number of results (default 10, max 100)\n  domain: Filter by domain (e.g. 'engineering', 'product')\n  workstream: Filter by workstream/project name\n  tags: Comma-separated tags to filter by\n\nReturns filtered ranked list.",
 	}, handleSearchNotesFiltered)
 
 	// get_note
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_note",
-		Description: "Read the full content of a vault note.\n\nArgs:\n  path: Relative path from vault root\n\nReturns full text content.",
+		Description: "Read the full content of a note. Use this after search_notes returns a relevant result and you need the complete text. Paths are relative to the vault root.\n\nArgs:\n  path: Relative path from vault root (as returned by search_notes)\n\nReturns full markdown text content.",
 	}, handleGetNote)
 
 	// find_similar_notes
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "find_similar_notes",
-		Description: "Find notes semantically similar to a given note.\n\nArgs:\n  path: Relative path of the source note\n  top_k: Number of similar notes (default 5, max 100)\n\nReturns list of similar notes.",
+		Description: "Find notes that cover similar topics to a given note. Use this to discover related context, find notes that might conflict, or build a broader picture of a topic.\n\nArgs:\n  path: Relative path of the source note\n  top_k: Number of similar notes (default 5, max 100)\n\nReturns list of related notes ranked by similarity.",
 	}, handleFindSimilar)
 
 	// reindex
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "reindex",
-		Description: "Re-index the vault: embed all markdown notes into the database.\n\nArgs:\n  force: Re-embed all files regardless of changes (default false)\n\nReturns indexing statistics.",
+		Description: "Re-scan and re-index all markdown notes. Use this if the user has added or changed notes and search results seem stale. Incremental by default (only re-embeds changed files).\n\nArgs:\n  force: Re-embed all files regardless of changes (default false)\n\nReturns indexing statistics.",
 	}, handleReindex)
 
 	// index_stats
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "index_stats",
-		Description: "Show the current state of the vault search index.\n\nReturns note count, chunk count, last indexed timestamp, model info.",
+		Description: "Check the health and size of the note index. Use this to verify the index is up to date or to report stats to the user.\n\nReturns note count, chunk count, last indexed timestamp, embedding model info, and database size.",
 	}, handleIndexStats)
 }
 

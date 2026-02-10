@@ -363,7 +363,7 @@ func runContextSurfacing(db *store.DB, input *HookInput) *HookOutput {
 	// Embed the prompt
 	embedProvider, err := newEmbedProvider()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "same: embedding provider: %v\n", err)
+		fmt.Fprintf(os.Stderr, "same: can't connect to embedding provider — is Ollama running? (%v)\n", err)
 		return &HookOutput{
 			HookSpecificOutput: &HookSpecific{
 				HookEventName:     "UserPromptSubmit",

@@ -173,7 +173,7 @@ func Run(hookName string) {
 	case result := <-ch:
 		output = result.output
 	case <-time.After(hookTimeout):
-		fmt.Fprintf(os.Stderr, "same hook %s: timed out after %s\n", hookName, hookTimeout)
+		fmt.Fprintf(os.Stderr, "same hook %s: timed out after %s — Ollama may be slow or starting up\n", hookName, hookTimeout)
 		eventName := hookEventMap[hookName]
 		if eventName == "" {
 			eventName = "UserPromptSubmit"

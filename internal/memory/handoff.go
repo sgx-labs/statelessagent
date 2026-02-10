@@ -132,7 +132,7 @@ func WriteHandoff(
 	// SECURITY: Validate the resolved path stays inside the vault boundary.
 	absPath, ok := config.SafeVaultSubpath(relativePath)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "same: handoff path escapes vault boundary, skipping\n")
+		fmt.Fprintf(os.Stderr, "same: handoff path is outside your notes folder — skipping\n")
 		return nil
 	}
 	dir := filepath.Dir(absPath)

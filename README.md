@@ -1,8 +1,13 @@
 # SAME — Stateless Agent Memory Engine
 
+[![License: BSL 1.1](https://img.shields.io/badge/License-BSL_1.1-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.23+-00ADD8.svg)](https://go.dev)
+
 > Every AI session starts from zero. **Not anymore.**
 
-Give your AI coding agent persistent memory — local, automatic, private.
+Tired of re-explaining your project architecture, your coding decisions, and where you left off — every single session? SAME gives your AI agent persistent memory across sessions, entirely on your machine.
+
+**Your AI remembers your decisions. Your architecture. Where you left off. Automatically.**
 
 ## Install
 
@@ -64,12 +69,15 @@ same init --yes
 
 Requires [Ollama](https://ollama.ai) for local embeddings (or configure OpenAI).
 
-## What it does
+## What happens when you use SAME
 
-- **Surfaces the right context, not all context** — semantic search finds the notes that matter. No manual copy-pasting, no token waste.
-- **Learns what helps** — notes the agent actually uses get boosted for future sessions (feedback loop).
-- **Extracts decisions and generates handoffs** — decisions get logged, session summaries get created, so the next session picks up where you left off.
-- **Runs entirely on your machine** — Ollama embeddings + SQLite by default. No cloud, no API keys, no accounts. Optional OpenAI embeddings if you prefer.
+- **Your AI picks up where you left off** — session handoffs are generated automatically, so the next session knows what happened in the last one.
+- **Decisions stick** — architectural choices, coding patterns, and project preferences are extracted and remembered. No more "we already decided to use JWT."
+- **The right notes surface at the right time** — semantic search finds relevant context from your notes and injects it into your AI's context window. No manual copy-pasting.
+- **Notes your AI actually uses get boosted** — a built-in feedback loop tracks which notes the agent references, improving retrieval over time.
+- **Pin critical context** — `same pin` ensures your most important notes are always included, regardless of what you're working on.
+- **When something breaks, SAME tells you why** — `same doctor` runs 15 diagnostic checks and tells you exactly what to fix.
+- **Everything stays on your machine** — Ollama embeddings + SQLite. No cloud, no API keys, no accounts.
 
 ## How it works
 
@@ -78,6 +86,8 @@ Your Notes  →  Ollama  →  SQLite  →  Agent Remembers
   (.md)       (embed)    (search)    (hooks / MCP)
 ```
 
+SAME indexes your markdown notes into a local SQLite database with vector embeddings. When you use an AI coding tool, SAME's hooks automatically surface relevant context. Decisions get extracted, handoffs get generated, and the next session picks up where you left off.
+
 ## Quick start
 
 ```bash
@@ -85,22 +95,34 @@ cd ~/my-notes
 same init
 ```
 
-One command checks Ollama, finds your notes, indexes them, generates config, and sets up integrations.
+One command checks Ollama, finds your notes, indexes them, sets up a privacy-first directory structure, and configures your AI tools.
 
 ## Works with
 
 | Tool | Integration |
 |------|-------------|
-| **Claude Code** | Hooks + MCP |
+| **Claude Code** | Hooks + MCP (full experience) |
 | **Cursor** | MCP |
 | **Windsurf** | MCP |
 | **Obsidian** | Vault detection |
 | **Logseq** | Vault detection |
-| **Any MCP client** | 6 tools |
+| **Any MCP client** | 6 search and retrieval tools |
 
 SAME works with any directory of `.md` files. No Obsidian required.
 
 Use `same init --mcp-only` to skip Claude Code hooks and just register the MCP server.
+
+## Privacy by design
+
+SAME creates a three-tier privacy structure in your vault:
+
+| Directory | Indexed by SAME? | Committed to git? | Use for |
+|-----------|-----------------|-------------------|---------|
+| Your notes | Yes | Your choice | Project docs, decisions, research |
+| `_PRIVATE/` | **No** | **No** | API keys, credentials, truly secret notes |
+| `research/` | Yes | **No** (gitignored) | Research, analysis, strategy — searchable but local-only |
+
+`same init` creates a `.gitignore` that enforces these boundaries automatically. Privacy is structural — filesystem-level, not policy-based.
 
 ## Built with
 
@@ -111,26 +133,30 @@ Go · SQLite + sqlite-vec · Ollama / OpenAI
 
 | Command | Description |
 |---------|-------------|
-| `same init` | Interactive setup wizard |
-| `same status` | At-a-glance system status |
-| `same log` | Recent SAME activity |
-| `same search <query>` | Search from the command line |
-| `same related <path>` | Find similar notes |
-| `same reindex [--force]` | Re-index markdown files |
-| `same doctor` | System health check with fix suggestions |
+| `same init` | Set up SAME for your project (start here) |
+| `same status` | See what SAME is tracking |
+| `same doctor` | Check system health and diagnose issues |
+| `same search <query>` | Search your notes from the command line |
+| `same related <path>` | Find notes related to a given note |
+| `same pin <path>` | Always include a note in every session |
+| `same pin list` | Show all pinned notes |
+| `same pin remove <path>` | Unpin a note |
+| `same feedback <path> up\|down` | Tell SAME which notes are helpful (or not) |
 | `same repair` | Back up database and force-rebuild index |
-| `same feedback <path> up\|down` | Boost or penalize a note's retrieval confidence |
+| `same reindex [--force]` | Scan notes and rebuild the search index |
 | `same display full\|compact\|quiet` | Control output verbosity |
 | `same profile use precise\|balanced\|broad` | Adjust precision vs coverage |
 | `same config show` | Show effective configuration |
 | `same config edit` | Open config in $EDITOR |
 | `same setup hooks` | Install/update Claude Code hooks |
 | `same setup mcp` | Register MCP server |
-| `same stats` | Index statistics |
+| `same log` | Recent SAME activity |
+| `same stats` | Show how many notes are indexed |
 | `same watch` | Auto-reindex on file changes |
 | `same budget` | Context utilization report |
 | `same vault list\|add\|remove` | Manage multiple vaults |
 | `same version [--check]` | Version and update check |
+| `same update` | Update to the latest version |
 
 </details>
 
@@ -256,6 +282,7 @@ The embedding provider is unreachable. Fix:
 - Check if Ollama is running (look for the llama icon)
 - Test with: `curl http://localhost:11434/api/tags`
 - If using a non-default port, set `OLLAMA_URL=http://localhost:<port>`
+- SAME will automatically fall back to keyword search if Ollama is temporarily down
 
 **Hooks not firing**
 Context isn't being surfaced during Claude Code sessions. Fix:
@@ -265,7 +292,7 @@ Context isn't being surfaced during Claude Code sessions. Fix:
 
 **Context not surfacing**
 Hooks fire but no notes appear. Fix:
-- Run `same doctor` to check all components
+- Run `same doctor` to diagnose all 15 checks
 - Run `same reindex` if your notes have changed
 - Try `same search "your query"` to test search directly
 - Check if display mode is set to "quiet": `same config show`
@@ -284,7 +311,7 @@ The SQLite database is missing or corrupted. Fix:
 No. Any directory of `.md` files works.
 
 **Do I need Ollama?**
-By default, yes — SAME uses Ollama for local embeddings. But you can switch to OpenAI embeddings by setting `SAME_EMBED_PROVIDER=openai` and `SAME_EMBED_API_KEY`. Note: switching providers requires reindexing since embedding dimensions differ.
+By default, yes — SAME uses Ollama for local embeddings. But you can switch to OpenAI embeddings by setting `SAME_EMBED_PROVIDER=openai` and `SAME_EMBED_API_KEY`. If Ollama goes down temporarily, SAME falls back to keyword search automatically.
 
 **Does it slow down my prompts?**
 50-200ms. Embedding is the bottleneck — search and scoring take <5ms.
@@ -303,6 +330,7 @@ Yes. `same vault add work ~/work-notes && same vault default work`.
 - All data stays local — no external API calls except Ollama on localhost
 - Ollama URL validated to localhost-only
 - `_PRIVATE/` directories excluded from indexing and context surfacing
+- `research/` indexed but gitignored by default — your AI can search it, but it never leaves your machine
 - Snippets scanned for prompt injection patterns before injection
 - Path traversal blocked in MCP `get_note` tool
 - **Push protection** — `same guard settings set push-protect on` requires explicit `same push-allow` before git push (prevents accidental pushes when running multiple agents)
