@@ -57,6 +57,7 @@ func newOllamaProvider(cfg ProviderConfig) (*OllamaProvider, error) {
 }
 
 func (p *OllamaProvider) Name() string    { return "ollama" }
+func (p *OllamaProvider) Model() string   { return p.model }
 func (p *OllamaProvider) Dimensions() int { return p.dims }
 
 type ollamaEmbeddingRequest struct {

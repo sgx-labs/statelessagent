@@ -109,9 +109,9 @@ func checkDependencies() {
 	fmt.Sscanf(matches[1], "%d", &major)
 	fmt.Sscanf(matches[2], "%d", &minor)
 
-	if major < 1 || (major == 1 && minor < 23) {
+	if major < 1 || (major == 1 && minor < 25) {
 		showHeader()
-		fmt.Printf("  %s!%s Go %d.%d detected (SAME requires Go 1.23+ for building from source)\n",
+		fmt.Printf("  %s!%s Go %d.%d detected (SAME requires Go 1.25+ for building from source)\n",
 			cli.Yellow, cli.Reset, major, minor)
 		fmt.Println("    If you installed SAME via a binary, you can ignore this.")
 		fmt.Println("    Upgrade Go: https://go.dev/dl/")

@@ -72,6 +72,26 @@ func TestOllamaURL_InvalidURL(t *testing.T) {
 	}
 }
 
+func TestOllamaURL_RejectsBadScheme(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"file scheme", "file://localhost/etc/passwd"},
+		{"ftp scheme", "ftp://localhost:11434"},
+		{"no scheme", "localhost:11434"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("OLLAMA_URL", tt.url)
+			_, err := OllamaURL()
+			if err == nil {
+				t.Errorf("expected error for %s URL %q", tt.name, tt.url)
+			}
+		})
+	}
+}
+
 func TestLoadConfig_Default(t *testing.T) {
 	// With no config file, should get defaults
 	os.Unsetenv("VAULT_PATH")

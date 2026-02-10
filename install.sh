@@ -169,12 +169,12 @@ build_prereqs_ok() {
   command -v git >/dev/null 2>&1 || return 1
   command -v go >/dev/null 2>&1 || return 1
 
-  # Check Go version >= 1.23
+  # Check Go version >= 1.25
   local go_ver
   go_ver=$(go version | grep -oE '[0-9]+\.[0-9]+' | head -1)
   local go_minor
   go_minor=$(echo "$go_ver" | cut -d. -f2)
-  [ "$go_minor" -ge 23 ] 2>/dev/null || return 1
+  [ "$go_minor" -ge 25 ] 2>/dev/null || return 1
 
   # Check for C compiler (needed for CGO/SQLite)
   command -v gcc >/dev/null 2>&1 || command -v cc >/dev/null 2>&1 || return 1
@@ -291,7 +291,7 @@ if [ "$BINARY_ACQUIRED" = false ]; then
       fi
     else
       OLD_GO_VER=$(go version | grep -oE '[0-9]+\.[0-9]+' | head -1)
-      echo "  Go $OLD_GO_VER found but SAME needs Go 1.23+."
+      echo "  Go $OLD_GO_VER found but SAME needs Go 1.25+."
       echo "  Upgrade: https://go.dev/dl/"
     fi
   fi

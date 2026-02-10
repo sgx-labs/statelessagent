@@ -1,0 +1,34 @@
+{
+  "name": "io.github.sgx-labs/same",
+  "title": "SAME - Stateless Agent Memory Engine",
+  "description": "Persistent memory for AI coding agents. Local-first, SQLite + vector search.",
+  "version": "0.6.0",
+  "websiteUrl": "https://statelessagent.com",
+  "repository": {
+    "url": "https://github.com/sgx-labs/statelessagent",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "github-release",
+      "identifier": "sgx-labs/statelessagent",
+      "version": "0.6.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "VAULT_PATH",
+          "description": "Path to your markdown notes directory",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

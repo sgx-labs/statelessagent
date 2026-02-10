@@ -502,6 +502,9 @@ func searchCmd() *cobra.Command {
 }
 
 func runSearch(query string, topK int, domain string, jsonOut bool) error {
+	if strings.TrimSpace(query) == "" {
+		return userError("Empty search query", "Provide a search term: same search \"your query\"")
+	}
 	db, err := store.Open()
 	if err != nil {
 		return config.ErrNoDatabase
@@ -983,7 +986,7 @@ func runDoctor() error {
 		if err != nil {
 			return "", fmt.Errorf("cannot create provider: %v", err)
 		}
-		if mismatchErr := db.CheckEmbeddingMeta(embedClient.Name(), "", embedClient.Dimensions()); mismatchErr != nil {
+		if mismatchErr := db.CheckEmbeddingMeta(embedClient.Name(), embedClient.Model(), embedClient.Dimensions()); mismatchErr != nil {
 			return "", mismatchErr
 		}
 		provider, _ := db.GetMeta("embed_provider")
@@ -1026,7 +1029,7 @@ func runDoctor() error {
 		rate := float64(referenced) / float64(total)
 		detail := fmt.Sprintf("%.0f%% of injected context was used", rate*100)
 		if rate < 0.20 {
-			return "", fmt.Errorf("low utilization (%.0f%%) — most injected context is being ignored", rate*100)
+			return fmt.Sprintf("%.0f%% — this improves as your AI references more notes", rate*100), nil
 		}
 		return detail, nil
 	})
@@ -2039,7 +2042,7 @@ func runRepair() error {
 			fmt.Printf(" %sfailed%s\n", cli.Red, cli.Reset)
 			return fmt.Errorf("read database: %w", err)
 		}
-		if err := os.WriteFile(bakPath, src, 0o644); err != nil {
+		if err := os.WriteFile(bakPath, src, 0o600); err != nil {
 			fmt.Printf(" %sfailed%s\n", cli.Red, cli.Reset)
 			return fmt.Errorf("write backup: %w", err)
 		}
@@ -2086,6 +2089,9 @@ func feedbackCmd() *cobra.Command {
 }
 
 func runFeedback(pathPattern, direction string) error {
+	if strings.TrimSpace(pathPattern) == "" {
+		return userError("Empty path", "Provide a note path: same feedback \"path/to/note.md\" up")
+	}
 	if direction != "up" && direction != "down" {
 		return userError(
 			fmt.Sprintf("Unknown direction: %s", direction),
@@ -2342,6 +2348,9 @@ Examples:
 }
 
 func runAsk(question, model string, topK int) error {
+	if strings.TrimSpace(question) == "" {
+		return userError("Empty question", "Ask something: same ask \"what did we decide about auth?\"")
+	}
 	// 1. Open database
 	db, err := store.Open()
 	if err != nil {

@@ -251,7 +251,7 @@ func enrichStats(result map[string]interface{}) {
 	if info, err := os.Stat(dbPath); err == nil {
 		sizeMB := float64(info.Size()) / (1024 * 1024)
 		result["db_size_mb"] = fmt.Sprintf("%.1f", sizeMB)
-		result["db_path"] = dbPath
+		result["db_path"] = filepath.Base(dbPath)
 	}
 
 	// Last reindex time from index_stats.json mtime

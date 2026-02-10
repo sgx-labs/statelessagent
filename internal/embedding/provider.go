@@ -24,6 +24,9 @@ type Provider interface {
 	// Name returns the provider identifier (e.g., "ollama", "openai").
 	Name() string
 
+	// Model returns the embedding model name (e.g., "nomic-embed-text").
+	Model() string
+
 	// Dimensions returns the embedding vector dimensionality.
 	Dimensions() int
 }

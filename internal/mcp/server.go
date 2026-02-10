@@ -19,6 +19,8 @@ import (
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
+const maxNoteSize = 100 * 1024 // 100KB max note content via MCP
+
 var (
 	db              *store.DB
 	embedClient     embedding.Provider
@@ -107,6 +109,36 @@ func registerTools(server *mcp.Server) {
 		Name:        "index_stats",
 		Description: "Check the health and size of the note index. Use this to verify the index is up to date or to report stats to the user.\n\nReturns note count, chunk count, last indexed timestamp, embedding model info, and database size.",
 	}, handleIndexStats)
+
+	// save_note (write-side)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "save_note",
+		Description: "Create or update a markdown note in the vault. The note is written to disk and indexed automatically.\n\nArgs:\n  path: Relative path within the vault (e.g. 'decisions/auth-approach.md')\n  content: Markdown content to write\n  append: If true, append to existing file instead of overwriting (default false)\n\nReturns confirmation with the saved path.",
+	}, handleSaveNote)
+
+	// save_decision (write-side)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "save_decision",
+		Description: "Log a project decision. Appends to the decision log so future sessions can find it.\n\nArgs:\n  title: Short decision title (e.g. 'Use JWT for auth')\n  body: Full decision details — what was decided, why, alternatives considered\n  status: Decision status — 'accepted', 'proposed', or 'superseded' (default 'accepted')\n\nReturns confirmation.",
+	}, handleSaveDecision)
+
+	// create_handoff (write-side)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "create_handoff",
+		Description: "Create a session handoff note so the next session picks up where this one left off. Write what you worked on, what's pending, and any blockers.\n\nArgs:\n  summary: What was accomplished this session\n  pending: What's left to do (optional)\n  blockers: Any blockers or open questions (optional)\n\nReturns path to the handoff note.",
+	}, handleCreateHandoff)
+
+	// recent_activity (read-side)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "recent_activity",
+		Description: "Get recently modified notes. Use this to see what's changed recently or to orient yourself at the start of a session.\n\nArgs:\n  limit: Number of recent notes (default 10, max 50)\n\nReturns list of recently modified notes with titles and paths.",
+	}, handleRecentActivity)
+
+	// get_session_context (read-side)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_session_context",
+		Description: "Get orientation context for a new session. Returns pinned notes, the latest handoff, and recent decisions — everything you need to pick up where the last session left off.\n\nReturns structured session context.",
+	}, handleGetSessionContext)
 }
 
 // Tool input types
@@ -137,6 +169,28 @@ type reindexInput struct {
 	Force bool `json:"force" jsonschema:"Re-embed all files regardless of changes"`
 }
 
+type saveNoteInput struct {
+	Path    string `json:"path" jsonschema:"Relative path within the vault (e.g. decisions/auth.md)"`
+	Content string `json:"content" jsonschema:"Markdown content to write"`
+	Append  bool   `json:"append" jsonschema:"Append to existing file instead of overwriting"`
+}
+
+type saveDecisionInput struct {
+	Title  string `json:"title" jsonschema:"Short decision title"`
+	Body   string `json:"body" jsonschema:"Full decision details"`
+	Status string `json:"status" jsonschema:"accepted, proposed, or superseded (default accepted)"`
+}
+
+type createHandoffInput struct {
+	Summary  string `json:"summary" jsonschema:"What was accomplished this session"`
+	Pending  string `json:"pending" jsonschema:"What is left to do"`
+	Blockers string `json:"blockers" jsonschema:"Any blockers or open questions"`
+}
+
+type recentInput struct {
+	Limit int `json:"limit" jsonschema:"Number of recent notes (default 10, max 50)"`
+}
+
 type emptyInput struct{}
 
 // Tool handlers
@@ -146,12 +200,12 @@ func handleSearchNotes(ctx context.Context, req *mcp.CallToolRequest, input sear
 
 	queryVec, err := embedClient.GetQueryEmbedding(input.Query)
 	if err != nil {
-		return textResult(fmt.Sprintf("Error embedding query: %v", err)), nil, nil
+		return textResult("Error embedding query. Is Ollama running?"), nil, nil
 	}
 
 	results, err := db.VectorSearch(queryVec, store.SearchOptions{TopK: topK})
 	if err != nil {
-		return textResult(fmt.Sprintf("Search error: %v", err)), nil, nil
+		return textResult("Search error. Try running reindex() first."), nil, nil
 	}
 	results = filterPrivatePaths(results)
 	if len(results) == 0 {
@@ -167,7 +221,7 @@ func handleSearchNotesFiltered(ctx context.Context, req *mcp.CallToolRequest, in
 
 	queryVec, err := embedClient.GetQueryEmbedding(input.Query)
 	if err != nil {
-		return textResult(fmt.Sprintf("Error embedding query: %v", err)), nil, nil
+		return textResult("Error embedding query. Is Ollama running?"), nil, nil
 	}
 
 	var tags []string
@@ -187,7 +241,7 @@ func handleSearchNotesFiltered(ctx context.Context, req *mcp.CallToolRequest, in
 		Tags:       tags,
 	})
 	if err != nil {
-		return textResult(fmt.Sprintf("Search error: %v", err)), nil, nil
+		return textResult("Search error. Try running reindex() first."), nil, nil
 	}
 	results = filterPrivatePaths(results)
 	if len(results) == 0 {
@@ -218,6 +272,11 @@ func handleGetNote(ctx context.Context, req *mcp.CallToolRequest, input getInput
 func handleFindSimilar(ctx context.Context, req *mcp.CallToolRequest, input similarInput) (*mcp.CallToolResult, any, error) {
 	topK := clampTopK(input.TopK, 5)
 
+	// Validate path through safeVaultPath to prevent probing _PRIVATE/ or dot-dirs
+	if safeVaultPath(input.Path) == "" {
+		return textResult("Error: invalid note path."), nil, nil
+	}
+
 	noteVec, err := db.GetNoteEmbedding(input.Path)
 	if err != nil || noteVec == nil {
 		return textResult(fmt.Sprintf("No similar notes found for: %s. Is the note in the index?", input.Path)), nil, nil
@@ -226,7 +285,7 @@ func handleFindSimilar(ctx context.Context, req *mcp.CallToolRequest, input simi
 	// Fetch extra results, excluding the source note
 	allResults, err := db.VectorSearch(noteVec, store.SearchOptions{TopK: topK + 10})
 	if err != nil {
-		return textResult(fmt.Sprintf("Search error: %v", err)), nil, nil
+		return textResult("Search error. Try running reindex() first."), nil, nil
 	}
 
 	allResults = filterPrivatePaths(allResults)
@@ -263,7 +322,7 @@ func handleReindex(ctx context.Context, req *mcp.CallToolRequest, input reindexI
 
 	stats, err := indexer.Reindex(db, input.Force)
 	if err != nil {
-		return textResult(fmt.Sprintf("Reindex error: %v", err)), nil, nil
+		return textResult("Reindex error. Check that the vault path is accessible and Ollama is running."), nil, nil
 	}
 
 	data, _ := json.MarshalIndent(stats, "", "  ")
@@ -276,7 +335,256 @@ func handleIndexStats(ctx context.Context, req *mcp.CallToolRequest, input empty
 	return textResult(string(data)), nil, nil
 }
 
+// Write-side handlers
+
+func handleSaveNote(ctx context.Context, req *mcp.CallToolRequest, input saveNoteInput) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(input.Path) == "" {
+		return textResult("Error: path is required."), nil, nil
+	}
+	if strings.TrimSpace(input.Content) == "" {
+		return textResult("Error: content is required."), nil, nil
+	}
+	if len(input.Content) > maxNoteSize {
+		return textResult("Error: content exceeds 100KB limit."), nil, nil
+	}
+
+	safePath := safeVaultPath(input.Path)
+	if safePath == "" {
+		return textResult("Error: path must be a relative path within the vault. Cannot write to _PRIVATE/."), nil, nil
+	}
+
+	// Ensure parent directory exists
+	dir := filepath.Dir(safePath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return textResult("Error: could not create directory."), nil, nil
+	}
+
+	if input.Append {
+		f, err := os.OpenFile(safePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil {
+			return textResult("Error: could not open file for appending."), nil, nil
+		}
+		_, err = f.WriteString(input.Content)
+		f.Close()
+		if err != nil {
+			return textResult("Error: could not write to file."), nil, nil
+		}
+	} else {
+		if err := os.WriteFile(safePath, []byte(input.Content), 0o644); err != nil {
+			return textResult("Error: could not write file."), nil, nil
+		}
+	}
+
+	// Index the new/updated note
+	indexer.Reindex(db, false)
+
+	return textResult(fmt.Sprintf("Saved: %s", input.Path)), nil, nil
+}
+
+func handleSaveDecision(ctx context.Context, req *mcp.CallToolRequest, input saveDecisionInput) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(input.Title) == "" {
+		return textResult("Error: title is required."), nil, nil
+	}
+	if strings.TrimSpace(input.Body) == "" {
+		return textResult("Error: body is required."), nil, nil
+	}
+	if len(input.Title)+len(input.Body) > maxNoteSize {
+		return textResult(fmt.Sprintf("Error: decision content too large (max %dKB).", maxNoteSize/1024)), nil, nil
+	}
+
+	status := input.Status
+	if status == "" {
+		status = "accepted"
+	}
+	if status != "accepted" && status != "proposed" && status != "superseded" {
+		return textResult("Error: status must be 'accepted', 'proposed', or 'superseded'."), nil, nil
+	}
+
+	// Build decision entry
+	now := time.Now().Format("2006-01-02")
+	displayStatus := strings.ToUpper(status[:1]) + status[1:]
+	entry := fmt.Sprintf("\n## Decision: %s\n**Date:** %s\n**Status:** %s\n\n%s\n",
+		input.Title, now, displayStatus, input.Body)
+
+	// Get decision log path from config
+	cfg, _ := config.LoadConfig()
+	logName := "decisions.md"
+	if cfg != nil && cfg.Vault.DecisionLog != "" {
+		logName = cfg.Vault.DecisionLog
+	}
+
+	safePath := safeVaultPath(logName)
+	if safePath == "" {
+		return textResult("Error: decision log path is invalid."), nil, nil
+	}
+
+	// Append to decision log
+	f, err := os.OpenFile(safePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return textResult("Error: could not open decision log."), nil, nil
+	}
+	_, err = f.WriteString(entry)
+	f.Close()
+	if err != nil {
+		return textResult("Error: could not write to decision log."), nil, nil
+	}
+
+	indexer.Reindex(db, false)
+
+	return textResult(fmt.Sprintf("Decision logged: %s (%s)", input.Title, status)), nil, nil
+}
+
+func handleCreateHandoff(ctx context.Context, req *mcp.CallToolRequest, input createHandoffInput) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(input.Summary) == "" {
+		return textResult("Error: summary is required."), nil, nil
+	}
+	totalSize := len(input.Summary) + len(input.Pending) + len(input.Blockers)
+	if totalSize > maxNoteSize {
+		return textResult(fmt.Sprintf("Error: handoff content too large (max %dKB).", maxNoteSize/1024)), nil, nil
+	}
+
+	// Get handoff dir from config
+	cfg, _ := config.LoadConfig()
+	handoffDir := "sessions"
+	if cfg != nil && cfg.Vault.HandoffDir != "" {
+		handoffDir = cfg.Vault.HandoffDir
+	}
+
+	now := time.Now()
+	filename := fmt.Sprintf("%s-handoff.md", now.Format("2006-01-02"))
+	relPath := filepath.Join(handoffDir, filename)
+
+	safePath := safeVaultPath(relPath)
+	if safePath == "" {
+		return textResult("Error: handoff path is invalid."), nil, nil
+	}
+
+	// Build handoff content
+	var buf strings.Builder
+	buf.WriteString(fmt.Sprintf("# Session Handoff — %s\n\n", now.Format("2006-01-02")))
+	buf.WriteString("## What we worked on\n")
+	buf.WriteString(input.Summary)
+	buf.WriteString("\n")
+	if input.Pending != "" {
+		buf.WriteString("\n## Pending\n")
+		buf.WriteString(input.Pending)
+		buf.WriteString("\n")
+	}
+	if input.Blockers != "" {
+		buf.WriteString("\n## Blockers\n")
+		buf.WriteString(input.Blockers)
+		buf.WriteString("\n")
+	}
+
+	dir := filepath.Dir(safePath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return textResult("Error: could not create handoff directory."), nil, nil
+	}
+	if err := os.WriteFile(safePath, []byte(buf.String()), 0o644); err != nil {
+		return textResult("Error: could not write handoff note."), nil, nil
+	}
+
+	indexer.Reindex(db, false)
+
+	return textResult(fmt.Sprintf("Handoff saved: %s", relPath)), nil, nil
+}
+
+func handleRecentActivity(ctx context.Context, req *mcp.CallToolRequest, input recentInput) (*mcp.CallToolResult, any, error) {
+	limit := input.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	notes, err := db.RecentNotes(limit)
+	if err != nil {
+		return textResult("Error fetching recent notes. Try running reindex() first."), nil, nil
+	}
+	if len(notes) == 0 {
+		return textResult("No notes found. The index may be empty — try running reindex() first."), nil, nil
+	}
+
+	entries := make([]map[string]string, 0, len(notes))
+	for _, n := range notes {
+		entries = append(entries, map[string]string{
+			"path":     n.Path,
+			"title":    n.Title,
+			"modified": formatTimestamp(n.Modified),
+		})
+	}
+
+	data, _ := json.MarshalIndent(entries, "", "  ")
+	return textResult(string(data)), nil, nil
+}
+
+func handleGetSessionContext(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
+	result := map[string]any{}
+
+	// Pinned notes
+	pinned, err := db.GetPinnedNotes()
+	if err == nil && len(pinned) > 0 {
+		pinnedList := make([]map[string]string, 0, len(pinned))
+		for _, p := range pinned {
+			text := p.Text
+			if len(text) > 500 {
+				text = text[:500] + "..."
+			}
+			pinnedList = append(pinnedList, map[string]string{
+				"path":  p.Path,
+				"title": p.Title,
+				"text":  text,
+			})
+		}
+		result["pinned_notes"] = pinnedList
+	}
+
+	// Latest handoff
+	handoff, err := db.GetLatestHandoff()
+	if err == nil && handoff != nil {
+		text := handoff.Text
+		if len(text) > 1000 {
+			text = text[:1000] + "..."
+		}
+		result["latest_handoff"] = map[string]string{
+			"path":     handoff.Path,
+			"title":    handoff.Title,
+			"text":     text,
+			"modified": formatTimestamp(handoff.Modified),
+		}
+	}
+
+	// Recent notes
+	recent, err := db.RecentNotes(5)
+	if err == nil && len(recent) > 0 {
+		recentList := make([]map[string]string, 0, len(recent))
+		for _, r := range recent {
+			recentList = append(recentList, map[string]string{
+				"path":     r.Path,
+				"title":    r.Title,
+				"modified": formatTimestamp(r.Modified),
+			})
+		}
+		result["recent_notes"] = recentList
+	}
+
+	// Stats
+	stats := indexer.GetStats(db)
+	result["stats"] = stats
+
+	data, _ := json.MarshalIndent(result, "", "  ")
+	return textResult(string(data)), nil, nil
+}
+
 // Helpers
+
+func formatTimestamp(ts float64) string {
+	if ts == 0 {
+		return ""
+	}
+	return time.Unix(int64(ts), 0).Format("2006-01-02 15:04")
+}
 
 func textResult(text string) *mcp.CallToolResult {
 	return &mcp.CallToolResult{
@@ -296,8 +604,8 @@ func clampTopK(topK, defaultVal int) int {
 	return topK
 }
 
-// safeVaultPath resolves a relative path within the vault, blocking traversal attacks
-// and access to _PRIVATE/ content.
+// safeVaultPath resolves a relative path within the vault, blocking traversal attacks,
+// access to _PRIVATE/ content, and writes to dot-directories (.same/, .git/, etc.).
 func safeVaultPath(path string) string {
 	if filepath.IsAbs(path) {
 		return ""
@@ -305,6 +613,11 @@ func safeVaultPath(path string) string {
 	// SECURITY: block access to _PRIVATE/ directory
 	clean := filepath.ToSlash(filepath.Clean(path))
 	if strings.HasPrefix(clean, "_PRIVATE/") || clean == "_PRIVATE" {
+		return ""
+	}
+	// SECURITY: block access to dot-directories and dot-files at root level
+	// This prevents overwriting .same/config.toml, .git/, .gitignore, .obsidian/, etc.
+	if strings.HasPrefix(clean, ".") {
 		return ""
 	}
 	full, err := filepath.Abs(filepath.Join(config.VaultPath(), filepath.FromSlash(path)))

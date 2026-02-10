@@ -243,7 +243,7 @@ func GenerateConfig(vaultPath string) error {
 	}
 
 	content := generateTOMLContent(vaultPath)
-	return os.WriteFile(configPath, []byte(content), 0o644)
+	return os.WriteFile(configPath, []byte(content), 0o600)
 }
 
 func generateTOMLContent(vaultPath string) string {
@@ -603,6 +603,9 @@ func OllamaURL() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("invalid OLLAMA_URL: %w", err)
 	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", fmt.Errorf("OLLAMA_URL must use http or https scheme, got: %s", u.Scheme)
+	}
 	host := u.Hostname()
 	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
 		return "", fmt.Errorf("%w: got %s", ErrOllamaNotLocal, host)
@@ -659,7 +662,7 @@ func (r *VaultRegistry) Save() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, 0o600)
 }
 
 // ResolveVault resolves a vault alias to a path. Returns empty string if not found.
@@ -823,7 +826,7 @@ func SetProfile(vaultPath, profileName string) error {
 	os.MkdirAll(filepath.Dir(cfgPath), 0o755)
 
 	// Write file
-	return os.WriteFile(cfgPath, buf.Bytes(), 0o644)
+	return os.WriteFile(cfgPath, buf.Bytes(), 0o600)
 }
 
 // SetDisplayMode updates the display mode in the config file.
@@ -850,7 +853,7 @@ func SetDisplayMode(vaultPath, mode string) error {
 	os.MkdirAll(filepath.Dir(cfgPath), 0o755)
 
 	// Write file
-	return os.WriteFile(cfgPath, buf.Bytes(), 0o644)
+	return os.WriteFile(cfgPath, buf.Bytes(), 0o600)
 }
 
 // VerboseEnabled returns true when verbose monitoring is active.
@@ -909,5 +912,5 @@ func saveUserConfig(cfg userConfig) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, 0o600)
 }

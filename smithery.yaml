@@ -1,0 +1,23 @@
+# Smithery configuration: https://smithery.ai/docs/config
+
+startCommand:
+  type: stdio
+
+configSchema:
+  type: object
+  required:
+    - vaultPath
+  properties:
+    vaultPath:
+      type: string
+      description: Path to your markdown notes directory.
+
+commandFunction:
+  |-
+  (config) => ({
+    command: 'same',
+    args: ['mcp', '--vault', config.vaultPath]
+  })
+
+exampleConfig:
+  vaultPath: /home/user/notes

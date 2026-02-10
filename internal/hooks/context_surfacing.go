@@ -1570,7 +1570,7 @@ func isPrivatePath(path string) bool {
 // isNoisyPath returns true if the path matches a user-configured noise prefix.
 func isNoisyPath(path string) bool {
 	for _, prefix := range noisyPathPrefixes() {
-		if strings.Contains(path, prefix) {
+		if strings.HasPrefix(path, prefix) {
 			return true
 		}
 	}
@@ -1801,6 +1801,11 @@ func sanitizeContextTags(text string) string {
 		if i+len("<vault-context>") <= len(text) && lower[i:i+len("<vault-context>")] == "<vault-context>" {
 			result.WriteString("[vault-context]")
 			i += len("<vault-context>")
+			continue
+		}
+		if i+len("<plugin-context>") <= len(text) && lower[i:i+len("<plugin-context>")] == "<plugin-context>" {
+			result.WriteString("[plugin-context]")
+			i += len("<plugin-context>")
 			continue
 		}
 		result.WriteByte(text[i])

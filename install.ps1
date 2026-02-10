@@ -136,7 +136,7 @@ if (-not $BinaryAcquired) {
         $GoVersionRaw = (go version) -replace '.*go(\d+\.\d+).*', '$1'
         $GoMinor = [int]($GoVersionRaw.Split('.')[1])
 
-        if ($GoMinor -ge 23) {
+        if ($GoMinor -ge 25) {
             Write-Host "  Go $GoVersionRaw found - building from source..."
             $TempDir = Join-Path $env:TEMP "same-build-$PID"
             try {
@@ -155,7 +155,7 @@ if (-not $BinaryAcquired) {
                 Write-Host "  Build failed: $_"
             }
         } else {
-            Write-Host "  Go $GoVersionRaw found but SAME needs Go 1.23+."
+            Write-Host "  Go $GoVersionRaw found but SAME needs Go 1.25+."
             Write-Host "  Upgrade: https://go.dev/dl/"
         }
     } else {

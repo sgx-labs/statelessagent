@@ -116,7 +116,7 @@ same ask "what did we decide about auth?"  # ask questions, get answers
 | **Windsurf** | MCP |
 | **Obsidian** | Vault detection |
 | **Logseq** | Vault detection |
-| **Any MCP client** | 6 search and retrieval tools |
+| **Any MCP client** | 11 tools — search, write, and session management |
 
 SAME works with any directory of `.md` files. No Obsidian required.
 
@@ -233,14 +233,19 @@ Configuration priority (highest wins):
 <details>
 <summary><strong>MCP Server</strong></summary>
 
-SAME exposes 6 tools via MCP:
+SAME exposes 11 tools via MCP — read and write:
 
 | Tool | Description |
 |------|-------------|
-| `search_notes` | Semantic search |
+| `search_notes` | Semantic search across your notes |
 | `search_notes_filtered` | Search with domain/workstream/tag filters |
-| `get_note` | Read full note by path |
+| `get_note` | Read full note content by path |
 | `find_similar_notes` | Find related notes |
+| `save_note` | Create or update a note (auto-indexed) |
+| `save_decision` | Log a project decision |
+| `create_handoff` | Write a session handoff for the next session |
+| `get_session_context` | Get pinned notes, latest handoff, and recent activity |
+| `recent_activity` | See recently modified notes |
 | `reindex` | Re-index the vault |
 | `index_stats` | Index statistics |
 

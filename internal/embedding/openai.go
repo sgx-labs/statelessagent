@@ -49,6 +49,7 @@ func newOpenAIProvider(cfg ProviderConfig) (*OpenAIProvider, error) {
 }
 
 func (p *OpenAIProvider) Name() string    { return "openai" }
+func (p *OpenAIProvider) Model() string   { return p.model }
 func (p *OpenAIProvider) Dimensions() int { return p.dims }
 
 type openaiEmbeddingRequest struct {
