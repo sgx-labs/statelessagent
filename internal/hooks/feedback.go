@@ -57,7 +57,9 @@ func runFeedbackLoop(db *store.DB, input *HookInput) *HookOutput {
 		db.IncrementAccessCount(referencedPaths)
 	}
 
-	fmt.Fprintf(os.Stderr, "same: feedback loop — %d surfaced note(s) were referenced by the agent\n", referencedCount)
+	if !isQuietMode() {
+		fmt.Fprintf(os.Stderr, "same: ✓ %d surfaced note(s) were referenced by the agent\n", referencedCount)
+	}
 
 	return nil // feedback is silent — no context injection back to the agent
 }

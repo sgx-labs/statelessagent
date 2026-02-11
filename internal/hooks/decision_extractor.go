@@ -40,6 +40,9 @@ func runDecisionExtractor(_ *store.DB, input *HookInput) *HookOutput {
 	count := memory.AppendToDecisionLog(decisions, logPath, "")
 
 	if count > 0 {
+		if !isQuietMode() {
+			fmt.Fprintf(os.Stderr, "same: ✓ extracted %d decision(s) → %s\n", count, config.DecisionLogPath())
+		}
 		return &HookOutput{
 			HookSpecificOutput: &HookSpecific{
 				HookEventName: "Stop",

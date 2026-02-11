@@ -36,6 +36,7 @@ func runSessionBootstrap(db *store.DB, input *HookInput) *HookOutput {
 		fmt.Fprint(os.Stderr, tip)
 	}
 
+	quiet := isQuietMode()
 	var sections []string
 
 	// Priority 0: Unified recovery (replaces separate session index + handoff lookup)
@@ -44,6 +45,16 @@ func runSessionBootstrap(db *store.DB, input *HookInput) *HookOutput {
 	if recovered != nil {
 		if ctx := FormatRecoveryContext(recovered); ctx != "" {
 			sections = append(sections, ctx)
+			if !quiet {
+				source := "session index"
+				switch recovered.Source {
+				case RecoveryHandoff:
+					source = "handoff"
+				case RecoveryInstance:
+					source = "instance"
+				}
+				fmt.Fprintf(os.Stderr, "same: ↩ recovered previous session (%s, %s)\n", source, formatAge(recovered.EndedAt))
+			}
 		}
 	}
 
@@ -55,11 +66,25 @@ func runSessionBootstrap(db *store.DB, input *HookInput) *HookOutput {
 	// Priority 2: Active decisions (last 7 days)
 	if decisions := findActiveDecisions(); decisions != "" {
 		sections = append(sections, decisions)
+		if !quiet {
+			n := strings.Count(decisions, "\n## ") + strings.Count(decisions, "\n### ")
+			if n == 0 {
+				n = 1
+			}
+			fmt.Fprintf(os.Stderr, "same: ↑ %d active decision(s) loaded\n", n)
+		}
 	}
 
 	// Priority 3: Stale notes (reuse existing logic)
 	if stale := findStaleNotesSection(db); stale != "" {
 		sections = append(sections, stale)
+		if !quiet {
+			n := strings.Count(stale, "\n- ")
+			if n == 0 {
+				n = 1
+			}
+			fmt.Fprintf(os.Stderr, "same: ⚠ %d stale note(s) need review\n", n)
+		}
 	}
 
 	if len(sections) == 0 {
@@ -81,6 +106,32 @@ func runSessionBootstrap(db *store.DB, input *HookInput) *HookOutput {
 				context,
 			),
 		},
+	}
+}
+
+// isQuietMode returns true if the user has set display mode to quiet.
+func isQuietMode() bool {
+	if os.Getenv("SAME_QUIET") == "1" || os.Getenv("SAME_QUIET") == "true" {
+		return true
+	}
+	return config.DisplayMode() == "quiet"
+}
+
+// formatAge returns a human-readable age string like "2h ago" or "3d ago".
+func formatAge(t time.Time) string {
+	if t.IsZero() {
+		return "unknown"
+	}
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
 }
 

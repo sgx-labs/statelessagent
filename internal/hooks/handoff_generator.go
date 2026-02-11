@@ -28,6 +28,10 @@ func runHandoffGenerator(_ *store.DB, input *HookInput) *HookOutput {
 		return nil
 	}
 
+	if !isQuietMode() {
+		fmt.Fprintf(os.Stderr, "same: ✓ handoff saved → %s\n", result.Path)
+	}
+
 	return &HookOutput{
 		HookSpecificOutput: &HookSpecific{
 			HookEventName: hookEvent,

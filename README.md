@@ -4,61 +4,212 @@
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](https://go.dev)
 [![Latest Release](https://img.shields.io/github/v/release/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent)
+[![MCP Tools](https://img.shields.io/badge/MCP_Tools-11-8A2BE2.svg)](#mcp-tools)
 [![Discord](https://img.shields.io/discord/1468523556076785757?color=5865F2&label=Discord&logo=discord&logoColor=white)](https://discord.gg/Qg8AXavNWu)
 
-> Every AI session starts from zero. **Not anymore.**
+> **Your AI forgets everything between sessions. Not anymore.**
 
-## Try it in 60 seconds
+Every time you start a new session with Claude Code, Cursor, or any AI coding tool, your agent starts from zero. Decisions you made yesterday? Gone. Context from last week? Gone. That architectural choice you spent 30 minutes discussing? You'll explain it again.
+
+SAME gives your AI persistent memory from your existing markdown notes. No cloud. No API keys. One binary.
+
+## See it in 60 seconds
 
 ```bash
 curl -fsSL statelessagent.com/install.sh | bash
 same demo
 ```
 
-`same demo` creates a temporary vault with sample notes, runs semantic search, and shows your AI answering questions from your notes — all locally, no accounts, no API keys. Works without Ollama.
+`same demo` creates a temporary vault with sample notes, runs semantic search, and shows your AI answering questions from your notes — all locally, no accounts, no API keys.
 
 ---
 
-### Why SAME
+## Quickstart
 
-- **Local-first** — your notes, decisions, and context never leave your machine. No cloud APIs, no accounts, no API keys
-- **Single binary** — one `curl` command, no Python, no Docker, no runtimes, no package managers
-- **Works immediately** — keyword search runs out of the box. Add [Ollama](https://ollama.ai) for semantic search (recommended)
-- **Yours to build on** — SQLite + MCP. Swap embedding providers, adjust retrieval, connect any MCP client
+```bash
+# 1. Install
+curl -fsSL statelessagent.com/install.sh | bash
 
-### The numbers
+# 2. Point SAME at your project
+cd ~/my-project && same init
 
-| Metric | Value |
-|--------|-------|
-| Token reduction | **99.5%** — 40,000 tokens of notes → 200 tokens of targeted context |
-| Retrieval precision | **99.5%** across 105 ground-truth test cases |
-| MRR | **0.949** — the right note surfaces first, almost every time |
-| Coverage | **90.5%** — 9 out of 10 relevant notes found |
-| Prompt overhead | **<200ms** |
-| Binary size | **~10MB** |
+# 3. Ask your notes a question
+same ask "what did we decide about authentication?"
 
-### No Ollama? No problem.
+# 4. Your AI now remembers (hooks + MCP tools active)
+# Start Claude Code, Cursor, or any MCP client — context surfaces automatically
+```
 
-SAME Lite runs with zero external dependencies — just the binary. Keyword search via SQLite FTS5 powers all features: search, ask, demo, tutorial, context surfacing. Install Ollama later and `same reindex` upgrades to full semantic mode instantly.
+That's it. Your AI now has memory.
+
+---
+
+## Why SAME
+
+| Problem | Without SAME | With SAME |
+|---------|-------------|-----------|
+| New session starts | Re-explain everything | AI picks up where you left off |
+| "Didn't we decide to use JWT?" | Re-debate for 10 minutes | Decision surfaces automatically |
+| Switch between projects | Manually copy context | Each project has its own memory |
+| Close terminal accidentally | All context lost | Next session recovers via handoff |
+| Ask about your own notes | Copy-paste into chat | `same ask` with source citations |
+
+## The Numbers
+
+| Metric | Value | What it means |
+|--------|-------|---------------|
+| Retrieval precision | **99.5%** | When SAME surfaces a note, it's almost always the right one |
+| MRR | **0.949** | The right note surfaces first, almost every time |
+| Coverage | **90.5%** | 9 out of 10 relevant notes found |
+| Prompt overhead | **<200ms** | You won't notice it |
+| Binary size | **~10MB** | Smaller than most npm packages |
+| Setup time | **<60 seconds** | One curl command |
+
+*Benchmarked against 105 ground-truth test cases. [Methodology](#eval-methodology)*
+
+---
+
+## How It Works
+
+```
+┌─────────────┐     ┌──────────┐     ┌──────────┐     ┌─────────────────┐
+│  Your Notes │     │  Ollama  │     │  SQLite  │     │  Your AI Tool   │
+│   (.md)     │────>│ (embed)  │────>│ (search) │────>│ Claude / Cursor │
+│             │     │ local    │     │ + FTS5   │     │ via Hooks + MCP │
+└─────────────┘     └──────────┘     └──────────┘     └─────────────────┘
+                                          │                    │
+                                     ┌────▼────┐          ┌────▼────┐
+                                     │ Ranking │          │  Write  │
+                                     │ Engine  │          │  Side   │
+                                     └─────────┘          └─────────┘
+                                     semantic +           decisions,
+                                     recency +            handoffs,
+                                     confidence           notes
+```
+
+Your markdown notes are embedded locally via Ollama and stored in a SQLite database with vector search. When your AI tool starts a session, SAME surfaces relevant context automatically. Decisions get extracted. Handoffs get generated. The next session picks up where you left off. Everything stays on your machine.
+
+**No Ollama? No problem.** SAME Lite runs with zero external dependencies. Keyword search via SQLite FTS5 powers all features. Install Ollama later and `same reindex` upgrades to semantic mode instantly.
+
+---
+
+## Features
+
+| Feature | Description | Requires Ollama? |
+|---------|-------------|:-:|
+| Semantic search | Find notes by meaning, not keywords | Yes |
+| Keyword search (FTS5) | Full-text search fallback | No |
+| `same ask` (RAG) | Ask questions, get cited answers from your notes | Yes (chat model) |
+| Session handoffs | Auto-generated continuity notes | No |
+| Session recovery | Crash-safe — next session picks up even if terminal closed | No |
+| Decision extraction | Architectural choices remembered across sessions | No |
+| Pinned notes | Critical context always included | No |
+| Context surfacing | Relevant notes injected into AI prompts | No* |
+| `same demo` | Try SAME in 60 seconds | No |
+| `same tutorial` | 6 hands-on lessons | No |
+| `same doctor` | 15 diagnostic checks | No |
+| Push protection | Safety rails for multi-agent workflows | No |
+| MCP server (11 tools) | Works with any MCP client | No* |
+| Privacy tiers | `_PRIVATE/` never indexed, `research/` never committed | No |
+
+*Semantic mode requires Ollama; keyword fallback is automatic.
+
+---
+
+## MCP Tools
+
+SAME exposes **11 tools** via MCP for any compatible client.
+
+### Read
+
+| Tool | What it does |
+|------|-------------|
+| `search_notes` | Semantic search across your knowledge base |
+| `search_notes_filtered` | Search with domain/workstream/tag filters |
+| `get_note` | Read full note content by path |
+| `find_similar_notes` | Discover related notes by similarity |
+| `get_session_context` | Pinned notes + latest handoff + recent activity |
+| `recent_activity` | Recently modified notes |
+| `reindex` | Re-scan and re-index the vault |
+| `index_stats` | Index health and statistics |
+
+### Write
+
+| Tool | What it does |
+|------|-------------|
+| `save_note` | Create or update a markdown note (auto-indexed) |
+| `save_decision` | Log a structured project decision |
+| `create_handoff` | Write a session handoff for the next session |
+
+Your AI can now write to its own memory, not just read from it. Decisions persist. Handoffs survive. Every session builds on the last.
+
+---
+
+## Works With
+
+| Tool | Integration | Experience |
+|------|-------------|------------|
+| **Claude Code** | Hooks + MCP | Full (automatic context surfacing + 11 tools) |
+| **Cursor** | MCP | 11 tools for search, write, session management |
+| **Windsurf** | MCP | 11 tools for search, write, session management |
+| **Obsidian** | Vault detection | Indexes your existing vault |
+| **Logseq** | Vault detection | Indexes your existing vault |
+| **Any MCP client** | MCP server | 11 tools via stdio transport |
+
+SAME works with any directory of `.md` files. No Obsidian required.
+
+Use `same init --mcp-only` to skip Claude Code hooks and just register the MCP server.
+
+---
+
+## SAME vs. Alternatives
+
+| | SAME | mem0 | Letta | Basic Memory | doobidoo |
+|---|:---:|:---:|:---:|:---:|:---:|
+| **Setup** | 1 command | pip + config | Docker + PG | pip + config | pip + ChromaDB |
+| **Runtime deps** | None | Python + LLM API | Docker + PG + LLM | Python | Python + ChromaDB |
+| **Offline capable** | Full (Lite mode) | No | No | Partial | Yes |
+| **Cloud required** | No | Default yes | Yes | No | No |
+| **Telemetry** | None | Default ON | Unknown | None | None |
+| **MCP tools** | 11 | 4-6 | 0 (REST) | 7+ | 24 |
+| **Hook integration** | Yes (Claude Code) | No | No | No | No |
+| **Session continuity** | Handoffs + pins + recovery | Session-scoped | Core feature | No | No |
+| **Published benchmarks** | P=0.995, MRR=0.949 | Claims "26% better" | None | None | None |
+| **Binary size** | ~10MB | ~100MB+ (Python) | ~500MB+ (Docker) | ~50MB+ | ~80MB+ |
+| **Language** | Go | Python | Python | Python | Python |
+| **License** | BSL 1.1 [1] | Apache 2.0 | Apache 2.0 | MIT | MIT |
+
+[1] BSL 1.1: Free for personal, educational, hobby, research, and evaluation use. Converts to Apache 2.0 on 2030-02-02.
+
+---
+
+## Privacy by Design
+
+SAME creates a three-tier privacy structure:
+
+| Directory | Indexed? | Committed? | Use for |
+|-----------|:--------:|:----------:|---------|
+| Your notes | Yes | Your choice | Docs, decisions, research |
+| `_PRIVATE/` | No | No | API keys, credentials, secrets |
+| `research/` | Yes | No | Strategy, analysis — searchable but local-only |
+
+Privacy is structural — filesystem-level, not policy-based. `same init` creates a `.gitignore` that enforces these boundaries automatically.
+
+**Security hardening:** Path traversal blocked across all tools. Dot-directory writes blocked. Symlink escapes prevented. Error messages sanitized — no internal paths leak to AI. Config files written with owner-only permissions (0o600). Ollama URL validated to localhost-only. Prompt injection patterns scanned before context injection. Push protection available for multi-agent workflows.
 
 ---
 
 ## Install
 
 ```bash
+# macOS / Linux
 curl -fsSL statelessagent.com/install.sh | bash
-```
 
-<details>
-<summary><strong>Windows (PowerShell)</strong></summary>
-
-```powershell
+# Windows (PowerShell)
 irm statelessagent.com/install.ps1 | iex
 ```
 
 If blocked by execution policy, run first: `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser`
-
-</details>
 
 <details>
 <summary><strong>Manual install (or have your AI do it)</strong></summary>
@@ -92,97 +243,11 @@ cd statelessagent && make install
 same init --yes
 ```
 
+Requires Go 1.25+ and CGO.
+
 </details>
 
-## Quick start
-
-```bash
-same demo                              # see it in action (no setup needed)
-cd ~/my-project && same init           # set up your own project
-same ask "what did we decide about auth?"  # ask questions, get cited answers
-```
-
-`same init` finds your notes (including existing README.md, docs/, etc.), indexes them, and configures your AI tools. Works with or without Ollama.
-
-`same tutorial` — 6 hands-on lessons covering search, decisions, pinning, privacy, RAG, and session handoffs. Run `same tutorial search` to try just one.
-
-## What happens when you use SAME
-
-- **Your AI picks up where you left off** — session handoffs are generated automatically, so the next session knows what happened in the last one
-- **Decisions stick** — architectural choices, coding patterns, and project preferences are extracted and remembered. No more "we already decided to use JWT"
-- **The right notes surface at the right time** — semantic search finds relevant context and injects it into your AI's context window. No manual copy-pasting
-- **Notes your AI actually uses get boosted** — a built-in feedback loop tracks which notes the agent references, improving retrieval over time
-- **Ask questions, get answers** — `same ask` uses a local LLM to answer questions from your notes with source citations. Like ChatGPT for your notes — 100% local
-- **Pin critical context** — `same pin` ensures your most important notes are always included, regardless of what you're working on
-- **When something breaks, SAME tells you why** — `same doctor` runs 15 diagnostic checks and tells you exactly what to fix
-- **Everything stays on your machine** — Ollama embeddings + SQLite. No cloud, no API keys, no accounts
-
-## How it works
-
-```
-Your Notes  →  Ollama  →  SQLite  →  Agent Remembers
-  (.md)       (embed)    (search)    (hooks / MCP)
-```
-
-SAME indexes your markdown notes into a local SQLite database with vector embeddings. When you use an AI coding tool, SAME's hooks automatically surface relevant context. Decisions get extracted, handoffs get generated, and the next session picks up where you left off.
-
-## MCP Tools
-
-SAME exposes **11 tools** via MCP for any compatible client.
-
-### Read
-
-| Tool | Description |
-|------|-------------|
-| `search_notes` | Semantic search across your notes |
-| `search_notes_filtered` | Search with domain/workstream/tag filters |
-| `get_note` | Read full note content by path |
-| `find_similar_notes` | Find related notes by similarity |
-| `get_session_context` | Get pinned notes, latest handoff, and recent activity |
-| `recent_activity` | See recently modified notes |
-| `reindex` | Re-scan and re-index the vault |
-| `index_stats` | Index health and statistics |
-
-### Write
-
-| Tool | Description |
-|------|-------------|
-| `save_note` | Create or update a markdown note (auto-indexed) |
-| `save_decision` | Log a structured project decision |
-| `create_handoff` | Write a session handoff for the next session |
-
-Your AI can now write to its memory, not just read from it. Decisions persist. Handoffs survive. Every session builds on the last.
-
-## Works with
-
-| Tool | Integration |
-|------|-------------|
-| **Claude Code** | Hooks + MCP (full experience) |
-| **Cursor** | MCP |
-| **Windsurf** | MCP |
-| **Obsidian** | Vault detection |
-| **Logseq** | Vault detection |
-| **Any MCP client** | 11 tools — search, write, and session management |
-
-SAME works with any directory of `.md` files. No Obsidian required.
-
-Use `same init --mcp-only` to skip Claude Code hooks and just register the MCP server.
-
-## Privacy by design
-
-SAME creates a three-tier privacy structure in your vault:
-
-| Directory | Indexed by SAME? | Committed to git? | Use for |
-|-----------|-----------------|-------------------|---------|
-| Your notes | Yes | Your choice | Project docs, decisions, research |
-| `_PRIVATE/` | **No** | **No** | API keys, credentials, truly secret notes |
-| `research/` | Yes | **No** (gitignored) | Research, analysis, strategy — searchable but local-only |
-
-`same init` creates a `.gitignore` that enforces these boundaries automatically. Privacy is structural — filesystem-level, not policy-based.
-
-## Built with
-
-Go · SQLite + sqlite-vec · Ollama / OpenAI
+---
 
 <details>
 <summary><strong>CLI Reference</strong></summary>
@@ -192,30 +257,33 @@ Go · SQLite + sqlite-vec · Ollama / OpenAI
 | `same init` | Set up SAME for your project (start here) |
 | `same demo` | See SAME in action with sample notes |
 | `same tutorial` | Learn SAME features hands-on (6 lessons) |
-| `same ask <question>` | Ask a question, get answers from your notes (RAG) |
+| `same ask <question>` | Ask a question, get cited answers from your notes |
+| `same search <query>` | Search your notes |
+| `same related <path>` | Find related notes |
 | `same status` | See what SAME is tracking |
-| `same doctor` | Check system health and diagnose issues |
-| `same search <query>` | Search your notes from the command line |
-| `same related <path>` | Find notes related to a given note |
+| `same doctor` | Run 15 diagnostic checks |
 | `same pin <path>` | Always include a note in every session |
-| `same pin list` | Show all pinned notes |
+| `same pin list` | Show pinned notes |
 | `same pin remove <path>` | Unpin a note |
-| `same feedback <path> up\|down` | Tell SAME which notes are helpful (or not) |
-| `same repair` | Back up database and force-rebuild index |
-| `same reindex [--force]` | Scan notes and rebuild the search index |
+| `same feedback <path> up\|down` | Rate note helpfulness |
+| `same repair` | Back up and rebuild the database |
+| `same reindex [--force]` | Rebuild the search index |
 | `same display full\|compact\|quiet` | Control output verbosity |
-| `same profile use precise\|balanced\|broad` | Adjust precision vs coverage |
-| `same config show` | Show effective configuration |
-| `same config edit` | Open config in $EDITOR |
-| `same setup hooks` | Install/update Claude Code hooks |
+| `same profile use precise\|balanced\|broad` | Adjust precision vs. coverage |
+| `same config show` | Show configuration |
+| `same config edit` | Open config in editor |
+| `same setup hooks` | Install Claude Code hooks |
 | `same setup mcp` | Register MCP server |
-| `same log` | Recent SAME activity |
-| `same stats` | Show how many notes are indexed |
+| `same hooks` | Show hook status and descriptions |
+| `same vault list\|add\|remove` | Manage multiple vaults |
+| `same guard settings set push-protect on` | Enable push protection |
+| `same push-allow` | One-time push authorization |
 | `same watch` | Auto-reindex on file changes |
 | `same budget` | Context utilization report |
-| `same vault list\|add\|remove` | Manage multiple vaults |
+| `same log` | Recent SAME activity |
+| `same stats` | Index statistics |
+| `same update` | Update to latest version |
 | `same version [--check]` | Version and update check |
-| `same update` | Update to the latest version |
 
 </details>
 
@@ -351,61 +419,40 @@ The SQLite database is missing or corrupted. Fix:
 </details>
 
 <details>
-<summary><strong>Eval methodology</strong></summary>
+<summary><strong>Eval Methodology</strong></summary>
 
-SAME's retrieval is tuned against 105 ground-truth test cases — real queries paired with known-relevant notes. The eval harness measures:
+SAME's retrieval is tuned against 105 ground-truth test cases — real queries paired with known-relevant notes.
 
-- **Precision** (99.5%) — when SAME surfaces a note, it's almost always relevant
-- **Coverage** (90.5%) — SAME finds ~9 out of 10 relevant notes
-- **MRR** (0.949) — the most relevant note is usually the first result
+| Metric | Value | Meaning |
+|--------|-------|---------|
+| Precision | 99.5% | Surfaced notes are almost always relevant |
+| Coverage | 90.5% | Finds ~9/10 relevant notes |
+| MRR | 0.949 | Most relevant note is usually first |
+| BAD cases | 0 | Zero irrelevant top results |
 
-Tuning constants: `maxDistance=16.3`, `minComposite=0.70`, `gapCap=0.65`. These are shared between hooks and MCP via `ranking.go`.
+Tuning constants: `maxDistance=16.3`, `minComposite=0.70`, `gapCap=0.65`. Shared between hooks and MCP via `ranking.go`.
 
-The eval runs against synthetic vault data with known relevance judgments. No user data is used in evaluation.
+All evaluation uses synthetic vault data with known relevance judgments. No user data is used.
 
 </details>
 
+---
+
 ## FAQ
 
-**Do I need Obsidian?**
-No. Any directory of `.md` files works.
+**Do I need Obsidian?** No. Any directory of `.md` files works.
 
-**Do I need Ollama?**
-Recommended, not required. Ollama gives you semantic search — SAME understands *meaning*, not just keywords. Without Ollama, SAME falls back to keyword search (FTS5) so you're never blocked. You can also use OpenAI embeddings (`SAME_EMBED_PROVIDER=openai`). If Ollama goes down temporarily, SAME falls back to keywords automatically.
+**Do I need Ollama?** Recommended, not required. Semantic search understands meaning; without Ollama, SAME falls back to keyword search (FTS5). You can also use OpenAI embeddings (`SAME_EMBED_PROVIDER=openai`). If Ollama goes down temporarily, SAME falls back to keywords automatically.
 
-**Does it slow down my prompts?**
-50-200ms. Embedding is the bottleneck — search and scoring take <5ms.
+**Does it slow down my prompts?** 50-200ms. Embedding is the bottleneck — search and scoring take <5ms.
 
-**Is my data sent anywhere?**
-SAME is fully local. Context surfaced to your AI tool is sent to that tool's API as part of your conversation, same as pasting it manually.
+**Is my data sent anywhere?** SAME is fully local. Context surfaced to your AI tool is sent to that tool's API as part of your conversation, same as pasting it manually.
 
-**How much disk space?**
-5-15MB for a few hundred notes.
+**How much disk space?** 5-15MB for a few hundred notes.
 
-**Can I use multiple vaults?**
-Yes. `same vault add work ~/work-notes && same vault default work`.
+**Can I use multiple vaults?** Yes. `same vault add work ~/work-notes && same vault default work`.
 
-## Security & Privacy
-
-- All data stays local — no external API calls except Ollama on localhost
-- Ollama URL validated to localhost-only (blocks `file://`, `ftp://`)
-- `_PRIVATE/` directories excluded from indexing and context surfacing
-- `research/` indexed but gitignored by default — your AI can search it, but it never leaves your machine
-- All MCP error messages sanitized — no internal paths leak to AI
-- Path traversal blocked across all MCP tools
-- Dot-directory writes blocked (`.git/`, `.same/`, `.env`)
-- Config files written with owner-only permissions (0o600)
-- Snippets scanned for prompt injection patterns before injection
-- **Push protection** — `same guard settings set push-protect on` requires explicit `same push-allow` before git push
-
-## Building from Source
-
-```bash
-git clone https://github.com/sgx-labs/statelessagent.git
-cd statelessagent && make install
-```
-
-Requires Go 1.25+ and CGO.
+---
 
 ## Community
 
@@ -414,6 +461,10 @@ Requires Go 1.25+ and CGO.
 ## Support
 
 [Buy me a coffee](https://buymeacoffee.com/sgxlabs) · [GitHub Sponsors](https://github.com/sponsors/sgx-labs)
+
+## Built with
+
+Go · SQLite + sqlite-vec · Ollama / OpenAI
 
 ## License
 
