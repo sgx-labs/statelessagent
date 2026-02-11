@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSanitizeAlias(t *testing.T) {
 	tests := []struct {
@@ -37,6 +40,48 @@ func TestSanitizeAlias(t *testing.T) {
 			}
 			if len(got) > 0 && got[0] == '.' {
 				t.Errorf("sanitizeAlias(%q) = %q starts with dot", tt.input, got)
+			}
+		})
+	}
+}
+
+func TestValidateAlias(t *testing.T) {
+	tests := []struct {
+		input string
+		ok    bool
+	}{
+		{"dev", true},
+		{"my-project", true},
+		{"work_notes", true},
+		{"vault2", true},
+		{"A", true},
+		{"a-b-c", true},
+
+		// Invalid
+		{"", false},
+		{"../etc", false},
+		{"/absolute", false},
+		{".hidden", false},
+		{"has space", false},
+		{"has.dot", false},
+		{"a/b", false},
+		{"a\\b", false},
+		{"-starts-with-dash", false},
+		{"_starts-with-underscore", false},
+		{"has:colon", false},
+		{"has@at", false},
+		{"\x00null", false},
+		{strings.Repeat("a", 65), false},  // too long
+		{strings.Repeat("a", 64), true},   // exactly at limit
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			err := validateAlias(tt.input)
+			if tt.ok && err != nil {
+				t.Errorf("validateAlias(%q) = %v, expected valid", tt.input, err)
+			}
+			if !tt.ok && err == nil {
+				t.Errorf("validateAlias(%q) = nil, expected error", tt.input)
 			}
 		})
 	}

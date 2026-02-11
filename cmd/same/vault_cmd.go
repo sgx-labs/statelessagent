@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -67,6 +68,9 @@ func vaultCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name, path := args[0], args[1]
+			if err := validateAlias(name); err != nil {
+				return fmt.Errorf("invalid vault name: %w", err)
+			}
 			absPath, err := filepath.Abs(path)
 			if err != nil {
 				return fmt.Errorf("resolve path: %w", err)
@@ -161,6 +165,27 @@ Example:
 // maxFeedFileSize is the maximum size of a single file that vault feed will copy.
 // Prevents memory exhaustion from huge files.
 const maxFeedFileSize = 10 * 1024 * 1024 // 10MB
+
+// maxAliasLen is the maximum length of a vault alias name.
+const maxAliasLen = 64
+
+// validAlias matches alphanumeric, hyphens, and underscores.
+var validAlias = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+
+// validateAlias checks that a vault alias name is safe for use as a
+// registry key and filesystem directory name.
+func validateAlias(alias string) error {
+	if alias == "" {
+		return fmt.Errorf("alias cannot be empty")
+	}
+	if len(alias) > maxAliasLen {
+		return fmt.Errorf("alias too long (%d chars, max %d)", len(alias), maxAliasLen)
+	}
+	if !validAlias.MatchString(alias) {
+		return fmt.Errorf("alias must be alphanumeric with hyphens or underscores (got %q)", alias)
+	}
+	return nil
+}
 
 // sanitizeAlias strips path separators and traversal characters from a vault alias
 // so it is safe to use as a filesystem directory name.

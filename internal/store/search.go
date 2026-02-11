@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -1054,6 +1055,12 @@ func FederatedSearch(vaultDBPaths map[string]string, queryVec []float32, queryTe
 	// Trim to requested TopK
 	if opts.TopK > 0 && len(deduped) > opts.TopK {
 		deduped = deduped[:opts.TopK]
+	}
+
+	// Log any vault-level errors so users can diagnose issues.
+	if len(searchErrors) > 0 {
+		fmt.Fprintf(os.Stderr, "same: federated search: %d vault(s) skipped: %s\n",
+			len(searchErrors), strings.Join(searchErrors, "; "))
 	}
 
 	return deduped, nil

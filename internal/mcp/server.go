@@ -660,6 +660,17 @@ func handleSearchAcrossVaults(ctx context.Context, req *mcp.CallToolRequest, inp
 		return textResult("Federated search error."), nil, nil
 	}
 
+	// SECURITY: Filter _PRIVATE/ paths from results. VectorSearch doesn't
+	// filter at the SQL level, so we must filter here for defense-in-depth.
+	filtered := make([]store.FederatedResult, 0, len(results))
+	for _, r := range results {
+		upper := strings.ToUpper(r.Path)
+		if !strings.HasPrefix(upper, "_PRIVATE/") && !strings.HasPrefix(upper, "_PRIVATE\\") {
+			filtered = append(filtered, r)
+		}
+	}
+	results = filtered
+
 	if len(results) == 0 {
 		return textResult(fmt.Sprintf("No results found across %d vault(s).", len(vaultDBPaths))), nil, nil
 	}
