@@ -4,7 +4,7 @@
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](https://go.dev)
 [![Latest Release](https://img.shields.io/github/v/release/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent)
-[![MCP Tools](https://img.shields.io/badge/MCP_Tools-11-8A2BE2.svg)](#mcp-tools)
+[![MCP Tools](https://img.shields.io/badge/MCP_Tools-12-8A2BE2.svg)](#mcp-tools)
 [![Discord](https://img.shields.io/discord/1468523556076785757?color=5865F2&label=Discord&logo=discord&logoColor=white)](https://discord.gg/Qg8AXavNWu)
 
 > **Your AI forgets everything between sessions. Not anymore.**
@@ -110,7 +110,8 @@ Your markdown notes are embedded locally via Ollama and stored in a SQLite datab
 | `same tutorial` | 6 hands-on lessons | No |
 | `same doctor` | 15 diagnostic checks | No |
 | Push protection | Safety rails for multi-agent workflows | No |
-| MCP server (11 tools) | Works with any MCP client | No* |
+| Cross-vault federation | Search across all vaults at once | No* |
+| MCP server (12 tools) | Works with any MCP client | No* |
 | Privacy tiers | `_PRIVATE/` never indexed, `research/` never committed | No |
 
 *Semantic mode requires Ollama; keyword fallback is automatic.
@@ -119,7 +120,7 @@ Your markdown notes are embedded locally via Ollama and stored in a SQLite datab
 
 ## MCP Tools
 
-SAME exposes **11 tools** via MCP for any compatible client.
+SAME exposes **12 tools** via MCP for any compatible client.
 
 ### Read
 
@@ -127,6 +128,7 @@ SAME exposes **11 tools** via MCP for any compatible client.
 |------|-------------|
 | `search_notes` | Semantic search across your knowledge base |
 | `search_notes_filtered` | Search with domain/workstream/tag filters |
+| `search_across_vaults` | Federated search across multiple vaults |
 | `get_note` | Read full note content by path |
 | `find_similar_notes` | Discover related notes by similarity |
 | `get_session_context` | Pinned notes + latest handoff + recent activity |
@@ -150,12 +152,12 @@ Your AI can now write to its own memory, not just read from it. Decisions persis
 
 | Tool | Integration | Experience |
 |------|-------------|------------|
-| **Claude Code** | Hooks + MCP | Full (automatic context surfacing + 11 tools) |
-| **Cursor** | MCP | 11 tools for search, write, session management |
-| **Windsurf** | MCP | 11 tools for search, write, session management |
+| **Claude Code** | Hooks + MCP | Full (automatic context surfacing + 12 tools) |
+| **Cursor** | MCP | 12 tools for search, write, session management |
+| **Windsurf** | MCP | 12 tools for search, write, session management |
 | **Obsidian** | Vault detection | Indexes your existing vault |
 | **Logseq** | Vault detection | Indexes your existing vault |
-| **Any MCP client** | MCP server | 11 tools via stdio transport |
+| **Any MCP client** | MCP server | 12 tools via stdio transport |
 
 SAME works with any directory of `.md` files. No Obsidian required.
 
@@ -172,7 +174,7 @@ Use `same init --mcp-only` to skip Claude Code hooks and just register the MCP s
 | **Offline capable** | Full (Lite mode) | No | No | Partial | Yes |
 | **Cloud required** | No | Default yes | Yes | No | No |
 | **Telemetry** | None | Default ON | Unknown | None | None |
-| **MCP tools** | 11 | 4-6 | 0 (REST) | 7+ | 24 |
+| **MCP tools** | 12 | 4-6 | 0 (REST) | 7+ | 24 |
 | **Hook integration** | Yes (Claude Code) | No | No | No | No |
 | **Session continuity** | Handoffs + pins + recovery | Session-scoped | Core feature | No | No |
 | **Published benchmarks** | P=0.995, MRR=0.949 | Claims "26% better" | None | None | None |
@@ -263,6 +265,7 @@ Requires Go 1.25+ and CGO.
 | `same tutorial` | Learn SAME features hands-on (6 lessons) |
 | `same ask <question>` | Ask a question, get cited answers from your notes |
 | `same search <query>` | Search your notes |
+| `same search --all <query>` | Search across all registered vaults |
 | `same related <path>` | Find related notes |
 | `same status` | See what SAME is tracking |
 | `same doctor` | Run 15 diagnostic checks |
@@ -279,7 +282,8 @@ Requires Go 1.25+ and CGO.
 | `same setup hooks` | Install Claude Code hooks |
 | `same setup mcp` | Register MCP server |
 | `same hooks` | Show hook status and descriptions |
-| `same vault list\|add\|remove` | Manage multiple vaults |
+| `same vault list\|add\|remove\|default` | Manage multiple vaults |
+| `same vault feed <source>` | Propagate notes from another vault (with PII guard) |
 | `same guard settings set push-protect on` | Enable push protection |
 | `same push-allow` | One-time push authorization |
 | `same watch` | Auto-reindex on file changes |
@@ -454,7 +458,7 @@ All evaluation uses synthetic vault data with known relevance judgments. No user
 
 **How much disk space?** 5-15MB for a few hundred notes.
 
-**Can I use multiple vaults?** Yes. `same vault add work ~/work-notes && same vault default work`.
+**Can I use multiple vaults?** Yes. `same vault add work ~/work-notes && same vault default work`. Search across all of them with `same search --all "your query"` or via the `search_across_vaults` MCP tool.
 
 ---
 

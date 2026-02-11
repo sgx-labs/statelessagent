@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.7.0 — Cross-Vault Federation
+
+Search across all your vaults from one place. Manage multiple vaults from the CLI. Propagate notes between vaults with privacy guards.
+
+### Added
+
+- **Federated search** — `same search --all` searches every registered vault in one query. `same search --vaults work,personal` searches specific vaults. Results merged by score with graceful degradation (semantic → FTS5 → keyword per vault). 50-vault limit.
+- **MCP: `search_across_vaults`** — federated search tool for any MCP client. Brings the total to **12 MCP tools**.
+- **`same vault` command group** — `same vault list`, `same vault add <alias> <path>`, `same vault remove <alias>`, `same vault default <alias>` for managing the vault registry (`~/.config/same/vaults.json`).
+- **`same vault feed`** — one-way note propagation between vaults. Copy notes from a source vault into the current vault's `fed/<alias>/` directory. Includes PII guard (scans for email/phone/SSN patterns), symlink rejection, 10MB file size limit, self-feed prevention, and `--dry-run` mode.
+- **`store.AllNotes()`** — returns all chunk_id=0 notes excluding `_PRIVATE/`, ordered by modified date.
+- **20 new tests** — `sanitizeAlias` (14 cases), `safeFeedPath` (19 cases), `FederatedSearch` (empty query, too many vaults, private note exclusion, mixed vault health, graceful skip).
+
+### Codebase
+
+- **CLI decomposed** — `cmd/same/main.go` split into 18 focused files: `search_cmd.go`, `vault_cmd.go`, `ask_cmd.go`, `status_cmd.go`, `doctor_cmd.go`, `display_cmd.go`, `demo_cmd.go`, `tutorial_cmd.go`, and more. Main.go now handles only command registration.
+- **Hooks decomposed** — `context_surfacing.go` split into `search_strategies.go`, `term_extraction.go`, `text_processing.go`, `verbose_logging.go`.
+- **Test coverage expanded** — new test suites for hooks runner, session recovery, session bootstrap, instance registry, indexer, memory, setup, MCP handlers, and store edge cases.
+- **AGENTS.md** — contributor guide for AI coding agents.
+
+### Security
+
+- **Vault feed hardening** — `sanitizeAlias()` strips path separators, traversal characters, and null bytes. `safeFeedPath()` blocks absolute paths, traversal, private/hidden directories, and null bytes. Federated search error messages use aliases only (no raw filesystem paths).
+
+---
+
 ## v0.6.1 — Hardening, Recovery & Visibility
 
 Security hardening, crash recovery, search improvements, UX polish, and every hook now proves it's working.
