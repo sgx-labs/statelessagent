@@ -786,24 +786,6 @@ func (r *VaultRegistry) Save() error {
 	}
 	defer unlock()
 
-	// Re-read the registry under the lock to merge any changes
-	// made by another process since we last read it.
-	data, readErr := os.ReadFile(path)
-	if readErr == nil {
-		var current VaultRegistry
-		if json.Unmarshal(data, &current) == nil && current.Vaults != nil {
-			// Merge: our entries take precedence over existing ones
-			for alias, vpath := range current.Vaults {
-				if _, exists := r.Vaults[alias]; !exists {
-					r.Vaults[alias] = vpath
-				}
-			}
-			if r.Default == "" && current.Default != "" {
-				r.Default = current.Default
-			}
-		}
-	}
-
 	out, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		return err

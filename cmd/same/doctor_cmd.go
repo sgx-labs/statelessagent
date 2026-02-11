@@ -300,7 +300,31 @@ func runDoctor(jsonOut bool) error {
 		return fmt.Sprintf("%d hooks active", activeCount), nil
 	})
 
-	// 10. Database integrity (orphaned vectors)
+	// 10. Vault registry
+	check("Vault registry", "register vaults with 'same vault add <name> <path>'", func() (string, error) {
+		reg := config.LoadRegistry()
+		if len(reg.Vaults) == 0 {
+			return "no vaults registered (optional)", nil
+		}
+		var missingNames []string
+		for name, path := range reg.Vaults {
+			if _, err := os.Stat(path); err != nil {
+				missingNames = append(missingNames, name)
+			}
+		}
+		if len(missingNames) > 0 {
+			return "", fmt.Errorf("%d of %d vault path(s) missing: %s",
+				len(missingNames), len(reg.Vaults), strings.Join(missingNames, ", "))
+		}
+		if reg.Default != "" {
+			if _, ok := reg.Vaults[reg.Default]; !ok {
+				return "", fmt.Errorf("default vault %q not in registry", reg.Default)
+			}
+		}
+		return fmt.Sprintf("%d vault(s) registered", len(reg.Vaults)), nil
+	})
+
+	// 11. Database integrity (orphaned vectors)
 	check("Database integrity", "run 'same reindex' to rebuild", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {

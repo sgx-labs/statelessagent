@@ -51,9 +51,14 @@ type StatusData struct {
 		Error  string `json:"error,omitempty"`
 	} `json:"ollama"`
 	Hooks map[string]bool `json:"hooks"`
-	MCP   struct {
+	MCP struct {
 		Installed bool `json:"installed"`
 	} `json:"mcp"`
+	Vaults struct {
+		Count   int      `json:"count"`
+		Default string   `json:"default,omitempty"`
+		Names   []string `json:"names,omitempty"`
+	} `json:"vaults"`
 	Config struct {
 		Loaded  string `json:"loaded,omitempty"` // Just the filename, not full path
 		Warning string `json:"warning,omitempty"`
@@ -135,6 +140,14 @@ func runStatus(jsonOut bool) error {
 
 		// MCP
 		data.MCP.Installed = setup.MCPInstalled(vp)
+
+		// Vaults
+		reg := config.LoadRegistry()
+		data.Vaults.Count = len(reg.Vaults)
+		data.Vaults.Default = reg.Default
+		for name := range reg.Vaults {
+			data.Vaults.Names = append(data.Vaults.Names, name)
+		}
 
 		// Config
 		if w := config.ConfigWarning(); w != "" {
@@ -229,6 +242,23 @@ func runStatus(jsonOut bool) error {
 	} else {
 		fmt.Printf("  %snot registered%s\n",
 			cli.Dim, cli.Reset)
+	}
+
+	// Vaults
+	reg := config.LoadRegistry()
+	if len(reg.Vaults) > 0 {
+		cli.Section("Vaults")
+		fmt.Printf("  Registered: %d vault(s)\n", len(reg.Vaults))
+		for name, path := range reg.Vaults {
+			marker := "  "
+			if name == reg.Default {
+				marker = "* "
+			}
+			fmt.Printf("  %s%-15s %s\n", marker, name, cli.ShortenHome(path))
+		}
+		if reg.Default != "" {
+			fmt.Printf("\n  %s(* = default · use --all to search across vaults)%s\n", cli.Dim, cli.Reset)
+		}
 	}
 
 	// Config

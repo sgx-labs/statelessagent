@@ -146,6 +146,13 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 	}
 	fmt.Println()
 
+	if !jsonOut {
+		reg := config.LoadRegistry()
+		if len(reg.Vaults) >= 2 {
+			fmt.Printf("  %sSearching 1 vault. Use --all to search %d vaults.%s\n", cli.Dim, len(reg.Vaults), cli.Reset)
+		}
+	}
+
 	return nil
 }
 

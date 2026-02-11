@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sgx-labs/statelessagent/internal/cli"
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/guard"
 	"github.com/sgx-labs/statelessagent/internal/store"
@@ -90,6 +91,11 @@ func vaultCmd() *cobra.Command {
 			if reg.Default == name {
 				fmt.Println("Set as default vault.")
 			}
+			if len(reg.Vaults) >= 2 {
+				fmt.Printf("\n  %sTry: same search --all \"query\" to search across vaults%s\n", cli.Dim, cli.Reset)
+			} else {
+				fmt.Printf("\n  %sTip: register a second vault to enable cross-vault search%s\n", cli.Dim, cli.Reset)
+			}
 			return nil
 		},
 	})
@@ -112,6 +118,9 @@ func vaultCmd() *cobra.Command {
 				return fmt.Errorf("save registry: %w", err)
 			}
 			fmt.Printf("Removed vault %q\n", name)
+			if reg.Default == "" && len(reg.Vaults) > 0 {
+				fmt.Printf("  %sNo default vault. Use 'same vault default <name>' to set one.%s\n", cli.Dim, cli.Reset)
+			}
 			return nil
 		},
 	})
