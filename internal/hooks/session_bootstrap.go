@@ -99,13 +99,10 @@ func runSessionBootstrap(db *store.DB, input *HookInput) *HookOutput {
 	}
 
 	return &HookOutput{
-		HookSpecificOutput: &HookSpecific{
-			HookEventName: "SessionStart",
-			AdditionalContext: fmt.Sprintf(
-				"\n<session-bootstrap>\n%s\n</session-bootstrap>\n",
-				context,
-			),
-		},
+		SystemMessage: fmt.Sprintf(
+			"\n<session-bootstrap>\n%s\n</session-bootstrap>\n",
+			context,
+		),
 	}
 }
 

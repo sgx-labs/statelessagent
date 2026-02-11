@@ -18,11 +18,6 @@ func runHandoffGenerator(_ *store.DB, input *HookInput) *HookOutput {
 		return nil
 	}
 
-	hookEvent := input.HookEventName
-	if hookEvent == "" {
-		hookEvent = "Stop"
-	}
-
 	result := memory.AutoHandoffFromTranscript(transcriptPath, input.SessionID)
 	if result == nil {
 		return nil
@@ -33,12 +28,9 @@ func runHandoffGenerator(_ *store.DB, input *HookInput) *HookOutput {
 	}
 
 	return &HookOutput{
-		HookSpecificOutput: &HookSpecific{
-			HookEventName: hookEvent,
-			AdditionalContext: fmt.Sprintf(
-				"\n<vault-handoff>\nSession handoff written to: %s\nSession ID: %s\n</vault-handoff>\n",
-				result.Path, result.SessionID,
-			),
-		},
+		SystemMessage: fmt.Sprintf(
+			"\n<vault-handoff>\nSession handoff written to: %s\nSession ID: %s\n</vault-handoff>\n",
+			result.Path, result.SessionID,
+		),
 	}
 }

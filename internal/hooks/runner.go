@@ -106,16 +106,26 @@ func Run(hookName string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "same hook %s: cannot open database: %v\n", hookName, err)
 		fmt.Fprintf(os.Stderr, "  Hint: run 'same init' or 'same doctor' to diagnose\n")
-		// Return diagnostic output so the AI knows what happened
+		// Return diagnostic output so the AI knows what happened.
+		// hookSpecificOutput is only valid for PreToolUse, UserPromptSubmit,
+		// PostToolUse. For other events, use systemMessage.
 		eventName := hookEventMap[hookName]
 		if eventName == "" {
 			eventName = "UserPromptSubmit"
 		}
-		output := &HookOutput{
-			HookSpecificOutput: &HookSpecific{
-				HookEventName:     eventName,
-				AdditionalContext: diagNoDB,
-			},
+		var output *HookOutput
+		switch eventName {
+		case "UserPromptSubmit", "PreToolUse", "PostToolUse":
+			output = &HookOutput{
+				HookSpecificOutput: &HookSpecific{
+					HookEventName:     eventName,
+					AdditionalContext: diagNoDB,
+				},
+			}
+		default:
+			output = &HookOutput{
+				SystemMessage: diagNoDB,
+			}
 		}
 		data, jsonErr := json.Marshal(output)
 		if jsonErr == nil {
@@ -173,7 +183,7 @@ func Run(hookName string) {
 			if out == nil {
 				out = &HookOutput{}
 			}
-			out.SystemMessage = msg
+			out.SystemMessage += msg
 		}
 
 		ch <- hookResult{output: out}
@@ -188,11 +198,20 @@ func Run(hookName string) {
 		if eventName == "" {
 			eventName = "UserPromptSubmit"
 		}
-		output = &HookOutput{
-			HookSpecificOutput: &HookSpecific{
-				HookEventName:     eventName,
-				AdditionalContext: diagTimeout,
-			},
+		// hookSpecificOutput is only valid for PreToolUse, UserPromptSubmit,
+		// and PostToolUse. For other events, use systemMessage.
+		switch eventName {
+		case "UserPromptSubmit", "PreToolUse", "PostToolUse":
+			output = &HookOutput{
+				HookSpecificOutput: &HookSpecific{
+					HookEventName:     eventName,
+					AdditionalContext: diagTimeout,
+				},
+			}
+		default:
+			output = &HookOutput{
+				SystemMessage: diagTimeout,
+			}
 		}
 	}
 
@@ -202,14 +221,23 @@ func Run(hookName string) {
 	wg.Wait()
 	db.Close()
 
-	if output != nil {
-		data, err := json.Marshal(output)
-		if err != nil {
-			return
-		}
-		os.Stdout.Write(data)
-		os.Stdout.Write([]byte("\n"))
+	// Always write valid JSON to stdout. Claude Code treats empty stdout
+	// as a hook failure. When there's nothing to report, write a minimal
+	// response appropriate for the hook's event type.
+	//
+	// IMPORTANT: hookSpecificOutput is only valid for PreToolUse,
+	// UserPromptSubmit, and PostToolUse events. Stop and SessionStart
+	// hooks must use top-level fields only (systemMessage, decision, etc.)
+	// or an empty object {}.
+	if output == nil {
+		output = &HookOutput{}
 	}
+	data, err := json.Marshal(output)
+	if err != nil {
+		return
+	}
+	os.Stdout.Write(data)
+	os.Stdout.Write([]byte("\n"))
 }
 
 // mergePluginOutput appends plugin contexts to the built-in hook output.
@@ -226,15 +254,24 @@ func mergePluginOutput(output *HookOutput, eventName string, pluginContexts []st
 	extra := "\n<plugin-context>\n" + strings.Join(sanitized, "\n---\n") + "\n</plugin-context>\n"
 
 	if output == nil {
-		return &HookOutput{
-			HookSpecificOutput: &HookSpecific{
-				HookEventName:     eventName,
-				AdditionalContext: extra,
-			},
-		}
+		output = &HookOutput{}
 	}
 
-	output.HookSpecificOutput.AdditionalContext += extra
+	// hookSpecificOutput is only valid for PreToolUse, UserPromptSubmit,
+	// and PostToolUse. For Stop/SessionStart, use systemMessage.
+	switch eventName {
+	case "UserPromptSubmit", "PreToolUse", "PostToolUse":
+		if output.HookSpecificOutput == nil {
+			output.HookSpecificOutput = &HookSpecific{
+				HookEventName:     eventName,
+				AdditionalContext: extra,
+			}
+		} else {
+			output.HookSpecificOutput.AdditionalContext += extra
+		}
+	default:
+		output.SystemMessage += extra
+	}
 	return output
 }
 

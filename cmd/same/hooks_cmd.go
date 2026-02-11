@@ -20,6 +20,7 @@ func hookCmd() *cobra.Command {
 	cmd.AddCommand(hookSubCmd("context-surfacing", "UserPromptSubmit hook: surface relevant vault context"))
 	cmd.AddCommand(hookSubCmd("decision-extractor", "Stop hook: extract decisions from transcript"))
 	cmd.AddCommand(hookSubCmd("handoff-generator", "PreCompact/Stop hook: generate handoff notes"))
+	cmd.AddCommand(hookSubCmd("feedback-loop", "Stop hook: track which surfaced notes were actually used"))
 	cmd.AddCommand(hookSubCmd("staleness-check", "SessionStart hook: surface stale notes"))
 	cmd.AddCommand(hookSubCmd("session-bootstrap", "SessionStart hook: bootstrap session with handoff + decisions + stale notes"))
 	return cmd

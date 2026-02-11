@@ -20,12 +20,9 @@ func runStalenessCheck(db *store.DB, _ *HookInput) *HookOutput {
 	}
 
 	return &HookOutput{
-		HookSpecificOutput: &HookSpecific{
-			HookEventName: "SessionStart",
-			AdditionalContext: fmt.Sprintf(
-				"\n<vault-staleness>\n%s\n</vault-staleness>\n",
-				contextText,
-			),
-		},
+		SystemMessage: fmt.Sprintf(
+			"\n<vault-staleness>\n%s\n</vault-staleness>\n",
+			contextText,
+		),
 	}
 }

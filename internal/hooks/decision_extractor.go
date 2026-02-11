@@ -44,13 +44,10 @@ func runDecisionExtractor(_ *store.DB, input *HookInput) *HookOutput {
 			fmt.Fprintf(os.Stderr, "same: ✓ extracted %d decision(s) → %s\n", count, config.DecisionLogPath())
 		}
 		return &HookOutput{
-			HookSpecificOutput: &HookSpecific{
-				HookEventName: "Stop",
-				AdditionalContext: fmt.Sprintf(
-					"\n<vault-decisions>\nExtracted %d decision(s) from this session.\nAppended to: %s\nTagged as auto-extracted for human review.\n</vault-decisions>\n",
-					count, config.DecisionLogPath(),
-				),
-			},
+			SystemMessage: fmt.Sprintf(
+				"\n<vault-decisions>\nExtracted %d decision(s) from this session.\nAppended to: %s\nTagged as auto-extracted for human review.\n</vault-decisions>\n",
+				count, config.DecisionLogPath(),
+			),
 		}
 	}
 

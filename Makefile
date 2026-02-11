@@ -49,11 +49,15 @@ windows-amd64:
 cross-all: darwin-arm64 windows-amd64 linux-amd64
 
 # Install to $GOPATH/bin or /usr/local/bin
+# Note: rm before cp to avoid macOS code signing cache issues (stale
+# signatures on in-place replacement cause SIGKILL on Apple Silicon).
 install: build
 	@if [ -n "$(GOPATH)" ]; then \
+		rm -f $(GOPATH)/bin/$(BINARY_NAME); \
 		cp $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/$(BINARY_NAME); \
 		echo "Installed to $(GOPATH)/bin/$(BINARY_NAME)"; \
 	else \
+		rm -f /usr/local/bin/$(BINARY_NAME); \
 		cp $(BUILD_DIR)/$(BINARY_NAME) /usr/local/bin/$(BINARY_NAME); \
 		echo "Installed to /usr/local/bin/$(BINARY_NAME)"; \
 	fi
