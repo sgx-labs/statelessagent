@@ -41,7 +41,11 @@ Thumbs.db
 *~
 
 # SAME data directory (created inside vaults)
-.same/data/
+.same/
+
+# Claude Code local config (contains machine-specific paths)
+.claude/
+.mcp.json
 
 # Eval data (contains vault-specific paths and prompts)
 # The eval framework code (internal/eval/) is tracked,
@@ -66,3 +70,7 @@ docs/strategy-and-vision.md
 npm/bin/same-binary
 npm/bin/same-binary.exe
 npm/node_modules/
+
+# Ralph Loop (local dev tooling, contains machine-specific paths)
+ralph/
+IMPLEMENTATION_PLAN.md
