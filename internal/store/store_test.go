@@ -433,10 +433,10 @@ func TestSchemaVersion(t *testing.T) {
 	}
 	defer db.Close()
 
-	// After migrate(), version should be 2 (migrateV1 + migrateV2 ran)
+	// After migrate(), version should be 3 (migrateV1 + migrateV2 + migrateV3 ran)
 	v := db.SchemaVersion()
-	if v != 2 {
-		t.Errorf("expected schema version 2, got %d", v)
+	if v != 3 {
+		t.Errorf("expected schema version 3, got %d", v)
 	}
 }
 

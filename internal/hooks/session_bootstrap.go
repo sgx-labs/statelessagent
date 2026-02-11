@@ -38,19 +38,18 @@ func runSessionBootstrap(db *store.DB, input *HookInput) *HookOutput {
 
 	var sections []string
 
-	// Priority 0a: Previous session summary (from Claude Code's session index)
-	if prev := findPreviousSessionContext(sessionID); prev != "" {
-		sections = append(sections, prev)
+	// Priority 0: Unified recovery (replaces separate session index + handoff lookup)
+	// Uses a priority cascade: handoff → instance → session index
+	recovered := RecoverPreviousSession(db, sessionID)
+	if recovered != nil {
+		if ctx := FormatRecoveryContext(recovered); ctx != "" {
+			sections = append(sections, ctx)
+		}
 	}
 
 	// Priority 0b: Active instances (other Claude Code sessions)
 	if instances := findActiveInstances(sessionID); instances != "" {
 		sections = append(sections, instances)
-	}
-
-	// Priority 1: Latest handoff note
-	if handoff := findLatestHandoff(); handoff != "" {
-		sections = append(sections, handoff)
 	}
 
 	// Priority 2: Active decisions (last 7 days)

@@ -232,6 +232,7 @@ func (db *DB) migrate() error {
 	}{
 		{1, db.migrateV1}, // establishes version tracking baseline
 		{2, db.migrateV2}, // FTS5 full-text search table
+		{3, db.migrateV3}, // session recovery tracking
 	}
 	for _, m := range versionedMigrations {
 		if currentVersion < m.version {
@@ -271,6 +272,18 @@ func (db *DB) migrateV2() error {
 	// Populate from existing data
 	_, _ = db.conn.Exec(`INSERT INTO vault_notes_fts(vault_notes_fts) VALUES('rebuild')`)
 	return nil
+}
+
+// migrateV3 creates a session_recovery table for tracking how session context is recovered.
+func (db *DB) migrateV3() error {
+	_, err := db.conn.Exec(`CREATE TABLE IF NOT EXISTS session_recovery (
+		session_id TEXT PRIMARY KEY,
+		recovered_from_session TEXT NOT NULL DEFAULT '',
+		recovery_source TEXT NOT NULL,
+		completeness REAL NOT NULL,
+		recovered_at INTEGER NOT NULL DEFAULT (unixepoch())
+	)`)
+	return err
 }
 
 // SchemaVersion returns the current schema version (0 if unset).
@@ -384,4 +397,16 @@ func (db *DB) CheckEmbeddingMeta(provider, model string, dims int) error {
 	}
 
 	return nil
+}
+
+// RecordRecovery logs how a session's context was recovered for reliability monitoring.
+func (db *DB) RecordRecovery(sessionID, recoveredFromSession, source string, completeness float64) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	_, err := db.conn.Exec(
+		`INSERT OR REPLACE INTO session_recovery (session_id, recovered_from_session, recovery_source, completeness)
+		 VALUES (?, ?, ?, ?)`,
+		sessionID, recoveredFromSession, source, completeness,
+	)
+	return err
 }
