@@ -53,7 +53,7 @@ Write-Host ""
 $arch = [System.Environment]::Is64BitOperatingSystem
 if (-not $arch) {
     Write-Host "  SAME requires 64-bit Windows."
-    Write-Host "  Please ask for help: https://discord.gg/GZGHtrrKF2"
+    Write-Host "  Please ask for help: https://discord.gg/9KfTkcGs7g"
     exit 1
 }
 
@@ -198,7 +198,7 @@ if (-not $BinaryAcquired) {
     Write-Host "           cd statelessagent; make install"
     Write-Host ""
     Write-Host "  3. Ask for help"
-    Write-Host "     https://discord.gg/GZGHtrrKF2"
+    Write-Host "     https://discord.gg/9KfTkcGs7g"
     exit 1
 }
 
@@ -241,7 +241,7 @@ try {
     Write-Host "  Or manually unblock: Right-click same.exe > Properties > Unblock"
     Write-Host "  File location: $OutputFile"
     Write-Host ""
-    Write-Host "  Still stuck? Discord: https://discord.gg/GZGHtrrKF2"
+    Write-Host "  Still stuck? Discord: https://discord.gg/9KfTkcGs7g"
     exit 1
 }
 
@@ -366,5 +366,5 @@ if (-not $MissingOllama -and -not $MissingNode) {
 Write-Host ""
 Write-Host "  ${Dim}You can run 'same init' right now - no need to restart the terminal!${Reset}"
 Write-Host ""
-Write-Host "  Questions? https://discord.gg/GZGHtrrKF2"
+Write-Host "  Questions? https://discord.gg/9KfTkcGs7g"
 Write-Host ""

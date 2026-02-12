@@ -6,7 +6,7 @@
 [![Latest Release](https://img.shields.io/github/v/release/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent)
 [![MCP Tools](https://img.shields.io/badge/MCP_Tools-12-8A2BE2.svg)](#mcp-tools)
-[![Discord](https://img.shields.io/discord/1468523556076785757?color=5865F2&label=Discord&logo=discord&logoColor=white)](https://discord.gg/GZGHtrrKF2)
+[![Discord](https://img.shields.io/discord/1468523556076785757?color=5865F2&label=Discord&logo=discord&logoColor=white)](https://discord.gg/9KfTkcGs7g)
 
 > **Your AI forgets everything between sessions. Not anymore.**
 
@@ -495,7 +495,7 @@ All evaluation uses synthetic vault data with known relevance judgments. No user
 
 ## Community
 
-[Discord](https://discord.gg/GZGHtrrKF2) · [GitHub Discussions](https://github.com/sgx-labs/statelessagent/discussions)
+[Discord](https://discord.gg/9KfTkcGs7g) · [GitHub Discussions](https://github.com/sgx-labs/statelessagent/discussions)
 
 ## Support
 

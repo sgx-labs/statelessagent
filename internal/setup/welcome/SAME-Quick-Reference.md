@@ -95,4 +95,4 @@ Run `same display compact` or `same display quiet`.
 
 - Run `same doctor` for diagnostics
 - Check `same --help` for all commands
-- Discord: https://discord.gg/GZGHtrrKF2
+- Discord: https://discord.gg/9KfTkcGs7g

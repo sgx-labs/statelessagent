@@ -379,7 +379,7 @@ func checkOllama() error {
 		fmt.Println()
 		fmt.Println("  Once the llama icon appears, run 'same init' again.")
 		fmt.Println()
-		fmt.Println("  Need help? Join our Discord: https://discord.gg/GZGHtrrKF2")
+		fmt.Println("  Need help? Join our Discord: https://discord.gg/9KfTkcGs7g")
 		return fmt.Errorf("Ollama not running. Start Ollama and try 'same init' again")
 	}
 	defer resp.Body.Close()

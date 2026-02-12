@@ -122,7 +122,7 @@ Quick Start:
   same status   See what SAME is tracking
   same doctor   Check if everything is working
 
-Need help? https://discord.gg/GZGHtrrKF2`,
+Need help? https://discord.gg/9KfTkcGs7g`,
 		CompletionOptions: cobra.CompletionOptions{
 			DisableDefaultCmd: true,
 		},

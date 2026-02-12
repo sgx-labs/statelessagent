@@ -89,7 +89,7 @@ case "$OS" in
       *)
         echo "  Hmm, I don't recognize your Mac's processor: $ARCH"
         echo "  This is unusual. Please ask for help in our Discord:"
-        echo "  https://discord.gg/GZGHtrrKF2"
+        echo "  https://discord.gg/9KfTkcGs7g"
         exit 1
         ;;
     esac
@@ -121,7 +121,7 @@ case "$OS" in
         echo "  I only support 64-bit Linux (x86_64 and ARM64) right now."
         echo "  Your system reports: $ARCH"
         echo "  Please ask for help in our Discord:"
-        echo "  https://discord.gg/GZGHtrrKF2"
+        echo "  https://discord.gg/9KfTkcGs7g"
         exit 1
         ;;
     esac
@@ -135,7 +135,7 @@ case "$OS" in
     echo "  I don't recognize your operating system: $OS"
     echo "  SAME works on macOS, Linux, and Windows."
     echo "  Please ask for help in our Discord:"
-    echo "  https://discord.gg/GZGHtrrKF2"
+    echo "  https://discord.gg/9KfTkcGs7g"
     exit 1
     ;;
 esac
@@ -212,7 +212,7 @@ no_binary_error() {
   echo "           cd statelessagent && make install"
   echo ""
   echo "  3. Ask for help"
-  echo "     https://discord.gg/GZGHtrrKF2"
+  echo "     https://discord.gg/9KfTkcGs7g"
   exit 1
 }
 
@@ -334,7 +334,7 @@ if ! "$OUTPUT" version >/dev/null 2>&1; then
   echo "  Please share this info in Discord and we'll help:"
   echo "  - OS: $OS_NAME ($ARCH_NAME)"
   echo "  - File: $OUTPUT"
-  echo "  https://discord.gg/GZGHtrrKF2"
+  echo "  https://discord.gg/9KfTkcGs7g"
   exit 1
 fi
 
@@ -533,5 +533,5 @@ elif [ "$MISSING_NODE" = true ]; then
 fi
 
 echo ""
-echo "  Questions? Join us: https://discord.gg/GZGHtrrKF2"
+echo "  Questions? Join us: https://discord.gg/9KfTkcGs7g"
 echo ""
