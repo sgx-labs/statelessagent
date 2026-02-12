@@ -327,45 +327,47 @@ Write-Host ""
 # What's Next
 # ─────────────────────────────────────────────────────────────
 
-Write-Host "-----------------------------------------------------------"
-Write-Host ""
-Write-Host "  ${Bold}WHAT'S NEXT?${Reset}"
-Write-Host ""
-
 if (-not $MissingOllama -and -not $MissingNode) {
-    Write-Host "  Everything's ready! Type this command and press Enter:"
+    # Everything's ready — run init directly
+    Write-Host "-----------------------------------------------------------"
     Write-Host ""
-    Write-Host "    ${Green}>${Reset} ${Bold}same init${Reset}"
+    Write-Host "  ${Bold}Starting setup wizard...${Reset}"
     Write-Host ""
-    Write-Host "  This walks you through setup step by step."
-    Write-Host "  ${Dim}(Just type 'same init' at the prompt below and hit Enter)${Reset}"
-} elseif ($MissingOllama -and $MissingNode) {
-    Write-Host "  SAME is installed! Before running 'same init', you'll need:"
+    & same init
+} else {
+    Write-Host "-----------------------------------------------------------"
     Write-Host ""
-    Write-Host "    - Ollama  - https://ollama.com"
-    Write-Host "    - Node.js - https://nodejs.org"
+    Write-Host "  ${Bold}WHAT'S NEXT?${Reset}"
     Write-Host ""
-    Write-Host "  Install those, then run:"
-    Write-Host ""
-    Write-Host "    ${Bold}same init${Reset}"
-} elseif ($MissingOllama) {
-    Write-Host "  Almost there! Install Ollama first:"
-    Write-Host "    https://ollama.com"
-    Write-Host ""
-    Write-Host "  Then run:"
-    Write-Host ""
-    Write-Host "    ${Bold}same init${Reset}"
-} elseif ($MissingNode) {
-    Write-Host "  SAME is installed! Install Node.js for full AI tool integration:"
-    Write-Host "    https://nodejs.org"
-    Write-Host ""
-    Write-Host "  Then run:"
-    Write-Host ""
-    Write-Host "    ${Bold}same init${Reset}"
-}
 
-Write-Host ""
-Write-Host "  ${Dim}You can run 'same init' right now - no need to restart the terminal!${Reset}"
-Write-Host ""
-Write-Host "  Questions? https://discord.gg/9KfTkcGs7g"
-Write-Host ""
+    if ($MissingOllama -and $MissingNode) {
+        Write-Host "  SAME is installed! Before running 'same init', you'll need:"
+        Write-Host ""
+        Write-Host "    - Ollama  - https://ollama.com"
+        Write-Host "    - Node.js - https://nodejs.org"
+        Write-Host ""
+        Write-Host "  Install those, then run:"
+        Write-Host ""
+        Write-Host "    ${Bold}same init${Reset}"
+    } elseif ($MissingOllama) {
+        Write-Host "  Almost there! Install Ollama first:"
+        Write-Host "    https://ollama.com"
+        Write-Host ""
+        Write-Host "  Then run:"
+        Write-Host ""
+        Write-Host "    ${Bold}same init${Reset}"
+    } elseif ($MissingNode) {
+        Write-Host "  SAME is installed! Install Node.js for full AI tool integration:"
+        Write-Host "    https://nodejs.org"
+        Write-Host ""
+        Write-Host "  Then run:"
+        Write-Host ""
+        Write-Host "    ${Bold}same init${Reset}"
+    }
+
+    Write-Host ""
+    Write-Host "  ${Dim}You can run 'same init' right now - no need to restart the terminal!${Reset}"
+    Write-Host ""
+    Write-Host "  Questions? https://discord.gg/9KfTkcGs7g"
+    Write-Host ""
+}

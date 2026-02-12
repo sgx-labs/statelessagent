@@ -598,6 +598,13 @@ func TestIsSAMEHook(t *testing.T) {
 		{"other-tool run", false},
 		{"", false},
 		{"samehook", false},
+		// Windows quoted paths
+		{`"C:\Users\User Name\AppData\Local\Programs\SAME\same.exe" hook context-surfacing`, true},
+		{`"C:\Users\Jane Doe\AppData\Local\Programs\SAME\same.exe" hook staleness-check`, true},
+		{`"C:\Users\User\same.exe" version --check`, true},
+		// Case insensitive
+		{"SAME hook context-surfacing", true},
+		{"Same Hook Decision-Extractor", true},
 	}
 
 	for _, tt := range tests {
@@ -607,25 +614,27 @@ func TestIsSAMEHook(t *testing.T) {
 	}
 }
 
-// --- contains / findSubstring tests ---
+// --- containsSAMEHook tests ---
 
-func TestContains(t *testing.T) {
+func TestContainsSAMEHook(t *testing.T) {
 	tests := []struct {
-		s, substr string
-		want      bool
+		command  string
+		hookName string
+		want     bool
 	}{
-		{"hello world", "world", true},
-		{"hello world", "hello", true},
-		{"hello world", "lo wo", true},
-		{"hello", "hello", true},
-		{"short", "longer string", false},
-		{"", "", true},
-		{"abc", "", true},
+		{"same hook context-surfacing", "context-surfacing", true},
+		{"/usr/local/bin/same hook context-surfacing", "context-surfacing", true},
+		{`"C:\Users\User Name\same.exe" hook context-surfacing`, "context-surfacing", true},
+		{"same version --check", "version --check", true},
+		{"other-tool run", "context-surfacing", false},
+		{"", "hook", false},
+		// Case insensitive
+		{"SAME hook Context-Surfacing", "context-surfacing", true},
 	}
 
 	for _, tt := range tests {
-		if got := contains(tt.s, tt.substr); got != tt.want {
-			t.Errorf("contains(%q, %q) = %v, want %v", tt.s, tt.substr, got, tt.want)
+		if got := containsSAMEHook(tt.command, tt.hookName); got != tt.want {
+			t.Errorf("containsSAMEHook(%q, %q) = %v, want %v", tt.command, tt.hookName, got, tt.want)
 		}
 	}
 }
@@ -700,7 +709,7 @@ func TestCopyWelcomeNotes_CopiesFiles(t *testing.T) {
 	dir := t.TempDir()
 	copyWelcomeNotes(dir)
 
-	destDir := filepath.Join(dir, ".same", "welcome")
+	destDir := filepath.Join(dir, "welcome")
 	entries, err := os.ReadDir(destDir)
 	if err != nil {
 		t.Fatalf("read welcome dir: %v", err)
@@ -729,7 +738,7 @@ func TestCopyWelcomeNotes_SkipsIfExists(t *testing.T) {
 	dir := t.TempDir()
 
 	// Pre-create welcome directory with a custom file
-	destDir := filepath.Join(dir, ".same", "welcome")
+	destDir := filepath.Join(dir, "welcome")
 	os.MkdirAll(destDir, 0o755)
 	os.WriteFile(filepath.Join(destDir, "custom.md"), []byte("custom"), 0o644)
 
@@ -742,6 +751,53 @@ func TestCopyWelcomeNotes_SkipsIfExists(t *testing.T) {
 	}
 	if string(data) != "custom" {
 		t.Error("custom file was overwritten")
+	}
+}
+
+func TestCopyWelcomeNotes_SkipsIfLegacyExists(t *testing.T) {
+	dir := t.TempDir()
+
+	// Pre-create legacy .same/welcome/ directory
+	legacyDir := filepath.Join(dir, ".same", "welcome")
+	os.MkdirAll(legacyDir, 0o755)
+	os.WriteFile(filepath.Join(legacyDir, "old.md"), []byte("legacy"), 0o644)
+
+	copyWelcomeNotes(dir)
+
+	// Verify new welcome/ was NOT created
+	if _, err := os.Stat(filepath.Join(dir, "welcome")); err == nil {
+		t.Error("welcome/ should not be created when legacy .same/welcome/ exists")
+	}
+}
+
+func TestHooksInstalled_WindowsQuotedPath(t *testing.T) {
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	os.MkdirAll(claudeDir, 0o755)
+
+	settings := map[string]interface{}{
+		"hooks": map[string][]hookEntry{
+			"UserPromptSubmit": {
+				{Matcher: "", Hooks: []hookAction{{Type: "command", Command: `"C:\Users\Jane Doe\AppData\Local\Programs\SAME\same.exe" hook context-surfacing`}}},
+			},
+			"SessionStart": {
+				{Matcher: "", Hooks: []hookAction{
+					{Type: "command", Command: `"C:\Users\Jane Doe\AppData\Local\Programs\SAME\same.exe" version --check`},
+					{Type: "command", Command: `"C:\Users\Jane Doe\AppData\Local\Programs\SAME\same.exe" hook staleness-check`},
+				}},
+			},
+		},
+	}
+	data, _ := json.MarshalIndent(settings, "", "  ")
+	os.WriteFile(filepath.Join(claudeDir, "settings.json"), data, 0o644)
+
+	result := HooksInstalled(dir)
+
+	if !result["context-surfacing"] {
+		t.Error("expected context-surfacing to be detected with Windows quoted path")
+	}
+	if !result["staleness-check"] {
+		t.Error("expected staleness-check to be detected with Windows quoted path")
 	}
 }
 

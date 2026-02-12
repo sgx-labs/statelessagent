@@ -181,9 +181,15 @@ func SurfacingCompact(included, total int) {
 		Cyan, Cyan, Reset, Dim, verb, Reset, included, total, Reset)
 }
 
-// SurfacingEmpty prints the playful empty state.
-// Example: ✦ SAME searched 847 memories — nothing matched
+// SurfacingEmpty prints the empty state.
+// When total is 0, shows a helpful "vault is empty" message.
+// Otherwise shows "searched N memories — nothing matched".
 func SurfacingEmpty(total int) {
+	if total == 0 {
+		fmt.Fprintf(os.Stderr, "%s✦ %sSAME%s %svault is empty — add .md files and run 'same reindex'%s\n",
+			Cyan, Cyan, Reset, Dim, Reset)
+		return
+	}
 	fmt.Fprintf(os.Stderr, "%s✦ %sSAME%s %ssearched %d memories — nothing matched%s\n",
 		Cyan, Cyan, Reset, Dim, total, Reset)
 }

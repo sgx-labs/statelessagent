@@ -236,32 +236,16 @@ func filterNonSAMEHooks(entries []hookEntry, binaryPath string) []hookEntry {
 }
 
 func isSAMEHook(command string) bool {
-	return containsSAMEHook(command, "hook") ||
-		containsSAMEHook(command, "version --check")
+	lower := strings.ToLower(command)
+	if !strings.Contains(lower, "same") {
+		return false
+	}
+	return strings.Contains(lower, " hook ") || strings.Contains(lower, "version --check")
 }
 
 func containsSAMEHook(command, hookName string) bool {
-	// Handle both quoted and unquoted paths (e.g., "C:\...\same.exe" hook ...)
-	return contains(command, "same "+hookName) ||
-		contains(command, "same hook "+hookName) ||
-		contains(command, `same" `+hookName) ||
-		contains(command, `same.exe" `+hookName)
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr ||
-		len(s) > len(substr) && (s[:len(substr)] == substr ||
-			s[len(s)-len(substr):] == substr ||
-			findSubstring(s, substr)))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	lower := strings.ToLower(command)
+	return strings.Contains(lower, "same") && strings.Contains(lower, hookName)
 }
 
 func detectBinaryPath() string {

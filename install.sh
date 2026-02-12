@@ -492,47 +492,48 @@ echo ""
 # What's Next — adapt based on what's actually ready
 # ─────────────────────────────────────────────────────────────
 
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-echo "  WHAT'S NEXT?"
-echo ""
-
 if [ "$MISSING_OLLAMA" = false ] && [ "$MISSING_NODE" = false ]; then
-  # Everything's ready
-  echo "  Everything's ready! Type this command and press Enter:"
+  # Everything's ready — run init directly
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo ""
-  echo "    ${Green}>${Reset} ${Bold}same init${Reset}"
+  echo -e "  ${BOLD}Starting setup wizard...${RESET}"
   echo ""
-  echo "  This walks you through setup step by step."
-  echo "  ${Dim}(Just type 'same init' at the prompt below and hit Enter)${Reset}"
-elif [ "$MISSING_OLLAMA" = true ] && [ "$MISSING_NODE" = true ]; then
-  # Missing both
-  echo "  SAME is installed! Before running 'same init', you'll need:"
+  same init
+else
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo ""
-  echo "    • Ollama  — https://ollama.com"
-  echo "    • Node.js — https://nodejs.org"
+  echo "  WHAT'S NEXT?"
   echo ""
-  echo "  Install those, then run:"
-  echo ""
-  echo "    same init"
-elif [ "$MISSING_OLLAMA" = true ]; then
-  # Missing only Ollama
-  echo "  Almost there! Install Ollama first:"
-  echo "    https://ollama.com"
-  echo ""
-  echo "  Then run:"
-  echo ""
-  echo "    same init"
-elif [ "$MISSING_NODE" = true ]; then
-  # Missing only Node
-  echo "  SAME is installed! Install Node.js for full AI tool integration:"
-  echo "    https://nodejs.org"
-  echo ""
-  echo "  Then run:"
-  echo ""
-  echo "    same init"
-fi
 
-echo ""
-echo "  Questions? Join us: https://discord.gg/9KfTkcGs7g"
-echo ""
+  if [ "$MISSING_OLLAMA" = true ] && [ "$MISSING_NODE" = true ]; then
+    # Missing both
+    echo "  SAME is installed! Before running 'same init', you'll need:"
+    echo ""
+    echo "    • Ollama  — https://ollama.com"
+    echo "    • Node.js — https://nodejs.org"
+    echo ""
+    echo "  Install those, then run:"
+    echo ""
+    echo "    same init"
+  elif [ "$MISSING_OLLAMA" = true ]; then
+    # Missing only Ollama
+    echo "  Almost there! Install Ollama first:"
+    echo "    https://ollama.com"
+    echo ""
+    echo "  Then run:"
+    echo ""
+    echo "    same init"
+  elif [ "$MISSING_NODE" = true ]; then
+    # Missing only Node
+    echo "  SAME is installed! Install Node.js for full AI tool integration:"
+    echo "    https://nodejs.org"
+    echo ""
+    echo "  Then run:"
+    echo ""
+    echo "    same init"
+  fi
+
+  echo ""
+  echo "  Questions? Join us: https://discord.gg/9KfTkcGs7g"
+  echo ""
+fi
