@@ -17,6 +17,11 @@ Search across all your vaults from one place. Manage multiple vaults from the CL
 ### Fixed
 
 - **Vault registry Save() merge bug** — `same vault remove` silently failed because Save() re-read the registry from disk and merged back deleted entries. Removed merge logic so removes take effect immediately.
+- **MCP works without Ollama** — MCP server now starts and serves search results even when Ollama is unavailable. Search falls back gracefully: HybridSearch → FTS5 → keyword. Previously, `npx @sgx-labs/same mcp` refused to start without Ollama, breaking MCP client setups.
+- **MCP create_handoff overwrite** — multiple handoffs on the same day no longer overwrite each other; sequential suffix added.
+- **MCP registry manifests** — `server.json` updated to official MCP registry schema (`$schema`, `isRequired`, `registryBaseUrl`). `smithery.yaml` uses `npx -y` instead of bare `same`. npm `package.json` adds `mcpName` for registry auto-discovery.
+- **Hook output format** — Stop and SessionStart events now use `systemMessage` for correct Claude Code rendering.
+- **URL corrections** — all references to ollama.ai updated to ollama.com across install scripts, CLI, and tutorial. Discord invite links synced across all files.
 
 ### Codebase
 
@@ -33,6 +38,9 @@ Search across all your vaults from one place. Manage multiple vaults from the CL
 - **SQL LIKE injection prevention** — `escapeLIKE()` helper escapes `%`, `_`, and `\` in user-supplied search terms across `KeywordSearch` and `ContentTermSearch`.
 - **Expanded tag sanitization** — context injection now neutralizes 12 tag types (added `system-reminder`, `system`, `instructions`, `tool_result`, `tool_use`, `IMPORTANT`) to block stored prompt injection.
 - **Vault feed hardening** — `sanitizeAlias()` strips path separators, traversal characters, and null bytes. `safeFeedPath()` blocks absolute paths, traversal, private/hidden directories, and null bytes. Federated search error messages use aliases only (no raw filesystem paths).
+- **Self-closing tag injection** — `neutralizeTags()` (MCP) and `sanitizeContextTags()` (hooks) now neutralize self-closing tags (`<tag/>`) and tags with attributes (`<tag attr="...">`), closing prompt injection vectors.
+- **Bootstrap context injection** — session bootstrap output is now sanitized before wrapping in `<session-bootstrap>` tags, preventing stored prompt injection via crafted handoff/decision content.
+- **LIKE injection in title search** — `KeywordSearchTitleMatch` now uses `escapeLIKE()` to prevent SQL wildcard injection via `%` and `_` characters.
 
 ---
 

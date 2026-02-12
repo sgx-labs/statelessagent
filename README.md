@@ -46,6 +46,35 @@ That's it. Your AI now has memory.
 
 ---
 
+## Add to Your AI Tool
+
+### Claude Code (hooks + MCP — full experience)
+
+```bash
+same init          # sets up hooks + MCP in one step
+```
+
+SAME installs 6 Claude Code hooks automatically. Context surfaces on every session start. Decisions extracted on stop. No config file to edit.
+
+### Claude Code / Cursor / Windsurf (MCP only)
+
+Add to your MCP settings (`.claude/settings.json`, Cursor MCP config, etc.):
+
+```json
+{
+  "mcpServers": {
+    "same": {
+      "command": "npx",
+      "args": ["-y", "@sgx-labs/same", "mcp", "--vault", "/path/to/your/notes"]
+    }
+  }
+}
+```
+
+12 tools available instantly. Works without Ollama (keyword fallback).
+
+---
+
 ## Why SAME
 
 | Problem | Without SAME | With SAME |
