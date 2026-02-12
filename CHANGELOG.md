@@ -13,6 +13,7 @@ Search across all your vaults from one place. Manage multiple vaults from the CL
 - **`store.AllNotes()`** — returns all chunk_id=0 notes excluding `_PRIVATE/`, ordered by modified date.
 - **20 new tests** — `sanitizeAlias` (14 cases), `safeFeedPath` (19 cases), `FederatedSearch` (empty query, too many vaults, private note exclusion, mixed vault health, graceful skip).
 - **Progressive feature discovery** — CLI teaches new capabilities at the moment they become relevant. `vault add` hints about `--all` when 2+ vaults registered. `search` hints about `same related`. `reindex` hints about `same watch`. `status` shows available vaults and `same ask` when a chat model is detected. `doctor` validates vault registry health (16 checks total).
+- **Pinned notes in session bootstrap** — pinned notes now survive context compaction. Previously only surfaced during per-prompt context, pinned notes are now included at session start (Priority 1, 2000-char budget) so your AI always has your most important context.
 
 ### Fixed
 
@@ -22,6 +23,11 @@ Search across all your vaults from one place. Manage multiple vaults from the CL
 - **MCP registry manifests** — `server.json` updated to official MCP registry schema (`$schema`, `isRequired`, `registryBaseUrl`). `smithery.yaml` uses `npx -y` instead of bare `same`. npm `package.json` adds `mcpName` for registry auto-discovery.
 - **Hook output format** — Stop and SessionStart events now use `systemMessage` for correct Claude Code rendering.
 - **URL corrections** — all references to ollama.ai updated to ollama.com across install scripts, CLI, and tutorial. Discord invite links synced across all files.
+- **`same status` hook display** — now shows all 6 hooks instead of 4.
+
+### Changed
+
+- **Brand refresh** — ASCII banner updated from 12-line "STATELESS AGENT" red gradient to compact "SAME" blue gradient with "Stateless Agent Memory Engine" subtitle. Updated across CLI, install.sh, and install.ps1.
 
 ### Codebase
 
