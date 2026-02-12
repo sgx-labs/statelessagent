@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.7.4 — Quality Pass
+
+### Fixed
+
+- **Config clobber during init** — `SetDisplayMode()` and `SetProfile()` now load from the target vault's config file instead of auto-detecting. Previously, when CWD != vaultPath, they would fall back to `DefaultConfig()` and overwrite the just-written config with empty/default values.
+- **DefaultConfig embedding model** — `DefaultConfig().Embedding.Model` now returns `"nomic-embed-text"` instead of empty string, preventing broken config files when the default is serialized.
+- **Onboarding "1" input** — `confirm()` now accepts `"1"` as yes, matching the mental model users have after the numbered experience-level prompt (1/2).
+- **`[ollama].model` fallback** — users who set a custom model in `[ollama]` without an `[embedding]` section now get their override applied correctly.
+- **`neutralizeTags` dead variable** — removed unused `lower` variable in MCP server tag sanitization.
+
+### Changed
+
+- **CLI descriptions polished** — `bench`, `config`, `guard`, `vault`, and `watch` commands rewritten for plain-language audience ("Test how fast search is" instead of "Run search performance benchmarks").
+- **Hook error messages** — 8 user-facing error messages improved: consistent `same:` prefix, no leaked internal errors, actionable hints pointing to `same doctor` or `same init`.
+- **Glama MCP badge** — added to README for MCP directory visibility.
+
+---
+
 ## v0.7.3 — Bootstrap & Vault UX
 
 ### Fixed

@@ -507,10 +507,16 @@ func EmbeddingProviderConfig() EmbeddingConfig {
 		}
 	}
 
-	// For ollama provider, merge the legacy [ollama] section if embedding model is unset
-	if ec.Provider == "ollama" && ec.Model == "" {
-		if cfg.Ollama.Model != "" {
-			ec.Model = cfg.Ollama.Model
+	// For ollama provider, merge the legacy [ollama] section if the embedding
+	// model is unset or still the default. This ensures that users who set
+	// [ollama] model = "mxbai-embed-large" (without an [embedding] section)
+	// still get their override applied.
+	if ec.Provider == "ollama" && cfg.Ollama.Model != "" {
+		if ec.Model == "" || ec.Model == EmbeddingModel {
+			// Only override if the user's [ollama].model differs from default
+			if cfg.Ollama.Model != EmbeddingModel {
+				ec.Model = cfg.Ollama.Model
+			}
 		}
 	}
 

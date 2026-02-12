@@ -856,7 +856,6 @@ func neutralizeTags(text string) string {
 		"system-reminder", "system", "instructions",
 		"tool_result", "tool_use", "IMPORTANT",
 	}
-	lower := strings.ToLower(text)
 	var result strings.Builder
 	result.Grow(len(text))
 	i := 0
@@ -892,7 +891,6 @@ func neutralizeTags(text string) string {
 				break
 			}
 		}
-		_ = lower // used above via strings.ToLower for case-insensitive match
 		if !matched {
 			result.WriteByte(text[i])
 			i++
