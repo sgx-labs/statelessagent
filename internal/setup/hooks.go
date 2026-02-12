@@ -26,6 +26,7 @@ var hookDefinitions = map[string][]hookEntry{
 	},
 	"SessionStart": {
 		{Matcher: "", Hooks: []hookAction{
+			{Type: "command", Command: "%s hook session-bootstrap"},
 			{Type: "command", Command: "%s version --check"},
 			{Type: "command", Command: "%s hook staleness-check"},
 		}},

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -133,7 +134,9 @@ func runStatus(jsonOut bool) error {
 			"context-surfacing",
 			"decision-extractor",
 			"handoff-generator",
+			"feedback-loop",
 			"staleness-check",
+			"session-bootstrap",
 		}
 		for _, name := range hookNames {
 			data.Hooks[name] = hookStatus[name]
@@ -260,21 +263,63 @@ func runStatus(jsonOut bool) error {
 			cli.Dim, cli.Reset)
 	}
 
-	// Vaults
+	// Vaults — show active vault prominently, then registered list
 	reg := config.LoadRegistry()
-	if len(reg.Vaults) > 0 {
-		cli.Section("Vaults")
-		fmt.Printf("  Registered: %d vault(s)\n", len(reg.Vaults))
-		for name, path := range reg.Vaults {
+
+	// Determine which registered vault name maps to the active vault path
+	activeName := ""
+	for name, path := range reg.Vaults {
+		if path == vp {
+			activeName = name
+			break
+		}
+	}
+
+	// Determine how the active vault was resolved
+	activeSource := ""
+	if config.VaultOverride != "" {
+		activeSource = "via --vault flag"
+	} else if cwd, err := os.Getwd(); err == nil && cwd == vp {
+		activeSource = "auto-detected from cwd"
+	} else if activeName != "" && activeName == reg.Default {
+		activeSource = "registry default"
+	}
+
+	cli.Section("Vault")
+	if activeName != "" {
+		sourceHint := ""
+		if activeSource != "" {
+			sourceHint = fmt.Sprintf("  %s(%s)%s", cli.Dim, activeSource, cli.Reset)
+		}
+		fmt.Printf("  Active:  %s  %s%s\n", activeName, cli.ShortenHome(vp), sourceHint)
+	} else {
+		sourceHint := ""
+		if activeSource != "" {
+			sourceHint = fmt.Sprintf("  %s(%s)%s", cli.Dim, activeSource, cli.Reset)
+		}
+		fmt.Printf("  Active:  %s%s\n", cli.ShortenHome(vp), sourceHint)
+	}
+
+	if len(reg.Vaults) > 1 {
+		cli.Section("Registered Vaults")
+		// Sort vault names for deterministic output
+		names := make([]string, 0, len(reg.Vaults))
+		for name := range reg.Vaults {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+
+		for _, name := range names {
+			path := reg.Vaults[name]
 			marker := "  "
-			if name == reg.Default {
+			if name == activeName {
+				marker = cli.Green + "→ " + cli.Reset
+			} else if name == reg.Default {
 				marker = "* "
 			}
-			fmt.Printf("  %s%-15s %s\n", marker, name, cli.ShortenHome(path))
+			fmt.Printf("  %s%-18s %s\n", marker, name, cli.ShortenHome(path))
 		}
-		if reg.Default != "" {
-			fmt.Printf("\n  %s(* = default · use --all to search across vaults)%s\n", cli.Dim, cli.Reset)
-		}
+		fmt.Printf("\n  %s(* = default · → = active · switch with 'same vault default <name>')%s\n", cli.Dim, cli.Reset)
 	}
 
 	// Config

@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.7.3 — Bootstrap & Vault UX
+
+### Fixed
+
+- **Session-bootstrap hook not wired** — `same init` now installs all 6 hooks including `session-bootstrap`. Previously only 5 of 6 were configured, so session orientation context was never delivered on SessionStart.
+- **Wrong vault when CWD is a vault** — vault resolution now checks CWD for vault markers *before* falling back to the registry default. If you're standing in a vault directory, that vault is used regardless of what the registry default is.
+- **`same init` didn't set default vault** — running `same init` in a new directory now always sets that vault as the registry default, not just on first-ever init.
+- **`same status` vault display unclear** — vault section now shows the active vault prominently with its resolution source (auto-detected from cwd, registry default, --vault flag). Registered vaults list uses `→` for active and `*` for default, sorted alphabetically. JSON output now includes all 6 hooks.
+
+---
+
 ## v0.7.0 — Cross-Vault Federation
 
 Search across all your vaults from one place. Manage multiple vaults from the CLI. Propagate notes between vaults with privacy guards.

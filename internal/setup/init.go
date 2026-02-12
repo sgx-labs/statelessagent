@@ -954,9 +954,7 @@ func registerVault(vaultPath string) {
 	}
 
 	reg.Vaults[name] = vaultPath
-	if reg.Default == "" {
-		reg.Default = name
-	}
+	reg.Default = name
 	reg.Save()
 }
 

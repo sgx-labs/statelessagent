@@ -1,6 +1,6 @@
 {
   "name": "@sgx-labs/same",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Persistent memory for AI coding agents. Local-first, SQLite + vector search. MCP server with 12 tools.",
   "homepage": "https://statelessagent.com",
   "repository": {

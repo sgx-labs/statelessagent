@@ -852,20 +852,20 @@ func defaultVaultPath() string {
 		return VaultOverride
 	}
 
-	// Check registry default
-	reg := LoadRegistry()
-	if reg.Default != "" {
-		if p, ok := reg.Vaults[reg.Default]; ok {
-			return p
-		}
-	}
-
-	// Auto-detect: check CWD for any known marker
+	// Auto-detect: check CWD for any known marker (before registry default)
 	if cwd, err := os.Getwd(); err == nil {
 		for _, marker := range VaultMarkers {
 			if _, err := os.Stat(filepath.Join(cwd, marker)); err == nil {
 				return cwd
 			}
+		}
+	}
+
+	// Check registry default
+	reg := LoadRegistry()
+	if reg.Default != "" {
+		if p, ok := reg.Vaults[reg.Default]; ok {
+			return p
 		}
 	}
 
