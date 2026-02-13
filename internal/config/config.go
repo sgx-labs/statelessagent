@@ -219,11 +219,14 @@ func LoadConfig() (*Config, error) {
 	if v := os.Getenv("SAME_EMBED_MODEL"); v != "" {
 		cfg.Embedding.Model = v
 	}
+	if v := os.Getenv("SAME_EMBED_BASE_URL"); v != "" {
+		cfg.Embedding.BaseURL = v
+	}
 	if v := os.Getenv("SAME_EMBED_API_KEY"); v != "" {
 		cfg.Embedding.APIKey = v
 	}
 	// Also check OPENAI_API_KEY as a convenience fallback
-	if cfg.Embedding.APIKey == "" && cfg.Embedding.Provider == "openai" {
+	if cfg.Embedding.APIKey == "" && (cfg.Embedding.Provider == "openai" || cfg.Embedding.Provider == "openai-compatible") {
 		if v := os.Getenv("OPENAI_API_KEY"); v != "" {
 			cfg.Embedding.APIKey = v
 		}

@@ -375,9 +375,10 @@ Configuration priority (highest wins):
 | `SAME_DATA_DIR` | `<vault>/.same/data` | Database location |
 | `SAME_HANDOFF_DIR` | `sessions` | Handoff notes directory |
 | `SAME_DECISION_LOG` | `decisions.md` | Decision log path |
-| `SAME_EMBED_PROVIDER` | `ollama` | Embedding provider (`ollama` or `openai`) |
+| `SAME_EMBED_PROVIDER` | `ollama` | Embedding provider (`ollama`, `openai`, or `openai-compatible`) |
 | `SAME_EMBED_MODEL` | `nomic-embed-text` | Embedding model name |
-| `SAME_EMBED_API_KEY` | *(none)* | API key (required for `openai` provider) |
+| `SAME_EMBED_BASE_URL` | *(provider default)* | Base URL for embedding API (e.g. `http://localhost:8080` for local servers) |
+| `SAME_EMBED_API_KEY` | *(none)* | API key (required for `openai`, optional for `openai-compatible`) |
 | `SAME_SKIP_DIRS` | *(none)* | Extra dirs to skip (comma-separated) |
 | `SAME_NOISE_PATHS` | *(none)* | Paths filtered from context surfacing (comma-separated) |
 
@@ -481,7 +482,7 @@ All evaluation uses synthetic vault data with known relevance judgments. No user
 
 **Do I need Obsidian?** No. Any directory of `.md` files works.
 
-**Do I need Ollama?** Recommended, not required. Semantic search understands meaning; without Ollama, SAME falls back to keyword search (FTS5). You can also use OpenAI embeddings (`SAME_EMBED_PROVIDER=openai`). If Ollama goes down temporarily, SAME falls back to keywords automatically.
+**Do I need Ollama?** Recommended, not required. Semantic search understands meaning; without Ollama, SAME falls back to keyword search (FTS5). You can also use OpenAI embeddings (`SAME_EMBED_PROVIDER=openai`) or any OpenAI-compatible server like llama.cpp, VLLM, or LM Studio (`SAME_EMBED_PROVIDER=openai-compatible`). If your embedding server goes down temporarily, SAME falls back to keywords automatically.
 
 **Does it slow down my prompts?** 50-200ms. Embedding is the bottleneck — search and scoring take <5ms.
 
