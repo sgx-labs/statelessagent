@@ -5,6 +5,7 @@
 ### Added
 
 - **OpenAI-compatible embedding provider** — SAME now supports any server that exposes the OpenAI-compatible `/v1/embeddings` endpoint. Use `provider = "openai-compatible"` with llama.cpp, VLLM, LM Studio, or any other compatible inference engine. API key is optional for local servers. Configure via `[embedding]` in config or `SAME_EMBED_PROVIDER` / `SAME_EMBED_BASE_URL` / `SAME_EMBED_MODEL` environment variables.
+- **Non-localhost security warning** — when using an OpenAI-compatible provider with a remote base URL, SAME prints a warning that embedding requests will leave your machine. Local servers (localhost, 127.0.0.1, ::1) are silent.
 
 ## v0.7.4 — Quality Pass
 
