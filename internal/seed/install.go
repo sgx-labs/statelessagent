@@ -186,12 +186,24 @@ func Install(opts InstallOptions) (*InstallResult, error) {
 		defer db.Close()
 
 		indexer.Version = opts.Version
-		stats, err := indexer.Reindex(db, true)
+
+		// Progress bar instead of per-file output
+		barWidth := 40
+		progress := func(current, total int, path string) {
+			if total == 0 {
+				return
+			}
+			filled := current * barWidth / total
+			bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+			fmt.Printf("\r  Indexing [%s] %d/%d", bar, current, total)
+		}
+
+		stats, err := indexer.ReindexWithProgress(db, true, progress)
 		if err != nil {
 			// Try lite mode if Ollama isn't available
 			errMsg := strings.ToLower(err.Error())
 			if strings.Contains(errMsg, "ollama") || strings.Contains(errMsg, "connection") || strings.Contains(errMsg, "refused") {
-				stats, err = indexer.ReindexLite(db, true, nil)
+				stats, err = indexer.ReindexLite(db, true, progress)
 				if err != nil {
 					return nil, fmt.Errorf("index seed: %w", err)
 				}
@@ -199,6 +211,7 @@ func Install(opts InstallOptions) (*InstallResult, error) {
 				return nil, fmt.Errorf("index seed: %w", err)
 			}
 		}
+		fmt.Println() // newline after progress bar
 		if stats != nil {
 			chunks = stats.ChunksInIndex
 		}
@@ -274,6 +287,8 @@ func IsInstalled(name string) bool {
 // fixConfigVaultPath reads a TOML config file and rewrites any relative
 // vault path to the given absolute path. Seed configs commonly ship with
 // path = "." which would resolve to CWD at runtime instead of the seed dir.
+// Only rewrites the path key inside the [vault] section; skips comments
+// and keys in other sections.
 func fixConfigVaultPath(configPath, absVaultPath string) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -281,27 +296,46 @@ func fixConfigVaultPath(configPath, absVaultPath string) {
 	}
 	content := string(data)
 
-	// Match path = "." or path = "./" or any relative path (not starting with /)
-	// We look for the pattern in the [vault] section
 	lines := strings.Split(content, "\n")
+	inVaultSection := false
+
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "path") {
-			// Extract the value after "path ="
-			parts := strings.SplitN(trimmed, "=", 2)
-			if len(parts) != 2 {
-				continue
-			}
-			val := strings.TrimSpace(parts[1])
-			val = strings.Trim(val, `"'`)
-			if val == "" {
-				continue
-			}
-			// Rewrite if relative (doesn't start with /)
-			if !filepath.IsAbs(val) {
-				indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
-				lines[i] = fmt.Sprintf("%spath = %q", indent, absVaultPath)
-			}
+
+		// Track TOML sections
+		if strings.HasPrefix(trimmed, "[") {
+			inVaultSection = (trimmed == "[vault]")
+			continue
+		}
+
+		// Skip comments and non-vault sections
+		if !inVaultSection || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+
+		// Match exact "path" key (not path_override, pathology, etc.)
+		if !strings.HasPrefix(trimmed, "path") {
+			continue
+		}
+		after := trimmed[len("path"):]
+		if len(after) == 0 || (after[0] != ' ' && after[0] != '=' && after[0] != '\t') {
+			continue // not the path key
+		}
+
+		// Extract the value after "path ="
+		parts := strings.SplitN(trimmed, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		val := strings.TrimSpace(parts[1])
+		val = strings.Trim(val, `"'`)
+		if val == "" {
+			continue
+		}
+		// Rewrite if relative (doesn't start with /)
+		if !filepath.IsAbs(val) {
+			indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+			lines[i] = fmt.Sprintf("%spath = %q", indent, absVaultPath)
 		}
 	}
 

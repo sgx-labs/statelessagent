@@ -107,9 +107,9 @@ func seedInstallCmd() *cobra.Command {
 				},
 				OnIndexDone: func(chunks int) {
 					if chunks > 0 {
-						fmt.Printf("  Indexing...                  done (%d chunks)\n", chunks)
+						fmt.Printf("  Indexed %d chunks\n", chunks)
 					} else {
-						fmt.Printf("  Indexing...                  skipped\n")
+						fmt.Printf("  Indexing skipped (no embeddings provider)\n")
 					}
 				},
 			}

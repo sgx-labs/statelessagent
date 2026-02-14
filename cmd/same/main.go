@@ -126,6 +126,8 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 		CompletionOptions: cobra.CompletionOptions{
 			DisableDefaultCmd: true,
 		},
+		SilenceErrors: true,
+		SilenceUsage:  true,
 	}
 
 	// Command groups for organized --help output
