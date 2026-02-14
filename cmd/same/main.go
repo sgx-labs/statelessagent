@@ -175,6 +175,7 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 		configCmd(),
 		displayCmd(),
 		profileCmd(),
+		modelCmd(),
 		setupSubCmd(),
 		reindexCmd(),
 	)

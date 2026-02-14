@@ -76,6 +76,38 @@ func EmbeddingDim() int {
 	}
 }
 
+// ModelInfo describes a known embedding model.
+type ModelInfo struct {
+	Name        string
+	Dims        int
+	Provider    string // "ollama", "openai"
+	Description string
+}
+
+// KnownModels lists supported embedding models with metadata.
+var KnownModels = []ModelInfo{
+	{"nomic-embed-text", 768, "ollama", "Default. Great balance of quality and speed"},
+	{"snowflake-arctic-embed2", 768, "ollama", "Best retrieval in its size class"},
+	{"mxbai-embed-large", 1024, "ollama", "Highest overall MTEB average"},
+	{"all-minilm", 384, "ollama", "Lightweight (~90MB). Good for constrained hardware"},
+	{"snowflake-arctic-embed", 1024, "ollama", "v1 large model"},
+	{"embeddinggemma", 768, "ollama", "Google's Gemma-based embeddings"},
+	{"qwen3-embedding", 1024, "ollama", "Qwen3 with 32K context"},
+	{"nomic-embed-text-v2-moe", 768, "ollama", "MoE upgrade from nomic"},
+	{"bge-m3", 1024, "ollama", "Multilingual (BAAI)"},
+	{"text-embedding-3-small", 1536, "openai", "OpenAI cloud API"},
+}
+
+// IsKnownModel returns true if the model name is in the known models list.
+func IsKnownModel(name string) bool {
+	for _, m := range KnownModels {
+		if m.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // Indexing settings.
 const (
 	ChunkTokenThreshold = 6000 // chunk notes longer than ~6K chars by H2 headings
@@ -1112,6 +1144,29 @@ func SetDisplayMode(vaultPath, mode string) error {
 	os.MkdirAll(filepath.Dir(cfgPath), 0o755)
 
 	// Write file
+	return os.WriteFile(cfgPath, buf.Bytes(), 0o600)
+}
+
+// SetEmbeddingModel updates the embedding model in the config file.
+func SetEmbeddingModel(vaultPath, model string) error {
+	cfgPath := ConfigFilePath(vaultPath)
+
+	cfg, err := LoadConfigFrom(cfgPath)
+	if err != nil {
+		cfg = DefaultConfig()
+	}
+
+	cfg.Embedding.Model = model
+	// Also update legacy [ollama].model for compatibility
+	cfg.Ollama.Model = model
+
+	var buf bytes.Buffer
+	encoder := toml.NewEncoder(&buf)
+	if err := encoder.Encode(cfg); err != nil {
+		return fmt.Errorf("encode config: %w", err)
+	}
+
+	os.MkdirAll(filepath.Dir(cfgPath), 0o755)
 	return os.WriteFile(cfgPath, buf.Bytes(), 0o600)
 }
 

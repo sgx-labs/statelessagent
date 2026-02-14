@@ -13,6 +13,7 @@ One-command install of pre-built knowledge vaults. `same seed install claude-cod
   - `same seed remove <name>` — uninstall a seed vault. Flags: `--yes`, `--keep-files`
 - **8 official seed vaults** — Claude Code Power User, AI Agent Architecture, Security Audit Framework, DevOps Runbooks, Indie Hacker Playbook, Open Source Launch Kit, Freelancer Business Kit, Personal Productivity OS. Browse at [github.com/sgx-labs/seed-vaults](https://github.com/sgx-labs/seed-vaults)
 - **Seed manifest registry** — `seeds.json` hosted in seed-vaults repo with schema versioning, 1-hour client-side cache, stale-cache fallback on network errors
+- **`same model` command** — show current embedding model and switch between models with `same model use <name>`. Lists all 10 supported models with dimensions and descriptions. Warns about reindex after switching.
 - **Automatic lite mode fallback** — seed install falls back to keyword-only indexing when Ollama isn't available
 - **Version compatibility check** — seeds declare `min_same_version`; install rejects incompatible seeds with upgrade guidance
 

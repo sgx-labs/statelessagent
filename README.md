@@ -329,6 +329,8 @@ Requires Go 1.25+ and CGO.
 | `same reindex [--force]` | Rebuild the search index |
 | `same display full\|compact\|quiet` | Control output verbosity |
 | `same profile use precise\|balanced\|broad` | Adjust precision vs. coverage |
+| `same model` | Show current embedding model and alternatives |
+| `same model use <name>` | Switch embedding model |
 | `same config show` | Show configuration |
 | `same config edit` | Open config in editor |
 | `same setup hooks` | Install Claude Code hooks |
