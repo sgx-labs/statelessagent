@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.8.1 — Hotfix
+
+Critical fix for Claude Code v2 transcript format. Stop hooks (decision extractor, handoff generator, feedback loop) were silently returning empty results because the transcript parser expected flat JSON but Claude Code v2 nests messages in a `{"type":"...","message":{...}}` envelope.
+
+### Fixed
+
+- **Transcript parser for Claude Code v2 format** — `processEntry()` now unwraps nested `message` envelopes and falls back to the top-level `type` field as a role identifier. Stop hooks (decision extractor, handoff generator, feedback loop) now correctly parse transcripts from Claude Code v2.x.
+- **HookInput JSON tag mismatch** — `session_id` and `hook_event_name` fields now use snake_case JSON tags matching Claude Code's actual input format. Previously used camelCase which caused silent deserialization failures.
+- **Windows binary detection** — `detectBinaryPath()` now appends `.exe` on Windows, checks `%LOCALAPPDATA%\Programs\SAME\`, and quotes paths with spaces on all platforms (not just Windows).
+- **Cross-platform path handling** — handoff note paths use `filepath.Join` instead of string concatenation. Tilde expansion handles both `~/` and `~\` for Windows.
+- **Scanner error handling** — transcript parser now checks `scanner.Err()` after reading, reporting partial data on I/O errors instead of silently truncating.
+- **Provider-agnostic error messages** — embedding failure message now says "check 'same doctor'" instead of hardcoding Ollama-specific instructions. Works correctly for OpenAI and llama.cpp users.
+- **Doctor suggestion text** — "run 'same init'" corrected to "run 'same setup hooks'" for missing hooks.
+- **MCP setup prompt** — "Connect to Cursor/Windsurf?" changed to "Set up MCP server for AI tools?" to avoid confusing Claude Code users.
+
+### Improved
+
+- **Internal commands hidden** — `hook`, `migrate`, `budget`, `plugin`, `push-allow` no longer appear in `same --help`. Still accessible for debugging.
+- **Seed tab completion** — `same seed install`, `same seed info`, and `same seed remove` now offer tab-completable seed names.
+- **Cleaner CLI output** — `SilenceErrors` and `SilenceUsage` prevent cobra from dumping usage text on errors. Seed install indexing messages simplified.
+- **Corrected documentation** — README, CHANGELOG, and AGENTS.md updated with accurate seed counts (10 seeds, 622+ notes) and diagnostic check counts (17).
+
+---
+
 ## v0.8.0 — Seed Installer
 
 One-command install of pre-built knowledge vaults. `same seed install claude-code-power-user` downloads, extracts, indexes, and registers a seed vault — ready to search in seconds.
