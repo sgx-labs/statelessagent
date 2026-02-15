@@ -12,9 +12,11 @@ import (
 func runHandoffGenerator(_ *store.DB, input *HookInput) *HookOutput {
 	transcriptPath := input.TranscriptPath
 	if transcriptPath == "" {
+		writeVerboseLog("handoff-generator: no transcript path provided\n")
 		return nil
 	}
 	if _, err := os.Stat(transcriptPath); err != nil {
+		writeVerboseLog(fmt.Sprintf("handoff-generator: transcript not found: %s\n", transcriptPath))
 		return nil
 	}
 

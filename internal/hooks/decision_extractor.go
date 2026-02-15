@@ -13,9 +13,11 @@ import (
 func runDecisionExtractor(_ *store.DB, input *HookInput) *HookOutput {
 	transcriptPath := input.TranscriptPath
 	if transcriptPath == "" {
+		writeVerboseLog("decision-extractor: no transcript path provided\n")
 		return nil
 	}
 	if _, err := os.Stat(transcriptPath); err != nil {
+		writeVerboseLog(fmt.Sprintf("decision-extractor: transcript not found: %s\n", transcriptPath))
 		return nil
 	}
 

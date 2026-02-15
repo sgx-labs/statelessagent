@@ -15,9 +15,11 @@ import (
 // notes that are surfaced but ignored gradually decay.
 func runFeedbackLoop(db *store.DB, input *HookInput) *HookOutput {
 	if input.TranscriptPath == "" || input.SessionID == "" {
+		writeVerboseLog("feedback-loop: no transcript path or session ID provided\n")
 		return nil
 	}
 	if _, err := os.Stat(input.TranscriptPath); err != nil {
+		writeVerboseLog(fmt.Sprintf("feedback-loop: transcript not found: %s\n", input.TranscriptPath))
 		return nil
 	}
 
