@@ -38,7 +38,7 @@ type Provider interface {
 
 // ProviderConfig holds embedding provider settings.
 type ProviderConfig struct {
-	Provider   string // "ollama" (default), "openai", "openai-compatible"
+	Provider   string // "ollama" (default), "openai", "openai-compatible", "none"
 	Model      string // model name (provider-specific defaults if empty)
 	APIKey     string // API key (required for cloud providers)
 	BaseURL    string // base URL (provider-specific defaults if empty)
@@ -53,8 +53,10 @@ func NewProvider(cfg ProviderConfig) (Provider, error) {
 		return newOllamaProvider(cfg)
 	case "openai", "openai-compatible":
 		return newOpenAIProvider(cfg)
+	case "none":
+		return nil, fmt.Errorf("embedding provider is \"none\" (keyword-only mode)")
 	default:
-		return nil, fmt.Errorf("unknown embedding provider: %q (supported: ollama, openai, openai-compatible)", cfg.Provider)
+		return nil, fmt.Errorf("unknown embedding provider: %q (supported: ollama, openai, openai-compatible, none)", cfg.Provider)
 	}
 }
 

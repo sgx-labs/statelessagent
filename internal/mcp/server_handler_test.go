@@ -689,8 +689,8 @@ func TestHandleFindSimilar_NoteNotInIndex(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	text := resultText(t, result)
-	if !strings.Contains(text, "No similar notes found") {
-		t.Errorf("expected 'No similar notes found', got %q", text)
+	if !strings.Contains(text, "No similar notes found") && !strings.Contains(text, "requires semantic search") {
+		t.Errorf("expected 'No similar notes found' or 'requires semantic search', got %q", text)
 	}
 }
 

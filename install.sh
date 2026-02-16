@@ -113,9 +113,6 @@ case "$OS" in
       aarch64|arm64)
         SUFFIX="linux-arm64"
         ARCH_NAME="ARM 64-bit"
-        echo -e "  ${YELLOW}!${RESET} ARM Linux detected. No pre-built binary available."
-        echo "    Will try to build from source."
-        echo ""
         ;;
       *)
         echo "  I only support 64-bit Linux (x86_64 and ARM64) right now."
@@ -220,9 +217,6 @@ no_binary_error() {
 # Skip download attempt for platforms where pre-built binaries won't work
 SKIP_DOWNLOAD=false
 if [ "$MUSL" = true ]; then
-  SKIP_DOWNLOAD=true
-fi
-if [ "$OS" = "Linux" ] && [ "$ARCH" = "aarch64" -o "$ARCH" = "arm64" ]; then
   SKIP_DOWNLOAD=true
 fi
 

@@ -211,7 +211,13 @@ func RunInit(opts InitOptions) error {
 	}
 	ollamaOK := true
 
-	if embedProvider == "openai" || embedProvider == "openai-compatible" {
+	if embedProvider == "none" {
+		// Explicit keyword-only mode — skip Ollama entirely
+		cli.Section("Embeddings")
+		fmt.Printf("  %s✓%s Keyword-only mode (provider=none)\n", cli.Green, cli.Reset)
+		fmt.Printf("  %s  Semantic search disabled. Install Ollama anytime and run 'same reindex' to upgrade.%s\n", cli.Dim, cli.Reset)
+		ollamaOK = false
+	} else if embedProvider == "openai" || embedProvider == "openai-compatible" {
 		// User has configured an alternate provider — skip Ollama check
 		cli.Section("Embeddings")
 		fmt.Printf("  %s✓%s Using %s provider\n", cli.Green, cli.Reset, embedProvider)
@@ -238,8 +244,9 @@ func RunInit(opts InitOptions) error {
 				fmt.Printf("    \"login system\"             \"login system\"\n")
 				fmt.Printf("    Understands %smeaning%s        Exact words only\n\n", cli.Bold, cli.Reset)
 				fmt.Printf("  %sStart Ollama and run 'same init' again for the full experience.%s\n\n", cli.Dim, cli.Reset)
-				fmt.Printf("  %sAlternative:%s set SAME_EMBED_PROVIDER to 'openai' or 'openai-compatible'\n", cli.Dim, cli.Reset)
-				fmt.Printf("  %sfor llama.cpp, VLLM, LM Studio, or OpenAI API.%s\n\n", cli.Dim, cli.Reset)
+				fmt.Printf("  %sAlternatives:%s\n", cli.Dim, cli.Reset)
+				fmt.Printf("  %s  • SAME_EMBED_PROVIDER=openai (or openai-compatible) for llama.cpp, VLLM, LM Studio, OpenAI%s\n", cli.Dim, cli.Reset)
+				fmt.Printf("  %s  • SAME_EMBED_PROVIDER=none (or --provider none) to skip this check%s\n\n", cli.Dim, cli.Reset)
 
 				if !confirm("  Skip Ollama and use keyword-only mode?", false) {
 					return fmt.Errorf("setup cancelled — start Ollama and run 'same init' again")

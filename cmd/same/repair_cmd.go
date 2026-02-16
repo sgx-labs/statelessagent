@@ -54,7 +54,7 @@ func runRepair() error {
 
 	// Step 2: Force reindex
 	fmt.Printf("\n  Rebuilding index...\n")
-	if err := runReindex(true); err != nil {
+	if err := runReindex(true, false); err != nil {
 		return fmt.Errorf("reindex failed: %w", err)
 	}
 

@@ -402,8 +402,12 @@ func generateTOMLContent(vaultPath string) string {
 	b.WriteString("model = \"nomic-embed-text\"\n\n")
 
 	b.WriteString("[embedding]\n")
-	b.WriteString("# Embedding provider: \"ollama\" (default, local) or \"openai\" (cloud)\n")
-	b.WriteString("provider = \"ollama\"\n")
+	b.WriteString("# Embedding provider: \"ollama\" (default), \"openai\", \"openai-compatible\", or \"none\" (keyword-only)\n")
+	activeProvider := EmbeddingProvider()
+	if activeProvider == "" {
+		activeProvider = "ollama"
+	}
+	b.WriteString(fmt.Sprintf("provider = %q\n", activeProvider))
 	b.WriteString(fmt.Sprintf("model = %q\n", EmbeddingModel))
 	b.WriteString("# api_key = \"\"                  # required for cloud providers\n")
 	b.WriteString("#                               # or set SAME_EMBED_API_KEY / OPENAI_API_KEY\n")

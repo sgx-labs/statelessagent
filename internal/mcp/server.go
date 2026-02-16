@@ -350,6 +350,10 @@ func handleFindSimilar(ctx context.Context, req *mcp.CallToolRequest, input simi
 		return textResult("Error: invalid note path."), nil, nil
 	}
 
+	if !db.HasVectors() {
+		return textResult("Similar notes requires semantic search (embeddings). Install Ollama and run reindex() to enable."), nil, nil
+	}
+
 	noteVec, err := db.GetNoteEmbedding(input.Path)
 	if err != nil || noteVec == nil {
 		return textResult(fmt.Sprintf("No similar notes found for: %s. Is the note in the index?", input.Path)), nil, nil

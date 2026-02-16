@@ -144,50 +144,41 @@ func runContextSurfacing(db *store.DB, input *HookInput) *HookOutput {
 	// Get total vault note count for display
 	totalVault, _ := db.NoteCount()
 
-	// Embed the prompt
+	// Embed the prompt — keyword fallback if provider unavailable
+	var candidates []scored
 	embedProvider, err := newEmbedProvider()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "same: can't connect to embedding provider — check 'same doctor' for details\n")
-		return &HookOutput{
-			HookSpecificOutput: &HookSpecific{
-				HookEventName:     "UserPromptSubmit",
-				AdditionalContext: diagNoEmbed,
-			},
-		}
-	}
-
-	// Check for embedding model/dimension mismatch before searching
-	if mismatchErr := db.CheckEmbeddingMeta(embedProvider.Name(), embedProvider.Model(), embedProvider.Dimensions()); mismatchErr != nil {
-		fmt.Fprintf(os.Stderr, "same: embedding model changed — run 'same reindex --force' to rebuild\n")
-		return &HookOutput{
-			HookSpecificOutput: &HookSpecific{
-				HookEventName: "UserPromptSubmit",
-				AdditionalContext: fmt.Sprintf(`<same-diagnostic>
+		// No embedding provider — fall through to keyword search
+		fmt.Fprintf(os.Stderr, "same: no embedding provider, using keyword search\n")
+		writeVerboseLog(fmt.Sprintf("Embed provider error: %v — keyword fallback\n", err))
+		candidates = keywordFallbackSearch(db)
+	} else {
+		// Check for embedding model/dimension mismatch before searching
+		if mismatchErr := db.CheckEmbeddingMeta(embedProvider.Name(), embedProvider.Model(), embedProvider.Dimensions()); mismatchErr != nil {
+			fmt.Fprintf(os.Stderr, "same: embedding model changed — run 'same reindex --force' to rebuild\n")
+			return &HookOutput{
+				HookSpecificOutput: &HookSpecific{
+					HookEventName: "UserPromptSubmit",
+					AdditionalContext: fmt.Sprintf(`<same-diagnostic>
 %s
 Suggested actions for the user:
 - Run "same reindex --force" to rebuild the index with the current embedding model
 </same-diagnostic>`, mismatchErr),
-			},
+				},
+			}
 		}
-	}
 
-	queryVec, err := embedProvider.GetQueryEmbedding(prompt)
-	embeddingFailed := err != nil
-
-	if embeddingFailed {
-		fmt.Fprintf(os.Stderr, "same: Ollama didn't respond, falling back to keyword search\n")
-		writeVerboseLog(fmt.Sprintf("Embedding failed: %v — using FTS5 keyword fallback\n", err))
-	}
-
-	var candidates []scored
-
-	if embeddingFailed {
-		// FTS5 keyword fallback: search without embeddings
-		candidates = keywordFallbackSearch(db)
-	} else if isRecency {
-		candidates = recencyHybridSearch(db, queryVec)
-	} else {
-		candidates = standardSearch(db, queryVec)
+		queryVec, embedErr := embedProvider.GetQueryEmbedding(prompt)
+		if embedErr != nil {
+			// Provider configured but call failed (e.g., Ollama went down)
+			fmt.Fprintf(os.Stderr, "same: embedding failed, falling back to keyword search\n")
+			writeVerboseLog(fmt.Sprintf("Embedding failed: %v — keyword fallback\n", embedErr))
+			candidates = keywordFallbackSearch(db)
+		} else if isRecency {
+			candidates = recencyHybridSearch(db, queryVec)
+		} else {
+			candidates = standardSearch(db, queryVec)
+		}
 	}
 
 	// If no candidates found, show empty state (unless quiet)

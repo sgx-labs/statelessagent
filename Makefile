@@ -1,6 +1,6 @@
 BINARY_NAME := same
 BUILD_DIR := build
-VERSION := 0.8.2
+VERSION := 0.8.3
 LDFLAGS := -ldflags "-s -w -X main.Version=$(VERSION)"
 
 # CGO is required for sqlite3 + sqlite-vec
@@ -10,7 +10,7 @@ export CGO_ENABLED := 1
 # Also disable zig's ubsan which causes linker errors on cross-compile
 CROSS_CFLAGS := -I$(CURDIR)/cgo-headers -fno-sanitize=undefined
 
-.PHONY: all build clean test precheck darwin-arm64 darwin-amd64 linux-amd64 windows-amd64 cross-all install
+.PHONY: all build clean test precheck darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 cross-all install
 
 all: build
 
@@ -40,6 +40,14 @@ linux-amd64:
 	CXX="zig c++ -target x86_64-linux-gnu" \
 	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/same
 
+# Linux arm64 (cross-compile with zig cc from macOS, or native on ARM Linux)
+linux-arm64:
+	GOOS=linux GOARCH=arm64 \
+	CGO_CFLAGS="$(CROSS_CFLAGS)" \
+	CC="zig cc -target aarch64-linux-gnu" \
+	CXX="zig c++ -target aarch64-linux-gnu" \
+	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/same
+
 # Windows amd64 (cross-compile with zig cc)
 windows-amd64:
 	GOOS=windows GOARCH=amd64 \
@@ -49,7 +57,7 @@ windows-amd64:
 	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/same
 
 # Build all platform targets
-cross-all: darwin-arm64 windows-amd64 linux-amd64
+cross-all: darwin-arm64 windows-amd64 linux-amd64 linux-arm64
 
 # Install to ~/.local/bin (preferred), $GOPATH/bin, or /usr/local/bin.
 # IMPORTANT: rm before cp to avoid macOS code signing cache issues —

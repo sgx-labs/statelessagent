@@ -41,6 +41,6 @@ Run this command from inside your project folder.`,
 	cmd.Flags().BoolVar(&mcpOnly, "mcp-only", false, "Skip hooks setup (for Cursor/Windsurf users)")
 	cmd.Flags().BoolVar(&hooksOnly, "hooks-only", false, "Skip MCP setup (Claude Code only)")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show each file being processed")
-	cmd.Flags().StringVar(&provider, "provider", "", "Embedding provider: ollama, openai, openai-compatible")
+	cmd.Flags().StringVar(&provider, "provider", "", "Embedding provider: ollama, openai, openai-compatible, none")
 	return cmd
 }

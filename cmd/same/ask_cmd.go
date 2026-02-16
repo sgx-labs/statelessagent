@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -52,17 +51,30 @@ func runAsk(question, model string, topK int) error {
 
 	fmt.Printf("\n  %s⦿%s Searching your notes...\n", cli.Cyan, cli.Reset)
 
-	// 2. Search — vector if available, FTS5 fallback
+	// 2. Search — vector if available, FTS5 fallback, LIKE-based last resort
 	var results []store.SearchResult
 	if db.HasVectors() {
 		embedClient, err := newEmbedProvider()
 		if err != nil {
-			// Ollama down — try FTS5
+			// Ollama down — try FTS5, then LIKE-based keyword
 			if db.FTSAvailable() {
-				var ftsErr error
-				results, ftsErr = db.FTS5Search(question, store.SearchOptions{TopK: topK})
-				if ftsErr != nil {
-					fmt.Fprintf(os.Stderr, "  FTS5 fallback failed: %v\n", ftsErr)
+				results, _ = db.FTS5Search(question, store.SearchOptions{TopK: topK})
+			}
+			if results == nil {
+				terms := store.ExtractSearchTerms(question)
+				rawResults, kwErr := db.KeywordSearch(terms, topK)
+				if kwErr == nil {
+					for _, rr := range rawResults {
+						snippet := rr.Text
+						if len(snippet) > 500 {
+							snippet = snippet[:500]
+						}
+						results = append(results, store.SearchResult{
+							Path: rr.Path, Title: rr.Title, Snippet: snippet,
+							Domain: rr.Domain, Workstream: rr.Workstream,
+							Tags: rr.Tags, ContentType: rr.ContentType, Score: 0.5,
+						})
+					}
 				}
 			}
 			if len(results) == 0 {
@@ -78,10 +90,30 @@ func runAsk(question, model string, topK int) error {
 				return fmt.Errorf("search: %w", err)
 			}
 		}
-	} else if db.FTSAvailable() {
-		results, err = db.FTS5Search(question, store.SearchOptions{TopK: topK})
-		if err != nil {
-			return fmt.Errorf("search: %w", err)
+	} else {
+		// No vectors — try FTS5, then LIKE-based keyword
+		if db.FTSAvailable() {
+			results, err = db.FTS5Search(question, store.SearchOptions{TopK: topK})
+			if err != nil {
+				return fmt.Errorf("search: %w", err)
+			}
+		}
+		if results == nil {
+			terms := store.ExtractSearchTerms(question)
+			rawResults, kwErr := db.KeywordSearch(terms, topK)
+			if kwErr == nil {
+				for _, rr := range rawResults {
+					snippet := rr.Text
+					if len(snippet) > 500 {
+						snippet = snippet[:500]
+					}
+					results = append(results, store.SearchResult{
+						Path: rr.Path, Title: rr.Title, Snippet: snippet,
+						Domain: rr.Domain, Workstream: rr.Workstream,
+						Tags: rr.Tags, ContentType: rr.ContentType, Score: 0.5,
+					})
+				}
+			}
 		}
 	}
 

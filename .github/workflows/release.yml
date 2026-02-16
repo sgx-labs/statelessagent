@@ -24,6 +24,11 @@ jobs:
             goarch: amd64
             suffix: linux-amd64
             cc: ""
+          - os: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            suffix: linux-arm64
+            cc: ""
           - os: ubuntu-latest
             goos: windows
             goarch: amd64
@@ -96,6 +101,7 @@ jobs:
           files: |
             artifacts/same-darwin-arm64/same-darwin-arm64
             artifacts/same-linux-amd64/same-linux-amd64
+            artifacts/same-linux-arm64/same-linux-arm64
             artifacts/same-windows-amd64.exe/same-windows-amd64.exe
 
   npm-publish:

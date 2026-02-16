@@ -60,7 +60,7 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 	}
 	defer db.Close()
 
-	// Detect lite mode (no vectors) and fall back to FTS5
+	// Detect lite mode (no vectors) and fall back to FTS5/keyword
 	var results []store.SearchResult
 	if !db.HasVectors() {
 		if db.FTSAvailable() {
@@ -68,26 +68,58 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 			if err != nil {
 				return fmt.Errorf("search: %w", err)
 			}
-			if !jsonOut && len(results) > 0 {
-				fmt.Printf("  %s(keyword search — install Ollama for semantic search)%s\n", cli.Dim, cli.Reset)
+		}
+		// LIKE-based keyword fallback if FTS5 unavailable or returned nothing
+		if results == nil {
+			terms := store.ExtractSearchTerms(query)
+			rawResults, err := db.KeywordSearch(terms, topK)
+			if err != nil {
+				return fmt.Errorf("search: %w", err)
 			}
-		} else {
-			return userError("No search index available", "run 'same reindex' with Ollama running for best results")
+			for _, rr := range rawResults {
+				snippet := rr.Text
+				if len(snippet) > 500 {
+					snippet = snippet[:500]
+				}
+				results = append(results, store.SearchResult{
+					Path: rr.Path, Title: rr.Title, Snippet: snippet,
+					Domain: rr.Domain, Workstream: rr.Workstream,
+					Tags: rr.Tags, ContentType: rr.ContentType, Score: 0.5,
+				})
+			}
+		}
+		if !jsonOut && len(results) > 0 {
+			fmt.Printf("  %s(keyword search — install Ollama for semantic search)%s\n", cli.Dim, cli.Reset)
 		}
 	} else {
 		client, err := newEmbedProvider()
 		if err != nil {
-			// Ollama went down — try FTS5 fallback
+			// Ollama went down — try FTS5 fallback, then LIKE-based
 			if db.FTSAvailable() {
-				results, err = db.FTS5Search(query, store.SearchOptions{TopK: topK, Domain: domain})
-				if err != nil {
-					return fmt.Errorf("search: %w", err)
+				results, _ = db.FTS5Search(query, store.SearchOptions{TopK: topK, Domain: domain})
+			}
+			if results == nil {
+				terms := store.ExtractSearchTerms(query)
+				rawResults, kwErr := db.KeywordSearch(terms, topK)
+				if kwErr == nil {
+					for _, rr := range rawResults {
+						snippet := rr.Text
+						if len(snippet) > 500 {
+							snippet = snippet[:500]
+						}
+						results = append(results, store.SearchResult{
+							Path: rr.Path, Title: rr.Title, Snippet: snippet,
+							Domain: rr.Domain, Workstream: rr.Workstream,
+							Tags: rr.Tags, ContentType: rr.ContentType, Score: 0.5,
+						})
+					}
 				}
-				if !jsonOut && len(results) > 0 {
-					fmt.Printf("  %s(keyword fallback — Ollama not available)%s\n", cli.Dim, cli.Reset)
-				}
-			} else {
+			}
+			if results == nil {
 				return fmt.Errorf("can't connect to embedding provider — is Ollama running? (%w)", err)
+			}
+			if !jsonOut {
+				fmt.Printf("  %s(keyword fallback — Ollama not available)%s\n", cli.Dim, cli.Reset)
 			}
 		} else {
 			if mismatchErr := db.CheckEmbeddingMeta(client.Name(), client.Model(), client.Dimensions()); mismatchErr != nil {

@@ -275,7 +275,24 @@ func runDoctor(jsonOut bool) error {
 			if noteCount == 0 {
 				return "", fmt.Errorf("no notes indexed")
 			}
-			return fmt.Sprintf("keyword search (%s notes)", cli.FormatNumber(noteCount)), nil
+			// Actually test keyword search works (FTS5 or LIKE-based)
+			mode := "keyword"
+			if db.FTSAvailable() {
+				results, ftsErr := db.FTS5Search("test", store.SearchOptions{TopK: 1})
+				if ftsErr != nil || results == nil {
+					mode = "keyword (LIKE)"
+				} else {
+					mode = "keyword (FTS5)"
+				}
+			} else {
+				terms := store.ExtractSearchTerms("test")
+				_, kwErr := db.KeywordSearch(terms, 1)
+				if kwErr != nil {
+					return "", fmt.Errorf("keyword search failed: %w", kwErr)
+				}
+				mode = "keyword (LIKE)"
+			}
+			return fmt.Sprintf("%s (%s notes)", mode, cli.FormatNumber(noteCount)), nil
 		})
 	}
 

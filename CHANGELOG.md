@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.8.3 — Keyword-Only Mode & ARM Linux
+
+Fixes keyword-only search (the biggest issue for no-Ollama environments), adds linux-arm64 pre-built binaries, and adds `provider = "none"` for permanent keyword-only mode.
+
+### Fixed
+
+- **Keyword-only search works in `same search` and `same ask`** — added LIKE-based keyword fallback when FTS5 is unavailable. Previously, keyword-only mode indexed notes successfully but search returned "No search index available". The CLI now matches the web dashboard's 3-tier fallback chain: vector → FTS5 → LIKE-based keyword
+- **Context surfacing hooks work in keyword-only mode** — the user-prompt hook previously early-returned when no embedding provider was available, showing a diagnostic instead of searching. Now falls through to keyword search (FTS5 → LIKE), so context surfacing works without Ollama
+- **`same doctor` no longer gives false positive for keyword search** — the "Finding relevant notes" check now actually tests keyword search instead of just counting notes
+- **`find_similar_notes` gives clear message in keyword-only mode** — instead of a confusing "not in index" error, explains that similar notes requires semantic search
+- **Config persists active provider** — `same init` now writes the actual embedding provider to config (e.g., `provider = "none"`) instead of always writing `provider = "ollama"`
+
+### Added
+
+- **`provider = "none"` for keyword-only mode** — explicit opt-out of embeddings. Use `SAME_EMBED_PROVIDER=none`, `--provider none`, or set `provider = "none"` in config. Skips Ollama check entirely during init
+- **linux-arm64 pre-built binary** — CI now builds for ARM Linux (Codespaces, OrbStack, Raspberry Pi, AWS Graviton). No more building from source on `aarch64`
+- **`same reindex --verbose`** — shows each file being processed during reindex, matching the `same init -v` flag
+
+---
+
 ## v0.8.2 — Handoff Quality & UX
 
 Comprehensive upgrade to session handoffs based on real-world user feedback. Richer auto-generated handoffs, better session continuity, bug reporting infrastructure, and UX polish.

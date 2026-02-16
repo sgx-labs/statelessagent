@@ -14,15 +14,19 @@ import (
 )
 
 func reindexCmd() *cobra.Command {
-	var force bool
+	var (
+		force   bool
+		verbose bool
+	)
 	cmd := &cobra.Command{
 		Use:   "reindex",
 		Short: "Scan your notes and rebuild the search index",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runReindex(force)
+			return runReindex(force, verbose)
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "Re-embed all files regardless of changes")
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show each file being processed")
 	return cmd
 }
 
@@ -41,27 +45,34 @@ func migrateCmd() *cobra.Command {
 		Use:   "migrate",
 		Short: "Rebuild index from scratch (replaces old data)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runReindex(true)
+			return runReindex(true, false)
 		},
 	}
 }
 
-func runReindex(force bool) error {
+func runReindex(force bool, verbose bool) error {
 	db, err := store.Open()
 	if err != nil {
 		return config.ErrNoDatabase
 	}
 	defer db.Close()
 
+	var progress indexer.ProgressFunc
+	if verbose {
+		progress = func(current, total int, path string) {
+			fmt.Printf("  [%d/%d] %s\n", current, total, path)
+		}
+	}
+
 	indexer.Version = Version
-	stats, err := indexer.Reindex(db, force)
+	stats, err := indexer.ReindexWithProgress(db, force, progress)
 	if err != nil {
 		errMsg := strings.ToLower(err.Error())
 		if strings.Contains(errMsg, "ollama") || strings.Contains(errMsg, "connection") || strings.Contains(errMsg, "refused") {
 			// Ollama-specific fallback — offer lite mode
 			fmt.Fprintf(os.Stderr, "  Ollama not available — indexing with keyword search only.\n")
 			fmt.Fprintf(os.Stderr, "  Start Ollama and run 'same reindex' again for semantic search.\n\n")
-			stats, err = indexer.ReindexLite(db, force, nil)
+			stats, err = indexer.ReindexLite(db, force, progress)
 			if err != nil {
 				return err
 			}
