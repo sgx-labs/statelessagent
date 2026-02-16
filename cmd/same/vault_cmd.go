@@ -144,6 +144,36 @@ func vaultCmd() *cobra.Command {
 		},
 	})
 
+	cmd.AddCommand(&cobra.Command{
+		Use:   "rename [old-name] [new-name]",
+		Short: "Rename a registered vault",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			oldName, newName := args[0], args[1]
+			if err := validateAlias(newName); err != nil {
+				return fmt.Errorf("invalid new name: %w", err)
+			}
+			reg := config.LoadRegistry()
+			path, ok := reg.Vaults[oldName]
+			if !ok {
+				return fmt.Errorf("vault %q not registered", oldName)
+			}
+			if _, exists := reg.Vaults[newName]; exists {
+				return fmt.Errorf("vault %q already exists", newName)
+			}
+			delete(reg.Vaults, oldName)
+			reg.Vaults[newName] = path
+			if reg.Default == oldName {
+				reg.Default = newName
+			}
+			if err := reg.Save(); err != nil {
+				return fmt.Errorf("save registry: %w", err)
+			}
+			fmt.Printf("Renamed vault %q → %q\n", oldName, newName)
+			return nil
+		},
+	})
+
 	var dryRun bool
 	feedCmd := &cobra.Command{
 		Use:   "feed [source] [target]",
