@@ -346,6 +346,7 @@ Requires Go 1.25+ and CGO.
 | `same seed info <name>` | Show seed details |
 | `same seed remove <name>` | Uninstall a seed vault |
 | `same vault list\|add\|remove\|default` | Manage multiple vaults |
+| `same vault rename <old> <new>` | Rename a vault alias |
 | `same vault feed <source>` | Propagate notes from another vault (with PII guard) |
 | `same guard settings set push-protect on` | Enable push protection |
 | `same push-allow` | One-time push authorization |

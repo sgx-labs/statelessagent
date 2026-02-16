@@ -22,13 +22,13 @@ Your AI agent forgets everything between sessions. SAME fixes that. It indexes y
 | `search_across_vaults` | read | Federated search across multiple vaults |
 | `find_similar_notes` | read | Find notes related to a given note |
 | `get_note` | read | Read full note content |
-| `get_session_context` | read | Pinned notes, latest handoff, recent decisions |
+| `get_session_context` | read | Pinned notes, latest handoff, recent decisions, git state, active claims |
 | `recent_activity` | read | Recently modified notes |
 | `index_stats` | read | Vault health and index statistics |
 | `reindex` | read | Re-scan and re-index notes |
-| `save_note` | write | Create or update a note in the vault |
-| `save_decision` | write | Log a project decision |
-| `create_handoff` | write | Create a session handoff note |
+| `save_note` | write | Create or update a note (optional `agent` attribution) |
+| `save_decision` | write | Log a project decision (optional `agent` attribution) |
+| `create_handoff` | write | Create a session handoff note (optional `agent` attribution) |
 
 ## MCP Configuration
 
@@ -84,6 +84,7 @@ same demo
 | macOS | Apple Silicon (arm64) | Supported |
 | macOS | Intel (x64) | Via Rosetta |
 | Linux | x64 | Supported |
+| Linux | arm64 | Supported |
 | Windows | x64 | Supported |
 
 ## Links

@@ -213,7 +213,23 @@ func sanitizeContextTags(text string) string {
 		"instructions",
 		"tool_result",
 		"tool_use",
-		"IMPORTANT",
+		"important",
+	}
+
+	// LLM-specific injection patterns (Llama/Mistral [INST], <<SYS>>, XML CDATA).
+	// These are not XML tags but delimiters used by specific model families that
+	// could be exploited to escape the vault-context wrapper.
+	type literalPattern struct {
+		pattern     string // lowercase match
+		replacement string
+	}
+	llmPatterns := []literalPattern{
+		{"[inst]", "[[inst]]"},
+		{"[/inst]", "[[/inst]]"},
+		{"<<sys>>", "[[sys]]"},
+		{"<</sys>>", "[[/sys]]"},
+		{"<![cdata[", "[CDATA["},
+		{"]]>", "]]&gt;"},
 	}
 
 	// Case-insensitive replacement: scan character-by-character and replace
@@ -224,6 +240,20 @@ func sanitizeContextTags(text string) string {
 	i := 0
 	for i < len(text) {
 		matched := false
+
+		// Check LLM-specific literal patterns first
+		for _, lp := range llmPatterns {
+			if i+len(lp.pattern) <= len(text) && lower[i:i+len(lp.pattern)] == lp.pattern {
+				result.WriteString(lp.replacement)
+				i += len(lp.pattern)
+				matched = true
+				break
+			}
+		}
+		if matched {
+			continue
+		}
+
 		for _, tag := range tagNames {
 			closeTag := "</" + tag + ">"
 			openTag := "<" + tag + ">"

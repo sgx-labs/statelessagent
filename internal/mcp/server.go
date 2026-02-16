@@ -1062,43 +1062,74 @@ func injectProvenanceHeader(content, header string) string {
 	return header + "\n" + content
 }
 
-// neutralizeTags replaces potentially dangerous XML tags with bracket equivalents.
+// neutralizeTags replaces potentially dangerous XML tags and LLM-specific
+// injection delimiters with bracket equivalents.
 func neutralizeTags(text string) string {
 	tags := []string{
 		"vault-context", "plugin-context", "session-bootstrap",
 		"vault-handoff", "vault-decisions", "same-diagnostic",
 		"system-reminder", "system", "instructions",
-		"tool_result", "tool_use", "IMPORTANT",
+		"tool_result", "tool_use", "important",
 	}
+
+	// LLM-specific injection patterns (Llama/Mistral [INST], <<SYS>>, XML CDATA).
+	type literalPattern struct {
+		pattern     string
+		replacement string
+	}
+	llmPatterns := []literalPattern{
+		{"[inst]", "[[inst]]"},
+		{"[/inst]", "[[/inst]]"},
+		{"<<sys>>", "[[sys]]"},
+		{"<</sys>>", "[[/sys]]"},
+		{"<![cdata[", "[CDATA["},
+		{"]]>", "]]&gt;"},
+	}
+
+	lower := strings.ToLower(text)
 	var result strings.Builder
 	result.Grow(len(text))
 	i := 0
 	for i < len(text) {
 		matched := false
+
+		// Check LLM-specific literal patterns first
+		for _, lp := range llmPatterns {
+			if i+len(lp.pattern) <= len(text) && lower[i:i+len(lp.pattern)] == lp.pattern {
+				result.WriteString(lp.replacement)
+				i += len(lp.pattern)
+				matched = true
+				break
+			}
+		}
+		if matched {
+			continue
+		}
+
 		for _, tag := range tags {
 			closeTag := "</" + tag + ">"
 			openTag := "<" + tag + ">"
 			openTagAttr := "<" + tag + " " // tag with attributes
 			selfClose := "<" + tag + "/>"
-			if i+len(closeTag) <= len(text) && strings.ToLower(text[i:i+len(closeTag)]) == closeTag {
+			if i+len(closeTag) <= len(text) && lower[i:i+len(closeTag)] == closeTag {
 				result.WriteString("[/" + tag + "]")
 				i += len(closeTag)
 				matched = true
 				break
 			}
-			if i+len(selfClose) <= len(text) && strings.ToLower(text[i:i+len(selfClose)]) == selfClose {
+			if i+len(selfClose) <= len(text) && lower[i:i+len(selfClose)] == selfClose {
 				result.WriteString("[" + tag + "/]")
 				i += len(selfClose)
 				matched = true
 				break
 			}
-			if i+len(openTag) <= len(text) && strings.ToLower(text[i:i+len(openTag)]) == openTag {
+			if i+len(openTag) <= len(text) && lower[i:i+len(openTag)] == openTag {
 				result.WriteString("[" + tag + "]")
 				i += len(openTag)
 				matched = true
 				break
 			}
-			if i+len(openTagAttr) <= len(text) && strings.ToLower(text[i:i+len(openTagAttr)]) == openTagAttr {
+			if i+len(openTagAttr) <= len(text) && lower[i:i+len(openTagAttr)] == openTagAttr {
 				result.WriteString("[" + tag + " ")
 				i += len(openTagAttr)
 				matched = true

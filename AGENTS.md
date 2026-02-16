@@ -79,8 +79,8 @@ internal/
     feedback.go           # Stop: track which notes were used
     search_strategies.go  # Search dispatch (hybrid, FTS5, keyword)
     term_extraction.go    # Query term extraction
-    text_processing.go    # Snippet/text utilities
-    injection.go          # Context injection formatting
+    text_processing.go    # Snippet/text utilities + sanitization
+    injection.go          # Prompt injection detection (go-promptguard)
     embed.go              # Embedding helpers for hooks
     plugins.go            # Plugin system
     instance_registry.go  # Multi-instance tracking
@@ -101,13 +101,43 @@ internal/
     usage.go              # Usage tracking and pruning
   config/              # Configuration, paths, vault registry
   embedding/           # Multi-provider embedding client (Ollama, OpenAI)
+    provider.go           # Provider interface + factory
+    ollama.go             # Ollama embedding provider
+    openai.go             # OpenAI-compatible embedding provider
   indexer/             # Vault file indexer + chunker + frontmatter parser
+    indexer.go            # Main indexer, reindex, single-file index
+    chunker.go            # Markdown chunking by heading
+    frontmatter.go        # YAML frontmatter parser
   mcp/                 # MCP server — 12 tools (search, write, session mgmt)
+    server.go             # Tool registration, handlers, helpers
+    git.go                # Git context collection for session context
   memory/              # Decision/handoff extraction, budget reports
+    decisions.go          # Decision extraction from transcripts
+    handoff.go            # Handoff generation
+    transcript.go         # Transcript parsing
+    budget.go             # Token budget tracking
+    confidence.go         # Confidence scoring
+    staleness.go          # Staleness detection
+  seed/                # Seed vault installer
+    manifest.go           # Seed manifest registry + caching
+    download.go           # Tarball download + extraction
+    install.go            # Install/remove orchestration
+    security.go           # Tarball extraction hardening
   setup/               # Init flow, hook installation
   ollama/              # Ollama HTTP client (generate)
   guard/               # PII scanner, push protection
+    guard.go              # Main PII scanner
+    patterns.go           # PII regex patterns
+    allowlist.go          # User-defined allowlist
+    blocklist.go          # Blocked pattern list
+    audit.go              # Audit log
+    output.go             # Formatted output
+    reviewed.go           # Reviewed files tracking
+    settings.go           # Guard configuration
   cli/                 # CLI formatting utilities (colors, box, header/footer)
+  web/                 # Local read-only web dashboard
+    server.go             # HTTP server, API handlers, security middleware
+    static.go             # Embedded HTML asset
   watcher/             # File watcher for auto-reindex
 ```
 

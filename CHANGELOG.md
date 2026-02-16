@@ -4,6 +4,12 @@
 
 Fixes keyword-only search (the biggest issue for no-Ollama environments), adds linux-arm64 pre-built binaries, and adds `provider = "none"` for permanent keyword-only mode.
 
+### Security
+
+- **BUG-035: Hardened prompt injection sanitization** — `sanitizeContextTags` (hooks) and `neutralizeTags` (MCP) now neutralize LLM-specific injection delimiters: Llama/Mistral `[INST]`/`[/INST]`, `<<SYS>>`/`<</SYS>>`, and XML `<![CDATA[` sequences. Previously only XML-like structural tags were sanitized
+- **Fixed case-insensitive tag matching for `IMPORTANT`** — the `IMPORTANT` tag was listed in uppercase but compared against lowercased text, so `<IMPORTANT>` injection payloads were not neutralized. Now correctly matched case-insensitively
+- **Comprehensive security test suite** — added dedicated security tests for injection sanitization, plugin validation, MCP input validation (agent normalization, rate limiting, tag neutralization), web dashboard middleware (localhost-only, security headers, private path filtering), and path traversal prevention
+
 ### Fixed
 
 - **Keyword-only search works in `same search` and `same ask`** — added LIKE-based keyword fallback when FTS5 is unavailable. Previously, keyword-only mode indexed notes successfully but search returned "No search index available". The CLI now matches the web dashboard's 3-tier fallback chain: vector → FTS5 → LIKE-based keyword
@@ -38,6 +44,7 @@ Fixes keyword-only search (the biggest issue for no-Ollama environments), adds l
 - **Agent-aware MCP filtering** — `search_notes_filtered` now supports filtering by `agent`
 - **Web dashboard agent badges** — note cards and note viewer now display `@agent` attribution when present
 - **Dashboard polish pass** — improved responsive breakpoints, keyboard search navigation (`/`, `Esc`, arrows, Enter), loading skeletons, friendlier empty/error states, print stylesheet, ARIA/focus improvements, and snippet term highlighting
+- **`same vault rename`** — rename a vault alias without re-registering. Updates the vault registry in-place
 
 ---
 
