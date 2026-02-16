@@ -158,6 +158,7 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 		searchCmd(),
 		askCmd(),
 		relatedCmd(),
+		webCmd(),
 	)
 
 	addGrouped("knowledge",

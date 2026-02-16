@@ -26,6 +26,8 @@ Comprehensive upgrade to session handoffs based on real-world user feedback. Ric
 
 ### Added
 
+- **Web dashboard** — `same web` launches a local read-only dashboard at `127.0.0.1:4078`. Browse notes, search semantically, view vault composition, read decisions and handoffs, see related notes. Single embedded HTML file, no external dependencies. Localhost-only with security headers (CSP, X-Frame-Options DENY, DNS rebinding protection). Works without Ollama (keyword fallback). `--port` and `--open` flags available
+- **Dashboard insights** — contextual tips based on vault state: index staleness warnings, search mode guidance, seed install suggestions, content type coaching, pinned notes tips
 - **Bug reporting** — "Report a Bug" link in README and npm package, GitHub issue templates (bug report + feature request), `same doctor` shows issues URL when checks fail, MCP `index_stats` description guides agents to `same doctor` and GitHub Issues
 - **Stop hook message control** — handoff creation message shows once per session; subsequent updates are silent
 
