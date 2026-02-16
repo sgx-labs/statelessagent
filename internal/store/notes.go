@@ -19,6 +19,7 @@ type NoteRecord struct {
 	Tags         string // JSON array string
 	Domain       string
 	Workstream   string
+	Agent        string
 	ChunkID      int
 	ChunkHeading string
 	Text         string
@@ -36,10 +37,10 @@ func (db *DB) InsertNote(rec *NoteRecord, embedding []float32) error {
 	defer db.mu.Unlock()
 
 	res, err := db.conn.Exec(`
-		INSERT INTO vault_notes (path, title, tags, domain, workstream, chunk_id, chunk_heading,
+		INSERT INTO vault_notes (path, title, tags, domain, workstream, agent, chunk_id, chunk_heading,
 			text, modified, content_hash, content_type, review_by, confidence, access_count)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		rec.Path, rec.Title, rec.Tags, rec.Domain, rec.Workstream,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		rec.Path, rec.Title, rec.Tags, rec.Domain, rec.Workstream, rec.Agent,
 		rec.ChunkID, rec.ChunkHeading, rec.Text, rec.Modified,
 		rec.ContentHash, rec.ContentType, rec.ReviewBy, rec.Confidence, rec.AccessCount,
 	)
@@ -83,9 +84,9 @@ func (db *DB) BulkInsertNotes(records []NoteRecord, embeddings [][]float32) erro
 	defer tx.Rollback()
 
 	noteStmt, err := tx.Prepare(`
-		INSERT INTO vault_notes (path, title, tags, domain, workstream, chunk_id, chunk_heading,
+		INSERT INTO vault_notes (path, title, tags, domain, workstream, agent, chunk_id, chunk_heading,
 			text, modified, content_hash, content_type, review_by, confidence, access_count)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return fmt.Errorf("prepare note stmt: %w", err)
 	}
@@ -99,7 +100,7 @@ func (db *DB) BulkInsertNotes(records []NoteRecord, embeddings [][]float32) erro
 
 	for i, rec := range records {
 		res, err := noteStmt.Exec(
-			rec.Path, rec.Title, rec.Tags, rec.Domain, rec.Workstream,
+			rec.Path, rec.Title, rec.Tags, rec.Domain, rec.Workstream, rec.Agent,
 			rec.ChunkID, rec.ChunkHeading, rec.Text, rec.Modified,
 			rec.ContentHash, rec.ContentType, rec.ReviewBy, rec.Confidence, rec.AccessCount,
 		)
@@ -138,9 +139,9 @@ func (db *DB) BulkInsertNotesLite(records []NoteRecord) error {
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO vault_notes (path, title, tags, domain, workstream, chunk_id, chunk_heading,
+		INSERT INTO vault_notes (path, title, tags, domain, workstream, agent, chunk_id, chunk_heading,
 			text, modified, content_hash, content_type, review_by, confidence, access_count)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return fmt.Errorf("prepare stmt: %w", err)
 	}
@@ -148,7 +149,7 @@ func (db *DB) BulkInsertNotesLite(records []NoteRecord) error {
 
 	for i, rec := range records {
 		if _, err := stmt.Exec(
-			rec.Path, rec.Title, rec.Tags, rec.Domain, rec.Workstream,
+			rec.Path, rec.Title, rec.Tags, rec.Domain, rec.Workstream, rec.Agent,
 			rec.ChunkID, rec.ChunkHeading, rec.Text, rec.Modified,
 			rec.ContentHash, rec.ContentType, rec.ReviewBy, rec.Confidence, rec.AccessCount,
 		); err != nil {
@@ -280,7 +281,7 @@ func (db *DB) ChunkCount() (int, error) {
 // GetNoteByPath returns all chunks for a note at the given path.
 func (db *DB) GetNoteByPath(path string) ([]NoteRecord, error) {
 	rows, err := db.conn.Query(`
-		SELECT id, path, title, tags, domain, workstream, chunk_id, chunk_heading,
+		SELECT id, path, title, tags, domain, workstream, COALESCE(agent, ''), chunk_id, chunk_heading,
 			text, modified, content_hash, content_type, review_by, confidence, access_count
 		FROM vault_notes WHERE path = ? ORDER BY chunk_id`, path)
 	if err != nil {
@@ -295,7 +296,7 @@ func (db *DB) GetNoteByPath(path string) ([]NoteRecord, error) {
 // SECURITY: Excludes _PRIVATE/ content from results.
 func (db *DB) GetStaleNotes(maxResults int, overdueOnly bool) ([]NoteRecord, error) {
 	query := `
-		SELECT DISTINCT id, path, title, tags, domain, workstream, chunk_id, chunk_heading,
+		SELECT DISTINCT id, path, title, tags, domain, workstream, COALESCE(agent, ''), chunk_id, chunk_heading,
 			text, modified, content_hash, content_type, review_by, confidence, access_count
 		FROM vault_notes
 		WHERE review_by != '' AND review_by IS NOT NULL AND path NOT LIKE '_PRIVATE/%'
@@ -363,7 +364,7 @@ func scanNotes(rows *sql.Rows) ([]NoteRecord, error) {
 	for rows.Next() {
 		var n NoteRecord
 		if err := rows.Scan(
-			&n.ID, &n.Path, &n.Title, &n.Tags, &n.Domain, &n.Workstream,
+			&n.ID, &n.Path, &n.Title, &n.Tags, &n.Domain, &n.Workstream, &n.Agent,
 			&n.ChunkID, &n.ChunkHeading, &n.Text, &n.Modified,
 			&n.ContentHash, &n.ContentType, &n.ReviewBy, &n.Confidence, &n.AccessCount,
 		); err != nil {
@@ -381,7 +382,7 @@ func (db *DB) RecentNotes(limit int) ([]NoteRecord, error) {
 		limit = 10
 	}
 	rows, err := db.conn.Query(`
-		SELECT id, path, title, tags, domain, workstream, chunk_id, chunk_heading,
+		SELECT id, path, title, tags, domain, workstream, COALESCE(agent, ''), chunk_id, chunk_heading,
 			text, modified, content_hash, content_type, review_by, confidence, access_count
 		FROM vault_notes
 		WHERE chunk_id = 0 AND path NOT LIKE '_PRIVATE/%'
@@ -398,7 +399,7 @@ func (db *DB) RecentNotes(limit int) ([]NoteRecord, error) {
 // SECURITY: Excludes _PRIVATE/ content from results.
 func (db *DB) AllNotes() ([]NoteRecord, error) {
 	rows, err := db.conn.Query(`
-		SELECT id, path, title, tags, domain, workstream, chunk_id, chunk_heading,
+		SELECT id, path, title, tags, domain, workstream, COALESCE(agent, ''), chunk_id, chunk_heading,
 			text, modified, content_hash, content_type, review_by, confidence, access_count
 		FROM vault_notes
 		WHERE chunk_id = 0 AND path NOT LIKE '_PRIVATE/%'

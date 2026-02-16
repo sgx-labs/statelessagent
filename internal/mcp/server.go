@@ -32,7 +32,7 @@ var (
 )
 
 const reindexCooldown = 60 * time.Second
-const writeRateLimit = 30               // max write operations per minute
+const writeRateLimit = 30                // max write operations per minute
 const writeRateWindow = 60 * time.Second // rate limit window
 
 // Write rate limiter — prevents rapid write abuse via prompt injection.
@@ -123,7 +123,7 @@ func registerTools(server *mcp.Server) {
 	// search_notes_filtered
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_notes_filtered",
-		Description: "Search the user's knowledge base with metadata filters. Use this when you want to narrow results by domain (e.g. 'engineering'), workstream (e.g. 'api-redesign'), or tags.\n\nArgs:\n  query: Natural language search query\n  top_k: Number of results (default 10, max 100)\n  domain: Filter by domain (e.g. 'engineering', 'product')\n  workstream: Filter by workstream/project name\n  tags: Comma-separated tags to filter by\n\nReturns filtered ranked list.",
+		Description: "Search the user's knowledge base with metadata filters. Use this when you want to narrow results by domain (e.g. 'engineering'), workstream (e.g. 'api-redesign'), tags, or agent attribution.\n\nArgs:\n  query: Natural language search query\n  top_k: Number of results (default 10, max 100)\n  domain: Filter by domain (e.g. 'engineering', 'product')\n  workstream: Filter by workstream/project name\n  tags: Comma-separated tags to filter by\n  agent: Filter by agent attribution (e.g. 'codex', 'claude')\n\nReturns filtered ranked list.",
 		Annotations: readOnly,
 	}, handleSearchNotesFiltered)
 
@@ -158,21 +158,21 @@ func registerTools(server *mcp.Server) {
 	// save_note (write-side)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "save_note",
-		Description: "Create or update a markdown note in the vault. The note is written to disk and indexed automatically.\n\nArgs:\n  path: Relative path within the vault (e.g. 'decisions/auth-approach.md')\n  content: Markdown content to write\n  append: If true, append to existing file instead of overwriting (default false)\n\nReturns confirmation with the saved path.",
+		Description: "Create or update a markdown note in the vault. The note is written to disk and indexed automatically.\n\nArgs:\n  path: Relative path within the vault (e.g. 'decisions/auth-approach.md')\n  content: Markdown content to write\n  append: If true, append to existing file instead of overwriting (default false)\n  agent: Optional writer attribution stored in frontmatter (e.g. 'codex')\n\nReturns confirmation with the saved path.",
 		Annotations: writeDestructive,
 	}, handleSaveNote)
 
 	// save_decision (write-side)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "save_decision",
-		Description: "Log a project decision. Appends to the decision log so future sessions can find it.\n\nArgs:\n  title: Short decision title (e.g. 'Use JWT for auth')\n  body: Full decision details — what was decided, why, alternatives considered\n  status: Decision status — 'accepted', 'proposed', or 'superseded' (default 'accepted')\n\nReturns confirmation.",
+		Description: "Log a project decision. Appends to the decision log so future sessions can find it.\n\nArgs:\n  title: Short decision title (e.g. 'Use JWT for auth')\n  body: Full decision details — what was decided, why, alternatives considered\n  status: Decision status — 'accepted', 'proposed', or 'superseded' (default 'accepted')\n  agent: Optional writer attribution stored in frontmatter (e.g. 'codex')\n\nReturns confirmation.",
 		Annotations: writeNonDestructive,
 	}, handleSaveDecision)
 
 	// create_handoff (write-side)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_handoff",
-		Description: "Create a session handoff note so the next session picks up where this one left off. Write what you worked on, what's pending, and any blockers.\n\nArgs:\n  summary: What was accomplished this session\n  pending: What's left to do (optional)\n  blockers: Any blockers or open questions (optional)\n\nReturns path to the handoff note.",
+		Description: "Create a session handoff note so the next session picks up where this one left off. Write what you worked on, what's pending, and any blockers.\n\nArgs:\n  summary: What was accomplished this session\n  pending: What's left to do (optional)\n  blockers: Any blockers or open questions (optional)\n  agent: Optional writer attribution stored in frontmatter (e.g. 'codex')\n\nReturns path to the handoff note.",
 		Annotations: writeNonDestructive,
 	}, handleCreateHandoff)
 
@@ -211,6 +211,7 @@ type searchFilteredInput struct {
 	Domain     string `json:"domain,omitempty" jsonschema:"Filter by domain"`
 	Workstream string `json:"workstream,omitempty" jsonschema:"Filter by workstream"`
 	Tags       string `json:"tags,omitempty" jsonschema:"Comma-separated tags to filter by"`
+	Agent      string `json:"agent,omitempty" jsonschema:"Filter by agent attribution"`
 }
 
 type getInput struct {
@@ -230,18 +231,21 @@ type saveNoteInput struct {
 	Path    string `json:"path" jsonschema:"Relative path within the vault (e.g. decisions/auth.md)"`
 	Content string `json:"content" jsonschema:"Markdown content to write"`
 	Append  bool   `json:"append" jsonschema:"Append to existing file instead of overwriting"`
+	Agent   string `json:"agent,omitempty" jsonschema:"Optional writer attribution (e.g. codex)"`
 }
 
 type saveDecisionInput struct {
 	Title  string `json:"title" jsonschema:"Short decision title"`
 	Body   string `json:"body" jsonschema:"Full decision details"`
 	Status string `json:"status" jsonschema:"accepted, proposed, or superseded (default accepted)"`
+	Agent  string `json:"agent,omitempty" jsonschema:"Optional writer attribution (e.g. codex)"`
 }
 
 type createHandoffInput struct {
 	Summary  string `json:"summary" jsonschema:"What was accomplished this session"`
 	Pending  string `json:"pending" jsonschema:"What is left to do"`
 	Blockers string `json:"blockers" jsonschema:"Any blockers or open questions"`
+	Agent    string `json:"agent,omitempty" jsonschema:"Optional writer attribution (e.g. codex)"`
 }
 
 type recentInput struct {
@@ -299,6 +303,7 @@ func handleSearchNotesFiltered(ctx context.Context, req *mcp.CallToolRequest, in
 		TopK:       topK,
 		Domain:     input.Domain,
 		Workstream: input.Workstream,
+		Agent:      strings.TrimSpace(input.Agent),
 		Tags:       tags,
 	}
 
@@ -427,6 +432,10 @@ func handleSaveNote(ctx context.Context, req *mcp.CallToolRequest, input saveNot
 	if len(input.Content) > maxNoteSize {
 		return textResult("Error: content exceeds 100KB limit."), nil, nil
 	}
+	agent, err := normalizeAgent(input.Agent)
+	if err != nil {
+		return textResult("Error: invalid agent value. Use 1-128 visible characters without newlines."), nil, nil
+	}
 
 	// S21: Only allow .md files to be saved via MCP
 	if !strings.HasSuffix(strings.ToLower(input.Path), ".md") {
@@ -437,45 +446,97 @@ func handleSaveNote(ctx context.Context, req *mcp.CallToolRequest, input saveNot
 	if safePath == "" {
 		return textResult("Error: path must be a relative path within the vault. Cannot write to _PRIVATE/."), nil, nil
 	}
+	relPath, relErr := store.NormalizeClaimPath(input.Path)
+	if relErr != nil {
+		return textResult("Error: path must stay within the vault. Use a relative path like 'notes/topic.md'."), nil, nil
+	}
 
 	// S11: Prepend a provenance header so readers know this was MCP-generated.
 	// This helps mitigate stored prompt injection by clearly marking
 	// machine-written content when it is later surfaced to an agent.
-	mcpHeader := "<!-- Note saved via SAME MCP tool. Review before trusting. -->\n"
+	mcpHeader := "<!-- Note saved via SAME MCP tool. Review before trusting. -->"
 
 	// Ensure parent directory exists
 	dir := filepath.Dir(safePath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return textResult("Error: could not create directory."), nil, nil
+		return textResult("Error: could not create destination directory. Check vault write permissions."), nil, nil
 	}
 
 	if input.Append {
-		f, err := os.OpenFile(safePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-		if err != nil {
-			return textResult("Error: could not open file for appending."), nil, nil
-		}
-		// F14: Add provenance marker for appended MCP content
-		_, err = f.WriteString("\n<!-- Appended via SAME MCP tool -->\n" + input.Content)
-		f.Close()
-		if err != nil {
-			return textResult("Error: could not write to file."), nil, nil
+		_, statErr := os.Stat(safePath)
+		if os.IsNotExist(statErr) {
+			content := input.Content
+			if agent != "" {
+				content = upsertAgentFrontmatter(content, agent)
+				content = injectProvenanceHeader(content, mcpHeader)
+			} else {
+				content = mcpHeader + "\n" + content
+			}
+			if err := os.WriteFile(safePath, []byte(content), 0o600); err != nil {
+				return textResult("Error: could not write note file. Check vault permissions and available disk space."), nil, nil
+			}
+		} else {
+			if statErr != nil {
+				return textResult("Error: could not open note for appending. Check file permissions and lock state."), nil, nil
+			}
+			if agent != "" {
+				existing, readErr := os.ReadFile(safePath)
+				if readErr == nil {
+					updated := upsertAgentFrontmatter(string(existing), agent)
+					if updated != string(existing) {
+						if writeErr := os.WriteFile(safePath, []byte(updated), 0o600); writeErr != nil {
+							return textResult("Error: could not update note metadata. The note was not modified; check file permissions."), nil, nil
+						}
+					}
+				}
+			}
+
+			f, err := os.OpenFile(safePath, os.O_APPEND|os.O_WRONLY, 0o600)
+			if err != nil {
+				return textResult("Error: could not open note for appending. Check file permissions and lock state."), nil, nil
+			}
+			// F14: Add provenance marker for appended MCP content
+			_, err = f.WriteString("\n<!-- Appended via SAME MCP tool -->\n" + input.Content)
+			f.Close()
+			if err != nil {
+				return textResult("Error: could not append note content. Check vault permissions and available disk space."), nil, nil
+			}
 		}
 	} else {
-		content := mcpHeader + input.Content
+		content := input.Content
+		if agent != "" {
+			content = upsertAgentFrontmatter(content, agent)
+			content = injectProvenanceHeader(content, mcpHeader)
+		} else {
+			content = mcpHeader + "\n" + content
+		}
 		if err := os.WriteFile(safePath, []byte(content), 0o600); err != nil {
-			return textResult("Error: could not write file."), nil, nil
+			return textResult("Error: could not write note file. Check vault permissions and available disk space."), nil, nil
 		}
 	}
 
 	// S7: Index only the saved file instead of triggering a full vault reindex.
 	// This avoids O(n) work per save_note call, preventing DoS on large vaults.
-	relPath := filepath.ToSlash(input.Path)
 	if err := indexer.IndexSingleFile(db, safePath, relPath, vaultRoot, embedClient); err != nil {
 		// Non-fatal: the note was saved, just not indexed yet
 		return textResult(fmt.Sprintf("Saved: %s (index update failed — run reindex to fix)", input.Path)), nil, nil
 	}
 
-	return textResult(fmt.Sprintf("Saved: %s", input.Path)), nil, nil
+	message := fmt.Sprintf("Saved: %s", input.Path)
+	if agent != "" {
+		if readClaims, claimErr := db.GetActiveReadClaimsForPath(relPath, agent); claimErr == nil && len(readClaims) > 0 {
+			seen := make(map[string]bool, len(readClaims))
+			var readers []string
+			for _, c := range readClaims {
+				if !seen[c.Agent] {
+					seen[c.Agent] = true
+					readers = append(readers, c.Agent)
+				}
+			}
+			message += fmt.Sprintf(" (warning: read-claims by %s on %s — check for breakage)", strings.Join(readers, ", "), relPath)
+		}
+	}
+	return textResult(message), nil, nil
 }
 
 func handleSaveDecision(ctx context.Context, req *mcp.CallToolRequest, input saveDecisionInput) (*mcp.CallToolResult, any, error) {
@@ -490,6 +551,10 @@ func handleSaveDecision(ctx context.Context, req *mcp.CallToolRequest, input sav
 	}
 	if len(input.Title)+len(input.Body) > maxNoteSize {
 		return textResult(fmt.Sprintf("Error: decision content too large (max %dKB).", maxNoteSize/1024)), nil, nil
+	}
+	agent, err := normalizeAgent(input.Agent)
+	if err != nil {
+		return textResult("Error: invalid agent value. Use 1-128 visible characters without newlines."), nil, nil
 	}
 
 	status := input.Status
@@ -509,6 +574,10 @@ func handleSaveDecision(ctx context.Context, req *mcp.CallToolRequest, input sav
 
 	entry := fmt.Sprintf("\n## Decision: %s\n**Date:** %s\n**Status:** %s\n\n%s\n",
 		safeTitle, now, displayStatus, input.Body)
+	if agent != "" {
+		entry = fmt.Sprintf("\n## Decision: %s\n**Date:** %s\n**Status:** %s\n**Agent:** %s\n\n%s\n",
+			safeTitle, now, displayStatus, agent, input.Body)
+	}
 
 	// Get decision log path from config
 	cfg, _ := config.LoadConfig()
@@ -519,18 +588,33 @@ func handleSaveDecision(ctx context.Context, req *mcp.CallToolRequest, input sav
 
 	safePath := safeVaultPath(logName)
 	if safePath == "" {
-		return textResult("Error: decision log path is invalid."), nil, nil
+		return textResult("Error: decision log path is invalid. Set `vault.decision_log` to a relative file under the vault."), nil, nil
+	}
+	if agent != "" {
+		if existing, readErr := os.ReadFile(safePath); readErr == nil {
+			updated := upsertAgentFrontmatter(string(existing), agent)
+			if updated != string(existing) {
+				if writeErr := os.WriteFile(safePath, []byte(updated), 0o600); writeErr != nil {
+					return textResult("Error: could not update decision log metadata. Check file permissions."), nil, nil
+				}
+			}
+		} else if os.IsNotExist(readErr) {
+			initial := upsertAgentFrontmatter("", agent)
+			if writeErr := os.WriteFile(safePath, []byte(initial), 0o600); writeErr != nil {
+				return textResult("Error: could not initialize decision log metadata. Check vault permissions."), nil, nil
+			}
+		}
 	}
 
 	// Append to decision log
 	f, err := os.OpenFile(safePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
-		return textResult("Error: could not open decision log."), nil, nil
+		return textResult("Error: could not open decision log for writing. Check file permissions."), nil, nil
 	}
 	_, err = f.WriteString(entry)
 	f.Close()
 	if err != nil {
-		return textResult("Error: could not write to decision log."), nil, nil
+		return textResult("Error: could not write to decision log. Check available disk space and permissions."), nil, nil
 	}
 
 	// Index only the decision log file instead of a full vault reindex.
@@ -554,6 +638,10 @@ func handleCreateHandoff(ctx context.Context, req *mcp.CallToolRequest, input cr
 	if totalSize > maxNoteSize {
 		return textResult(fmt.Sprintf("Error: handoff content too large (max %dKB).", maxNoteSize/1024)), nil, nil
 	}
+	agent, err := normalizeAgent(input.Agent)
+	if err != nil {
+		return textResult("Error: invalid agent value. Use 1-128 visible characters without newlines."), nil, nil
+	}
 
 	// Get handoff dir from config
 	cfg, _ := config.LoadConfig()
@@ -569,11 +657,14 @@ func handleCreateHandoff(ctx context.Context, req *mcp.CallToolRequest, input cr
 
 	safePath := safeVaultPath(relPath)
 	if safePath == "" {
-		return textResult("Error: handoff path is invalid."), nil, nil
+		return textResult("Error: handoff path is invalid. Set `vault.handoff_dir` to a relative directory under the vault."), nil, nil
 	}
 
 	// Build handoff content
 	var buf strings.Builder
+	if agent != "" {
+		buf.WriteString(fmt.Sprintf("---\nagent: %q\n---\n\n", agent))
+	}
 	buf.WriteString(fmt.Sprintf("# Session Handoff — %s\n\n", now.Format("2006-01-02")))
 	buf.WriteString("## What we worked on\n")
 	buf.WriteString(input.Summary)
@@ -591,10 +682,10 @@ func handleCreateHandoff(ctx context.Context, req *mcp.CallToolRequest, input cr
 
 	dir := filepath.Dir(safePath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return textResult("Error: could not create handoff directory."), nil, nil
+		return textResult("Error: could not create handoff directory. Check vault write permissions."), nil, nil
 	}
 	if err := os.WriteFile(safePath, []byte(buf.String()), 0o600); err != nil {
-		return textResult("Error: could not write handoff note."), nil, nil
+		return textResult("Error: could not write handoff note. Check vault permissions and available disk space."), nil, nil
 	}
 
 	// Index only the handoff file instead of a full vault reindex.
@@ -683,6 +774,27 @@ func handleGetSessionContext(ctx context.Context, req *mcp.CallToolRequest, inpu
 			})
 		}
 		result["recent_notes"] = recentList
+	}
+
+	// Active multi-agent claims
+	_, _ = db.PurgeExpiredClaims()
+	if claims, claimErr := db.ListActiveClaims(); claimErr == nil && len(claims) > 0 {
+		claimList := make([]map[string]any, 0, len(claims))
+		for _, c := range claims {
+			claimList = append(claimList, map[string]any{
+				"path":       c.Path,
+				"agent":      c.Agent,
+				"type":       c.Type,
+				"claimed_at": time.Unix(c.ClaimedAt, 0).UTC().Format(time.RFC3339),
+				"expires_at": time.Unix(c.ExpiresAt, 0).UTC().Format(time.RFC3339),
+			})
+		}
+		result["active_claims"] = claimList
+	}
+
+	// Git context (best-effort; omitted when unavailable)
+	if git := collectGitContext(vaultRoot); git != nil {
+		result["git"] = git
 	}
 
 	// Stats
@@ -827,6 +939,9 @@ func searchWithFallback(query string, opts store.SearchOptions) ([]store.SearchR
 	}
 	var results []store.SearchResult
 	for _, r := range raw {
+		if !matchesSearchOptions(r, opts) {
+			continue
+		}
 		snippet := r.Text
 		if len(snippet) > 500 {
 			snippet = snippet[:500]
@@ -839,6 +954,7 @@ func searchWithFallback(query string, opts store.SearchOptions) ([]store.SearchR
 			Snippet:      snippet,
 			Domain:       r.Domain,
 			Workstream:   r.Workstream,
+			Agent:        r.Agent,
 			Tags:         r.Tags,
 			ContentType:  r.ContentType,
 			Confidence:   r.Confidence,
@@ -852,6 +968,98 @@ func sanitizeFederatedSnippets(results []store.FederatedResult) []store.Federate
 		results[i].Snippet = neutralizeTags(results[i].Snippet)
 	}
 	return results
+}
+
+func matchesSearchOptions(r store.RawSearchResult, opts store.SearchOptions) bool {
+	if opts.Domain != "" && !strings.EqualFold(r.Domain, opts.Domain) {
+		return false
+	}
+	if opts.Workstream != "" && !strings.EqualFold(r.Workstream, opts.Workstream) {
+		return false
+	}
+	if opts.Agent != "" && !strings.EqualFold(r.Agent, opts.Agent) {
+		return false
+	}
+	if len(opts.Tags) == 0 {
+		return true
+	}
+
+	noteTags := store.ParseTags(r.Tags)
+	if len(noteTags) == 0 {
+		return false
+	}
+	noteSet := make(map[string]bool, len(noteTags))
+	for _, t := range noteTags {
+		noteSet[strings.ToLower(strings.TrimSpace(t))] = true
+	}
+	for _, required := range opts.Tags {
+		if noteSet[strings.ToLower(strings.TrimSpace(required))] {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeAgent(raw string) (string, error) {
+	clean := strings.TrimSpace(raw)
+	if clean == "" {
+		return "", nil
+	}
+	if strings.ContainsRune(clean, 0) || strings.Contains(clean, "\n") || strings.Contains(clean, "\r") {
+		return "", fmt.Errorf("invalid agent")
+	}
+	if len(clean) > 128 {
+		return "", fmt.Errorf("agent too long")
+	}
+	return clean, nil
+}
+
+func upsertAgentFrontmatter(content, agent string) string {
+	if agent == "" {
+		return content
+	}
+	if strings.HasPrefix(content, "---\n") {
+		rest := content[len("---\n"):]
+		idx := strings.Index(rest, "\n---")
+		if idx >= 0 {
+			block := rest[:idx]
+			tail := rest[idx+len("\n---"):]
+			lines := strings.Split(block, "\n")
+			updated := false
+			for i, line := range lines {
+				trimmed := strings.TrimSpace(strings.ToLower(line))
+				if strings.HasPrefix(trimmed, "agent:") {
+					lines[i] = fmt.Sprintf("agent: %q", agent)
+					updated = true
+					break
+				}
+			}
+			if !updated {
+				lines = append(lines, fmt.Sprintf("agent: %q", agent))
+			}
+			block = strings.Join(lines, "\n")
+			if strings.HasPrefix(tail, "\n") {
+				return "---\n" + block + "\n---" + tail
+			}
+			return "---\n" + block + "\n---\n" + tail
+		}
+	}
+	return fmt.Sprintf("---\nagent: %q\n---\n\n%s", agent, content)
+}
+
+func injectProvenanceHeader(content, header string) string {
+	if strings.HasPrefix(content, "---\n") {
+		rest := content[len("---\n"):]
+		idx := strings.Index(rest, "\n---")
+		if idx >= 0 {
+			headLen := len("---\n") + idx + len("\n---")
+			head := content[:headLen]
+			tail := content[headLen:]
+			tail = strings.TrimPrefix(tail, "\n")
+			return head + "\n\n" + header + "\n\n" + tail
+		}
+	}
+	return header + "\n" + content
 }
 
 // neutralizeTags replaces potentially dangerous XML tags with bracket equivalents.

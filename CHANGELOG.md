@@ -19,6 +19,7 @@ Fixes keyword-only search (the biggest issue for no-Ollama environments), adds l
 - **Doctor: Ollama skip reason** — when Ollama is unavailable, doctor shows why (e.g., "permission denied — localhost may be blocked by sandbox/runtime policy") instead of just "skipped (lite mode)"
 - **Doctor: reindex upgrade prompt** — when Ollama is running but index is keyword-only, doctor prompts to run `same reindex` to enable semantic search
 - **Permission-denied errors not retried** — sandbox EACCES/EPERM errors now fast-fail instead of retrying 3 times with exponential backoff
+- **NULL `agent` scan regressions** — search, note listing, pinned-note reads, and `same doctor` keyword checks now safely handle legacy rows where `agent` is `NULL`
 
 ### Added
 
@@ -27,6 +28,16 @@ Fixes keyword-only search (the biggest issue for no-Ollama environments), adds l
 - **`same reindex --verbose`** — shows each file being processed during reindex, matching the `same init -v` flag
 - **Doctor: portability checks** — detects hardcoded absolute binary paths in `.mcp.json` and `.claude/settings.json`, suggests `same setup mcp` / `same setup hooks` to fix
 - **Seed install `--all` hint** — success message now shows `same search --all` as a next step for cross-vault search
+- **`same claim` command group** — advisory read/write file claims for multi-agent coordination:
+  - `same claim <file> --agent <name>`
+  - `same claim --read <file> --agent <name>`
+  - `same claim --list`
+  - `same claim --release <file> [--agent <name>]`
+- **MCP session context git awareness** — `get_session_context` now includes branch, recent commits, dirty files, and untracked files when available
+- **Agent attribution on MCP writes** — `save_note`, `save_decision`, and `create_handoff` now accept optional `agent` and persist it in note frontmatter/index metadata
+- **Agent-aware MCP filtering** — `search_notes_filtered` now supports filtering by `agent`
+- **Web dashboard agent badges** — note cards and note viewer now display `@agent` attribution when present
+- **Dashboard polish pass** — improved responsive breakpoints, keyboard search navigation (`/`, `Esc`, arrows, Enter), loading skeletons, friendlier empty/error states, print stylesheet, ARIA/focus improvements, and snippet term highlighting
 
 ---
 

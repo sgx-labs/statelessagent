@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
@@ -137,6 +138,7 @@ func (db *DB) migrate() error {
 			tags TEXT DEFAULT '[]',
 			domain TEXT DEFAULT '',
 			workstream TEXT DEFAULT '',
+			agent TEXT,
 			chunk_id INTEGER NOT NULL,
 			chunk_heading TEXT NOT NULL,
 			text TEXT NOT NULL,
@@ -233,6 +235,8 @@ func (db *DB) migrate() error {
 		{1, db.migrateV1}, // establishes version tracking baseline
 		{2, db.migrateV2}, // FTS5 full-text search table
 		{3, db.migrateV3}, // session recovery tracking
+		{4, db.migrateV4}, // agent attribution metadata
+		{5, db.migrateV5}, // multi-agent claims table
 	}
 	for _, m := range versionedMigrations {
 		if currentVersion < m.version {
@@ -286,6 +290,37 @@ func (db *DB) migrateV3() error {
 	return err
 }
 
+// migrateV4 adds optional agent attribution to notes.
+func (db *DB) migrateV4() error {
+	if !db.hasColumn("vault_notes", "agent") {
+		if _, err := db.conn.Exec(`ALTER TABLE vault_notes ADD COLUMN agent TEXT`); err != nil {
+			return err
+		}
+	}
+	_, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_vault_notes_agent ON vault_notes(agent)`)
+	return err
+}
+
+// migrateV5 creates advisory multi-agent file claims.
+func (db *DB) migrateV5() error {
+	if _, err := db.conn.Exec(`CREATE TABLE IF NOT EXISTS claims (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		path TEXT NOT NULL,
+		agent TEXT NOT NULL,
+		type TEXT NOT NULL CHECK(type IN ('read', 'write')),
+		claimed_at INTEGER NOT NULL,
+		expires_at INTEGER NOT NULL,
+		UNIQUE(path, agent, type)
+	)`); err != nil {
+		return err
+	}
+	if _, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_claims_expires_at ON claims(expires_at)`); err != nil {
+		return err
+	}
+	_, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_claims_path ON claims(path)`)
+	return err
+}
+
 // SchemaVersion returns the current schema version (0 if unset).
 func (db *DB) SchemaVersion() int {
 	v, ok := db.GetMeta("schema_version")
@@ -319,6 +354,33 @@ func (db *DB) SetMeta(key, value string) error {
 		key, value,
 	)
 	return err
+}
+
+// hasColumn reports whether a table currently has a column.
+func (db *DB) hasColumn(table, column string) bool {
+	rows, err := db.conn.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			cid      int
+			name     string
+			colType  string
+			notNull  int
+			defaultV sql.NullString
+			primaryK int
+		)
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &defaultV, &primaryK); err != nil {
+			continue
+		}
+		if strings.EqualFold(name, column) {
+			return true
+		}
+	}
+	return false
 }
 
 // SetEmbeddingMeta records the current embedding provider, model, and dimensions.

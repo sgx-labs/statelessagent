@@ -43,6 +43,7 @@ cmd/same/
   ask_cmd.go           # RAG question-answering
   bench_cmd.go         # Search performance benchmarks
   ci_cmd.go            # CI workflow generation
+  claim_cmd.go         # Advisory multi-agent file claims
   config_cmd.go        # Config show/edit
   demo_cmd.go          # Interactive demo
   display_cmd.go       # Display mode switching
@@ -54,14 +55,17 @@ cmd/same/
   init_cmd.go          # First-run setup
   log_cmd.go           # Activity log
   mcp_cmd.go           # MCP server launch + budget report
+  model_cmd.go         # Embedding model selection
   pin_cmd.go           # Pin/unpin notes
   plugin_cmd.go        # Plugin management
   repair_cmd.go        # Database recovery
   search_cmd.go        # Search + federated search + related notes
+  seed_cmd.go          # Seed vault install/remove/list/info
   status_cmd.go        # Vault status overview
   tutorial_cmd.go      # Interactive tutorial
   update_cmd.go        # Self-update
   vault_cmd.go         # Multi-vault management + feed
+  web_cmd.go           # Local dashboard server (`same web`)
 
 internal/
   hooks/               # Claude Code hook handlers (20 files)
@@ -90,6 +94,7 @@ internal/
     notes.go              # Note CRUD operations
     search.go             # Vector, hybrid, FTS5, federated search
     pins.go               # Pinned notes
+    claims.go             # Advisory file claim operations
     ranking.go            # Composite scoring (DO NOT CHANGE constants)
     milestones.go         # Feature discovery milestones
     sessions.go           # Session recovery data

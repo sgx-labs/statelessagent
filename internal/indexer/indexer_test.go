@@ -248,6 +248,7 @@ tags: [go, testing]
 content_type: decision
 domain: engineering
 workstream: api
+agent: codex
 ---
 
 # Test Note
@@ -278,6 +279,9 @@ Body content here.
 
 	if parsed.Meta.Workstream != "api" {
 		t.Errorf("expected workstream 'api', got %q", parsed.Meta.Workstream)
+	}
+	if parsed.Meta.Agent != "codex" {
+		t.Errorf("expected agent 'codex', got %q", parsed.Meta.Agent)
 	}
 
 	if !strings.Contains(parsed.Body, "Body content here.") {

@@ -130,6 +130,66 @@ func TestKeywordSearch(t *testing.T) {
 	}
 }
 
+func TestSearchAndNoteReadsHandleNullAgent(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	vec := make([]float32, 768)
+	note := &NoteRecord{
+		Path: "notes/null-agent.md", Title: "Null Agent",
+		Tags: "[]", ChunkID: 0, ChunkHeading: "(full)",
+		Text: "Keyword fallback should still work.",
+		Modified: 1700000000, ContentHash: "null-agent", ContentType: "note", Confidence: 0.5,
+	}
+	if err := db.InsertNote(note, vec); err != nil {
+		t.Fatalf("InsertNote: %v", err)
+	}
+
+	// Simulate legacy rows from pre-agent schema migration.
+	if _, err := db.conn.Exec(`UPDATE vault_notes SET agent = NULL WHERE path = ?`, note.Path); err != nil {
+		t.Fatalf("set NULL agent: %v", err)
+	}
+
+	results, err := db.KeywordSearch([]string{"fallback"}, 5)
+	if err != nil {
+		t.Fatalf("KeywordSearch with NULL agent: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Agent != "" {
+		t.Fatalf("expected empty agent for NULL value, got %q", results[0].Agent)
+	}
+
+	notes, err := db.AllNotes()
+	if err != nil {
+		t.Fatalf("AllNotes with NULL agent: %v", err)
+	}
+	if len(notes) != 1 {
+		t.Fatalf("expected 1 note, got %d", len(notes))
+	}
+	if notes[0].Agent != "" {
+		t.Fatalf("expected empty note agent for NULL value, got %q", notes[0].Agent)
+	}
+
+	if err := db.PinNote(note.Path); err != nil {
+		t.Fatalf("PinNote: %v", err)
+	}
+	pinned, err := db.GetPinnedNotes()
+	if err != nil {
+		t.Fatalf("GetPinnedNotes with NULL agent: %v", err)
+	}
+	if len(pinned) != 1 {
+		t.Fatalf("expected 1 pinned note, got %d", len(pinned))
+	}
+	if pinned[0].Agent != "" {
+		t.Fatalf("expected empty pinned agent for NULL value, got %q", pinned[0].Agent)
+	}
+}
+
 func TestContentTermSearch(t *testing.T) {
 	db, err := OpenMemory()
 	if err != nil {

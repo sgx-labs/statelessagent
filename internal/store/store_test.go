@@ -35,18 +35,18 @@ func TestInsertAndSearch(t *testing.T) {
 
 	for i := 0; i < 100; i++ {
 		records[i] = NoteRecord{
-			Path:        "test/" + string(rune('a'+i%26)) + ".md",
-			Title:       "Test Note",
-			Tags:        "[]",
-			Domain:      "test",
-			Workstream:  "default",
-			ChunkID:     i % 3,
+			Path:         "test/" + string(rune('a'+i%26)) + ".md",
+			Title:        "Test Note",
+			Tags:         "[]",
+			Domain:       "test",
+			Workstream:   "default",
+			ChunkID:      i % 3,
 			ChunkHeading: "(full)",
-			Text:        "test content",
-			Modified:    1700000000,
-			ContentHash: "hash",
-			ContentType: "note",
-			Confidence:  0.5,
+			Text:         "test content",
+			Modified:     1700000000,
+			ContentHash:  "hash",
+			ContentType:  "note",
+			Confidence:   0.5,
 		}
 		vec := make([]float32, 768)
 		for j := range vec {
@@ -155,8 +155,8 @@ func TestMetadataFiltering(t *testing.T) {
 	}
 
 	records := []NoteRecord{
-		{Path: "work.md", Title: "Work", Domain: "Work", Tags: `["project"]`, ChunkID: 0, ChunkHeading: "(full)", Text: "work content", Modified: 1700000000, ContentHash: "a", ContentType: "note", Confidence: 0.5},
-		{Path: "personal.md", Title: "Personal", Domain: "Home", Tags: `["hobby"]`, ChunkID: 0, ChunkHeading: "(full)", Text: "personal content", Modified: 1700000000, ContentHash: "b", ContentType: "note", Confidence: 0.5},
+		{Path: "work.md", Title: "Work", Domain: "Work", Agent: "codex", Tags: `["project"]`, ChunkID: 0, ChunkHeading: "(full)", Text: "work content", Modified: 1700000000, ContentHash: "a", ContentType: "note", Confidence: 0.5},
+		{Path: "personal.md", Title: "Personal", Domain: "Home", Agent: "claude", Tags: `["hobby"]`, ChunkID: 0, ChunkHeading: "(full)", Text: "personal content", Modified: 1700000000, ContentHash: "b", ContentType: "note", Confidence: 0.5},
 	}
 	vecs := [][]float32{makeVec(0.5), makeVec(0.6)}
 
@@ -182,6 +182,15 @@ func TestMetadataFiltering(t *testing.T) {
 	}
 	if len(results) != 1 || results[0].Path != "personal.md" {
 		t.Errorf("tag filter: expected personal.md only, got %v", results)
+	}
+
+	// Filter by agent
+	results, err = db.VectorSearch(query, SearchOptions{TopK: 10, Agent: "codex"})
+	if err != nil {
+		t.Fatalf("VectorSearch: %v", err)
+	}
+	if len(results) != 1 || results[0].Path != "work.md" {
+		t.Errorf("agent filter: expected work.md only, got %v", results)
 	}
 }
 
@@ -433,10 +442,10 @@ func TestSchemaVersion(t *testing.T) {
 	}
 	defer db.Close()
 
-	// After migrate(), version should be 3 (migrateV1 + migrateV2 + migrateV3 ran)
+	// After migrate(), version should be 5 (through claims + agent migrations).
 	v := db.SchemaVersion()
-	if v != 3 {
-		t.Errorf("expected schema version 3, got %d", v)
+	if v != 5 {
+		t.Errorf("expected schema version 5, got %d", v)
 	}
 }
 

@@ -89,7 +89,7 @@ func (db *DB) GetPinnedNotes() ([]NoteRecord, error) {
 			continue
 		}
 		row := db.conn.QueryRow(
-			`SELECT id, path, title, tags, domain, workstream, chunk_id, chunk_heading,
+			`SELECT id, path, title, tags, domain, workstream, COALESCE(agent, ''), chunk_id, chunk_heading,
 			        text, modified, content_hash, content_type, review_by, confidence, access_count
 			 FROM vault_notes
 			 WHERE path = ?
@@ -99,7 +99,7 @@ func (db *DB) GetPinnedNotes() ([]NoteRecord, error) {
 		)
 		var rec NoteRecord
 		err := row.Scan(
-			&rec.ID, &rec.Path, &rec.Title, &rec.Tags, &rec.Domain, &rec.Workstream,
+			&rec.ID, &rec.Path, &rec.Title, &rec.Tags, &rec.Domain, &rec.Workstream, &rec.Agent,
 			&rec.ChunkID, &rec.ChunkHeading, &rec.Text, &rec.Modified,
 			&rec.ContentHash, &rec.ContentType, &rec.ReviewBy, &rec.Confidence, &rec.AccessCount,
 		)
@@ -114,7 +114,7 @@ func (db *DB) GetPinnedNotes() ([]NoteRecord, error) {
 // GetLatestHandoff returns the most recently modified handoff note.
 func (db *DB) GetLatestHandoff() (*NoteRecord, error) {
 	row := db.conn.QueryRow(
-		`SELECT id, path, title, tags, domain, workstream, chunk_id, chunk_heading,
+		`SELECT id, path, title, tags, domain, workstream, COALESCE(agent, ''), chunk_id, chunk_heading,
 		        text, modified, content_hash, content_type, review_by, confidence, access_count
 		 FROM vault_notes
 		 WHERE content_type = 'handoff'
@@ -123,7 +123,7 @@ func (db *DB) GetLatestHandoff() (*NoteRecord, error) {
 	)
 	var rec NoteRecord
 	err := row.Scan(
-		&rec.ID, &rec.Path, &rec.Title, &rec.Tags, &rec.Domain, &rec.Workstream,
+		&rec.ID, &rec.Path, &rec.Title, &rec.Tags, &rec.Domain, &rec.Workstream, &rec.Agent,
 		&rec.ChunkID, &rec.ChunkHeading, &rec.Text, &rec.Modified,
 		&rec.ContentHash, &rec.ContentType, &rec.ReviewBy, &rec.Confidence, &rec.AccessCount,
 	)

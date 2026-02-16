@@ -19,6 +19,7 @@
   --red: #ff6b6b;
   --purple: #c084fc;
   --orange: #fb923c;
+  --focus: #36cfc9;
   --badge-decision: #3b82f6;
   --badge-handoff: #22c55e;
   --badge-entity: #a855f7;
@@ -97,6 +98,10 @@ body {
   color: var(--accent);
   background: var(--bg-input);
   border-left-color: var(--accent);
+}
+.nav-item:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }
 .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
 .sidebar-footer {
@@ -183,6 +188,14 @@ body {
   border-color: var(--accent);
   box-shadow: 0 2px 12px rgba(94,164,235,0.15);
 }
+.note-card:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.note-card.search-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(94,164,235,0.2);
+}
 .note-title {
   font-size: 14px;
   font-weight: 600;
@@ -221,6 +234,11 @@ body {
   font-size: 11px;
   color: var(--text-dim);
 }
+.agent-badge {
+  background: rgba(94,164,235,0.18);
+  color: var(--accent);
+  font-weight: 600;
+}
 
 /* Content type badges */
 .type-badge {
@@ -258,6 +276,10 @@ body {
 }
 .search-input:focus { border-color: var(--accent); }
 .search-input::placeholder { color: var(--text-dim); }
+.search-input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
 .search-icon {
   position: absolute;
   left: 14px;
@@ -450,6 +472,28 @@ body {
   color: var(--text-dim);
   margin-bottom: 12px;
 }
+.search-help {
+  margin-top: -8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.search-help kbd {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--bg-card);
+  color: var(--text);
+}
+
+.snippet-mark {
+  background: rgba(255, 209, 102, 0.33);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 2px;
+}
 
 /* Composition breakdown */
 .composition-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 24px; }
@@ -493,6 +537,10 @@ body {
   white-space: nowrap;
 }
 .cli-btn:hover { border-color: var(--accent); color: var(--accent); }
+.cli-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
 .cli-btn svg { width: 12px; height: 12px; }
 .cli-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 
@@ -534,6 +582,12 @@ body {
 .empty-state svg { width: 48px; height: 48px; margin-bottom: 16px; opacity: 0.5; }
 .empty-state p { font-size: 14px; line-height: 1.6; }
 .empty-state .hint { font-size: 12px; margin-top: 8px; font-family: var(--mono); }
+.error-state {
+  border: 1px solid rgba(255,107,107,0.35);
+  border-radius: var(--radius);
+  background: rgba(255,107,107,0.08);
+  padding: 16px;
+}
 
 /* Loading */
 .loading {
@@ -554,44 +608,133 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.skeleton-card {
+  background: linear-gradient(90deg, rgba(136,146,176,0.12), rgba(136,146,176,0.22), rgba(136,146,176,0.12));
+  background-size: 240px 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  height: 92px;
+  animation: skeleton 1.2s ease-in-out infinite;
+}
+@keyframes skeleton {
+  0% { background-position: -240px 0; }
+  100% { background-position: calc(100% + 240px) 0; }
+}
+
 /* Responsive */
+@media (max-width: 1024px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: auto;
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    padding: 8px 10px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    gap: 4px;
+  }
+  .sidebar-brand {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding: 0 10px 0 4px;
+    min-width: 160px;
+  }
+  .sidebar-footer {
+    border-top: none;
+    margin-top: 0;
+    margin-left: auto;
+    white-space: nowrap;
+    padding: 0 6px;
+  }
+  .nav-item {
+    border-left: none;
+    border-bottom: 2px solid transparent;
+    padding: 8px 12px;
+  }
+  .nav-item.active { border-bottom-color: var(--accent); }
+  .main {
+    margin-left: 0;
+    margin-top: 72px;
+    padding: 18px;
+  }
+}
 @media (max-width: 768px) {
-  .sidebar { width: 60px; padding: 12px 0; }
-  .sidebar-brand h1 { font-size: 14px; padding: 0 8px; }
-  .sidebar-brand small { display: none; }
+  .sidebar-brand { min-width: 90px; }
+  .sidebar-brand h1 { font-size: 14px; }
+  .sidebar-brand small,
+  #vault-label,
+  .sidebar-footer div { display: none; }
   .nav-item span { display: none; }
   .nav-item { padding: 10px; justify-content: center; }
-  .main { margin-left: 60px; padding: 16px; }
+  .main { margin-top: 56px; padding: 14px; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .stats-grid { grid-template-columns: 1fr; }
+  .browse-controls { flex-direction: column; }
+  .browse-controls input, .browse-controls select { width: 100%; }
+  .page-title { font-size: 20px; }
+  .note-viewer { padding: 16px; }
+}
+
+@media print {
+  body { background: #fff; color: #000; display: block; }
+  .sidebar, .back-link, .related-section, .cli-actions, .search-help { display: none !important; }
+  .main { margin: 0; padding: 0; }
+  .page { display: none !important; }
+  #page-note { display: block !important; }
+  .note-viewer {
+    border: none;
+    box-shadow: none;
+    padding: 0;
+  }
+  .note-viewer-content {
+    font-size: 12pt;
+    line-height: 1.5;
+  }
+  .note-viewer-content a {
+    color: #000;
+    text-decoration: underline;
+  }
 }
 </style>
 </head>
 <body>
 
-<nav class="sidebar">
+<nav class="sidebar" aria-label="Primary">
   <div class="sidebar-brand">
     <h1>SAME</h1>
     <small style="display:block;font-size:10px;color:var(--text-dim);margin-top:2px">Persistent memory for AI agents</small>
     <small id="version-label">v0.0.0</small>
     <div id="vault-label" style="font-size:11px;color:var(--text-dim);margin-top:4px;word-break:break-all;cursor:help" title=""></div>
   </div>
-  <a class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')" title="Vault stats, health insights, and recent activity">
+  <a class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')" title="Vault stats, health insights, and recent activity" aria-label="Open dashboard">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     <span>Dashboard</span>
   </a>
-  <a class="nav-item" data-page="search" onclick="navigate('search')" title="Semantic or keyword search across your notes">
+  <a class="nav-item" data-page="search" onclick="navigate('search')" title="Semantic or keyword search across your notes" aria-label="Open search">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     <span>Search</span>
   </a>
-  <a class="nav-item" data-page="browse" onclick="navigate('browse')" title="Browse and filter all indexed notes">
+  <a class="nav-item" data-page="browse" onclick="navigate('browse')" title="Browse and filter all indexed notes" aria-label="Open browse">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
     <span>Browse</span>
   </a>
-  <a class="nav-item" data-page="decisions" onclick="navigate('decisions')" title="Key choices captured from your AI sessions">
+  <a class="nav-item" data-page="decisions" onclick="navigate('decisions')" title="Key choices captured from your AI sessions" aria-label="Open decisions">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
     <span>Decisions</span>
   </a>
-  <a class="nav-item" data-page="handoffs" onclick="navigate('handoffs')" title="Session summaries for continuity across sessions">
+  <a class="nav-item" data-page="handoffs" onclick="navigate('handoffs')" title="Session summaries for continuity across sessions" aria-label="Open handoffs">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
     <span>Handoffs</span>
   </a>
@@ -601,10 +744,10 @@ body {
   </div>
 </nav>
 
-<div class="main">
+<main class="main" id="main-content">
   <!-- Dashboard -->
-  <div id="page-dashboard" class="page active">
-    <h2 class="page-title">Dashboard</h2>
+  <div id="page-dashboard" class="page active" role="region" aria-label="Dashboard view">
+    <h2 class="page-title" tabindex="-1">Dashboard</h2>
     <div class="stats-grid" id="stats-grid">
       <div class="stat-card" title="Markdown files indexed in your vault"><div class="stat-value" id="stat-notes">-</div><div class="stat-label">Notes</div></div>
       <div class="stat-card" title="Notes split into sections for embedding and search"><div class="stat-value" id="stat-chunks">-</div><div class="stat-label">Chunks</div></div>
@@ -634,15 +777,16 @@ body {
   </div>
 
   <!-- Search -->
-  <div id="page-search" class="page">
-    <h2 class="page-title">Search</h2>
+  <div id="page-search" class="page" role="region" aria-label="Search view">
+    <h2 class="page-title" tabindex="-1">Search</h2>
     <div class="search-container">
       <div class="search-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       </div>
-      <input type="text" class="search-input" id="search-input" placeholder="Search by concept or keyword..." autocomplete="off">
+      <input type="text" class="search-input" id="search-input" placeholder="Search by concept or keyword..." autocomplete="off" aria-label="Search notes" aria-controls="search-results">
     </div>
-    <div id="search-results">
+    <div class="search-help"><kbd>/</kbd> focus search · <kbd>Esc</kbd> clear · <kbd>↑</kbd>/<kbd>↓</kbd> navigate results</div>
+    <div id="search-results" aria-live="polite">
       <div class="empty-state">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <p>Search your vault by meaning or keywords</p>
@@ -652,11 +796,11 @@ body {
   </div>
 
   <!-- Browse -->
-  <div id="page-browse" class="page">
-    <h2 class="page-title">Browse</h2>
+  <div id="page-browse" class="page" role="region" aria-label="Browse view">
+    <h2 class="page-title" tabindex="-1">Browse</h2>
     <div class="browse-controls">
-      <input type="text" id="browse-filter" placeholder="Filter notes..." style="flex:1;min-width:200px">
-      <select id="browse-type-filter" title="Filter by content type">
+      <input type="text" id="browse-filter" placeholder="Filter notes..." style="flex:1;min-width:200px" aria-label="Filter notes">
+      <select id="browse-type-filter" title="Filter by content type" aria-label="Filter by note type">
         <option value="">All types</option>
         <option value="note">Notes</option>
         <option value="decision">Decisions (key choices)</option>
@@ -664,7 +808,7 @@ body {
         <option value="entity">Entities (people, APIs, configs)</option>
         <option value="hub">Hubs (index notes linking related content)</option>
       </select>
-      <select id="browse-sort">
+      <select id="browse-sort" aria-label="Sort notes">
         <option value="modified">Modified (newest)</option>
         <option value="modified-asc">Modified (oldest)</option>
         <option value="title">Title (A-Z)</option>
@@ -678,8 +822,8 @@ body {
   </div>
 
   <!-- Decisions -->
-  <div id="page-decisions" class="page">
-    <h2 class="page-title">Decisions</h2>
+  <div id="page-decisions" class="page" role="region" aria-label="Decisions view">
+    <h2 class="page-title" tabindex="-1">Decisions</h2>
     <div class="note-count-label" id="decisions-count"></div>
     <div class="note-list" id="decisions-notes">
       <div class="loading"><div class="spinner"></div> Loading...</div>
@@ -687,8 +831,8 @@ body {
   </div>
 
   <!-- Handoffs -->
-  <div id="page-handoffs" class="page">
-    <h2 class="page-title">Session Handoffs</h2>
+  <div id="page-handoffs" class="page" role="region" aria-label="Handoffs view">
+    <h2 class="page-title" tabindex="-1">Session Handoffs</h2>
     <div class="note-count-label" id="handoffs-count"></div>
     <div class="note-list" id="handoffs-notes">
       <div class="loading"><div class="spinner"></div> Loading...</div>
@@ -696,7 +840,7 @@ body {
   </div>
 
   <!-- Note Viewer -->
-  <div id="page-note" class="page">
+  <div id="page-note" class="page" role="region" aria-label="Note details view">
     <a class="back-link" id="back-link" onclick="goBack()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
       Back
@@ -709,7 +853,7 @@ body {
       <div class="note-list" id="related-notes"></div>
     </div>
   </div>
-</div>
+</main>
 
 <script>
 // SAME Web UI — All data is local, served from localhost only.
@@ -722,12 +866,37 @@ body {
   var searchMode = 'unknown';
   var lastPage = 'dashboard';
   var debounceTimer = null;
+  var activeSearchIndex = -1;
+  var searchResultCards = [];
+  var lastSearchTerms = [];
 
   // API helpers
+  function friendlyErrorMessage(err) {
+    var msg = (err && err.message ? err.message : '').toLowerCase();
+    if (msg.indexOf('failed to fetch') !== -1 || msg.indexOf('network') !== -1) {
+      return 'Could not reach the local SAME server. Run `same web` and refresh this page.';
+    }
+    if (msg.indexOf('forbidden') !== -1 || msg.indexOf('403') !== -1) {
+      return 'This dashboard only works from localhost. Open the exact URL printed by `same web`.';
+    }
+    if (msg.indexOf('404') !== -1) {
+      return 'The requested note or endpoint was not found.';
+    }
+    return 'Something went wrong while loading local data. Try refreshing, then run `same doctor` if it persists.';
+  }
+
   function api(path) {
     return fetch(path).then(function(res) {
-      if (!res.ok) throw new Error(res.statusText);
-      return res.json();
+      if (!res.ok) {
+        return res.text().then(function(body) {
+          var details = body ? body.replace(/\s+/g, ' ').trim() : '';
+          if (details.length > 140) details = details.slice(0, 140) + '...';
+          throw new Error(details || ('HTTP ' + res.status));
+        });
+      }
+      return res.json().catch(function() {
+        throw new Error('Malformed API response');
+      });
     });
   }
 
@@ -797,6 +966,8 @@ body {
       var input = document.getElementById('search-input');
       if (input) setTimeout(function() { input.focus(); }, 50);
     }
+    var heading = pageEl ? pageEl.querySelector('.page-title') : null;
+    if (heading) setTimeout(function() { heading.focus(); }, 0);
   };
 
   window.goBack = function() {
@@ -834,6 +1005,67 @@ body {
     try { return JSON.parse(tagsJSON) || []; } catch(e) { return []; }
   }
 
+  function extractSearchTerms(query) {
+    return (query || '')
+      .toLowerCase()
+      .split(/\s+/)
+      .map(function(t) { return t.replace(/[^a-z0-9_-]/g, ''); })
+      .filter(function(t) { return t.length >= 2; });
+  }
+
+  function buildHighlightedText(text, terms) {
+    var frag = document.createDocumentFragment();
+    var source = text || '';
+    if (!source || !terms || terms.length === 0) {
+      frag.appendChild(document.createTextNode(source));
+      return frag;
+    }
+
+    var lower = source.toLowerCase();
+    var ranges = [];
+    terms.forEach(function(term) {
+      var idx = 0;
+      while (idx < lower.length) {
+        var found = lower.indexOf(term, idx);
+        if (found === -1) break;
+        ranges.push({ start: found, end: found + term.length });
+        idx = found + term.length;
+      }
+    });
+    if (ranges.length === 0) {
+      frag.appendChild(document.createTextNode(source));
+      return frag;
+    }
+
+    ranges.sort(function(a, b) { return a.start - b.start; });
+    var merged = [ranges[0]];
+    for (var i = 1; i < ranges.length; i++) {
+      var prev = merged[merged.length - 1];
+      var cur = ranges[i];
+      if (cur.start <= prev.end) {
+        prev.end = Math.max(prev.end, cur.end);
+      } else {
+        merged.push(cur);
+      }
+    }
+
+    var cursor = 0;
+    merged.forEach(function(r) {
+      if (cursor < r.start) {
+        frag.appendChild(document.createTextNode(source.slice(cursor, r.start)));
+      }
+      var mark = document.createElement('mark');
+      mark.className = 'snippet-mark';
+      mark.textContent = source.slice(r.start, r.end);
+      frag.appendChild(mark);
+      cursor = r.end;
+    });
+    if (cursor < source.length) {
+      frag.appendChild(document.createTextNode(source.slice(cursor)));
+    }
+    return frag;
+  }
+
   // Build a type badge DOM node
   function buildTypeBadge(type) {
     var t = type || 'note';
@@ -859,15 +1091,19 @@ body {
   }
 
   // Build a note card DOM node
-  function buildNoteCard(note, showScore) {
+  function buildNoteCard(note, showScore, highlightTerms) {
     var tags = parseTags(note.tags || note.Tags);
     var snippet = (note.snippet || note.text || note.Text || '').slice(0, 200).replace(/\n/g, ' ');
     var title = note.title || note.Title || note.path || note.Path;
     var path = note.path || note.Path;
     var type = note.content_type || note.ContentType || 'note';
+    var agent = note.agent || note.Agent || '';
     var modified = note.modified || note.Modified;
 
     var metaChildren = [buildTypeBadge(type)];
+    if (agent) {
+      metaChildren.push(el('span', {className: 'tag agent-badge', textContent: '@' + agent}));
+    }
     tags.forEach(function(t) {
       metaChildren.push(el('span', {className: 'tag', textContent: t}));
     });
@@ -880,7 +1116,9 @@ body {
       el('div', {className: 'note-path', textContent: path})
     ];
     if (snippet) {
-      cardChildren.push(el('div', {className: 'note-snippet', textContent: snippet}));
+      var snippetEl = el('div', {className: 'note-snippet'});
+      snippetEl.appendChild(buildHighlightedText(snippet, highlightTerms || []));
+      cardChildren.push(snippetEl);
     }
     if (showScore && note.score !== undefined) {
       cardChildren.push(buildScoreBar(note.score));
@@ -896,9 +1134,18 @@ body {
 
     var card = el('div', {
       className: 'note-card',
+      tabindex: '0',
+      role: 'button',
+      'aria-label': 'Open note ' + title,
       onclick: function(e) {
         if (e.target.closest('.cli-btn')) return;
         window.location.hash = '#note/' + encodeURIComponent(path);
+      },
+      onkeydown: function(e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          window.location.hash = '#note/' + encodeURIComponent(path);
+        }
       }
     }, cardChildren);
     return card;
@@ -914,8 +1161,14 @@ body {
   }
 
   // Set loading state
-  function setLoading(parent) {
+  function setLoading(parent, mode) {
     parent.textContent = '';
+    if (mode === 'cards') {
+      var list = el('div', {className: 'skeleton-list'});
+      for (var i = 0; i < 4; i++) list.appendChild(el('div', {className: 'skeleton-card'}));
+      parent.appendChild(list);
+      return;
+    }
     parent.appendChild(el('div', {className: 'loading'}, [
       el('div', {className: 'spinner'}),
       ' Loading...'
@@ -928,6 +1181,15 @@ body {
     var children = [el('p', {textContent: msg})];
     if (hint) children.push(el('p', {className: 'hint', textContent: hint}));
     parent.appendChild(el('div', {className: 'empty-state'}, children));
+  }
+
+  function setError(parent, title, err) {
+    parent.textContent = '';
+    var detail = friendlyErrorMessage(err);
+    parent.appendChild(el('div', {className: 'empty-state error-state'}, [
+      el('p', {textContent: title || 'Unable to load data'}),
+      el('p', {className: 'hint', textContent: detail})
+    ]));
   }
 
   // Render markdown — returns safe HTML string
@@ -1118,6 +1380,7 @@ body {
 
   // Load dashboard
   function loadDashboard() {
+    setLoading(document.getElementById('recent-notes'), 'cards');
     Promise.all([
       api('/api/status'),
       api('/api/pinned'),
@@ -1167,12 +1430,13 @@ body {
       }
 
       // Vault composition + insights (computed from allNotes after browse loads)
-      ensureAllNotes(function() {
+      ensureAllNotes(function(ok) {
+        if (ok === false) return;
         renderComposition();
         renderInsights(status, pinned);
       });
     }).catch(function(err) {
-      setEmpty(document.getElementById('recent-notes'), 'Failed to load dashboard', err.message);
+      setError(document.getElementById('recent-notes'), 'Failed to load dashboard', err);
     });
   }
 
@@ -1282,11 +1546,14 @@ body {
   // Search
   function doSearch(query) {
     var resultsEl = document.getElementById('search-results');
+    searchResultCards = [];
+    activeSearchIndex = -1;
+    lastSearchTerms = extractSearchTerms(query);
     if (!query.trim()) {
       setEmpty(resultsEl, 'Type to search your vault', 'Supports semantic search when Ollama is running');
       return;
     }
-    setLoading(resultsEl);
+    setLoading(resultsEl, 'cards');
     api('/api/search?q=' + encodeURIComponent(query) + '&top_k=20').then(function(data) {
       if (!data.results || data.results.length === 0) {
         setEmpty(resultsEl, 'No results for "' + query + '"', 'Try different phrasing, broader terms, or run same reindex to pick up new notes');
@@ -1306,11 +1573,37 @@ body {
       resultsEl.appendChild(countLabel);
 
       var list = el('div', {className: 'note-list'});
-      data.results.forEach(function(r) { list.appendChild(buildNoteCard(r, true)); });
+      data.results.forEach(function(r) { list.appendChild(buildNoteCard(r, true, lastSearchTerms)); });
       resultsEl.appendChild(list);
+      searchResultCards = Array.prototype.slice.call(list.querySelectorAll('.note-card'));
+      if (searchResultCards.length > 0) {
+        activeSearchIndex = 0;
+        updateActiveSearchCard();
+      }
     }).catch(function(err) {
-      setEmpty(resultsEl, 'Search error', err.message);
+      setError(resultsEl, 'Search failed', err);
     });
+  }
+
+  function updateActiveSearchCard() {
+    searchResultCards.forEach(function(card, idx) {
+      card.classList.toggle('search-active', idx === activeSearchIndex);
+    });
+  }
+
+  function moveSearchSelection(delta) {
+    if (searchResultCards.length === 0) return;
+    if (activeSearchIndex < 0) activeSearchIndex = 0;
+    else activeSearchIndex = (activeSearchIndex + delta + searchResultCards.length) % searchResultCards.length;
+    updateActiveSearchCard();
+    var card = searchResultCards[activeSearchIndex];
+    if (card) card.focus();
+  }
+
+  function openActiveSearchCard() {
+    if (searchResultCards.length === 0 || activeSearchIndex < 0) return;
+    var card = searchResultCards[activeSearchIndex];
+    if (card) card.click();
   }
 
   document.getElementById('search-input').addEventListener('input', function(e) {
@@ -1319,15 +1612,43 @@ body {
   });
 
   document.getElementById('search-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.target.value = '';
+      doSearch('');
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      moveSearchSelection(1);
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      moveSearchSelection(-1);
+      return;
+    }
     if (e.key === 'Enter') {
       clearTimeout(debounceTimer);
-      doSearch(e.target.value);
+      if (activeSearchIndex >= 0) {
+        e.preventDefault();
+        openActiveSearchCard();
+      } else {
+        doSearch(e.target.value);
+      }
     }
   });
 
   // Browse
   function loadBrowse() {
-    ensureAllNotes(function() { renderBrowse(); });
+    setLoading(document.getElementById('browse-notes'), 'cards');
+    ensureAllNotes(function(ok) {
+      if (ok === false) {
+        setError(document.getElementById('browse-notes'), 'Could not load notes', new Error('failed'));
+        return;
+      }
+      renderBrowse();
+    });
   }
 
   function renderBrowse() {
@@ -1356,6 +1677,10 @@ body {
 
     document.getElementById('browse-count').textContent = filtered.length + ' of ' + allNotes.length + ' notes';
     var browseEl = document.getElementById('browse-notes');
+    if (allNotes.length === 0) {
+      setEmpty(browseEl, 'Your vault has no indexed notes yet.', 'Run same reindex to index markdown notes, or run same seed list to install starter vaults.');
+      return;
+    }
     if (filtered.length === 0) {
       setEmpty(browseEl, 'No matching notes');
     } else {
@@ -1373,7 +1698,9 @@ body {
     if (allNotes.length > 0) { cb(); return; }
     api('/api/notes').then(function(data) {
       allNotes = data || [];
-      cb();
+      cb(true);
+    }).catch(function() {
+      cb(false);
     });
   }
 
@@ -1419,7 +1746,12 @@ body {
 
   // Decisions page
   function loadDecisions() {
-    ensureAllNotes(function() {
+    setLoading(document.getElementById('decisions-notes'), 'cards');
+    ensureAllNotes(function(ok) {
+      if (ok === false) {
+        setError(document.getElementById('decisions-notes'), 'Could not load decisions', new Error('failed'));
+        return;
+      }
       var decisions = allNotes.filter(function(n) {
         return (n.content_type || n.ContentType || 'note') === 'decision';
       }).sort(function(a, b) {
@@ -1438,7 +1770,12 @@ body {
 
   // Handoffs page
   function loadHandoffs() {
-    ensureAllNotes(function() {
+    setLoading(document.getElementById('handoffs-notes'), 'cards');
+    ensureAllNotes(function(ok) {
+      if (ok === false) {
+        setError(document.getElementById('handoffs-notes'), 'Could not load handoffs', new Error('failed'));
+        return;
+      }
       var handoffs = allNotes.filter(function(n) {
         return (n.content_type || n.ContentType || 'note') === 'handoff';
       }).sort(function(a, b) {
@@ -1467,12 +1804,14 @@ body {
     api('/api/notes/' + encodeURIComponent(path)).then(function(data) {
       var tags = parseTags(data.tags);
       var type = data.content_type || 'note';
+      var agent = data.agent || '';
 
       viewer.textContent = '';
       viewer.appendChild(el('div', {className: 'note-viewer-title', textContent: data.title}));
       viewer.appendChild(el('div', {className: 'note-viewer-path', textContent: data.path}));
 
       var metaChildren = [buildTypeBadge(type)];
+      if (agent) metaChildren.push(el('span', {className: 'tag agent-badge', textContent: '@' + agent}));
       if (data.domain) metaChildren.push(el('span', {className: 'tag', textContent: data.domain}));
       if (data.workstream) metaChildren.push(el('span', {className: 'tag', textContent: data.workstream}));
       tags.forEach(function(t) { metaChildren.push(el('span', {className: 'tag', textContent: t})); });
@@ -1495,7 +1834,7 @@ body {
       // Load related notes
       loadRelated(data.path);
     }).catch(function(err) {
-      setEmpty(viewer, 'Note not found', err.message);
+      setError(viewer, 'Note not available', err);
     });
   }
 
@@ -1523,11 +1862,40 @@ body {
 
   // Keyboard shortcuts
   document.addEventListener('keydown', function(e) {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-    if (e.key === '/' || e.key === 's') {
+    var isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
+    if (!isInput && (e.key === '/' || e.key === 's')) {
       e.preventDefault();
       navigate('search');
+      return;
     }
+
+    if (!isInput && window.location.hash.slice(1).indexOf('search') === 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        moveSearchSelection(1);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        moveSearchSelection(-1);
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        openActiveSearchCard();
+        return;
+      }
+      if (e.key === 'Escape') {
+        var input = document.getElementById('search-input');
+        if (input) {
+          input.value = '';
+          doSearch('');
+          input.focus();
+        }
+        return;
+      }
+    }
+    if (isInput) return;
   });
 })();
 </script>

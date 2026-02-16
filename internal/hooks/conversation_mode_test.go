@@ -2,6 +2,22 @@ package hooks
 
 import "testing"
 
+func TestConversationModeString(t *testing.T) {
+	cases := map[ConversationMode]string{
+		ModeExploring:         "exploring",
+		ModeDeepening:         "deepening",
+		ModeExecuting:         "executing",
+		ModeReflecting:        "reflecting",
+		ModeSocializing:       "socializing",
+		ConversationMode(999): "unknown",
+	}
+	for mode, want := range cases {
+		if got := mode.String(); got != want {
+			t.Fatalf("mode %d string = %q, want %q", mode, got, want)
+		}
+	}
+}
+
 func TestDetectMode_Executing(t *testing.T) {
 	cases := []string{
 		"fix the login bug",

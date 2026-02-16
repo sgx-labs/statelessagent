@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -35,9 +36,9 @@ func (m *mockEmbedProvider) GetQueryEmbedding(text string) ([]float32, error) {
 	return m.GetEmbedding(text, "query")
 }
 
-func (m *mockEmbedProvider) Name() string       { return "mock" }
-func (m *mockEmbedProvider) Model() string      { return "mock-embed" }
-func (m *mockEmbedProvider) Dimensions() int    { return 768 }
+func (m *mockEmbedProvider) Name() string    { return "mock" }
+func (m *mockEmbedProvider) Model() string   { return "mock-embed" }
+func (m *mockEmbedProvider) Dimensions() int { return 768 }
 
 var errMockEmbed = fmt.Errorf("mock: embedding provider not ready")
 
@@ -50,6 +51,13 @@ func setupHandlerTest(t *testing.T) string {
 	config.VaultOverride = dir
 	abs, _ := filepath.Abs(dir)
 	vaultRoot = abs
+
+	writeMu.Lock()
+	writeTimes = nil
+	writeMu.Unlock()
+	reindexMu.Lock()
+	lastReindexTime = time.Time{}
+	reindexMu.Unlock()
 
 	testDB, err := store.OpenMemory()
 	if err != nil {
@@ -255,6 +263,64 @@ func TestHandleSaveNote_PrivatePath(t *testing.T) {
 	}
 }
 
+func TestHandleSaveNote_InvalidPathsBlocked(t *testing.T) {
+	setupHandlerTest(t)
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "traversal", path: "../../etc/passwd.md"},
+		{name: "absolute", path: "/tmp/escape.md"},
+		{name: "null-byte", path: "notes/bad\x00path.md"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, _, err := handleSaveNote(context.Background(), nil, saveNoteInput{
+				Path:    tt.path,
+				Content: "blocked",
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			text := resultText(t, result)
+			if !strings.Contains(text, "path must be a relative path within the vault") {
+				t.Fatalf("expected vault-path error for %q, got %q", tt.path, text)
+			}
+		})
+	}
+}
+
+func TestHandleSaveNote_SymlinkEscapeBlocked(t *testing.T) {
+	vault := setupHandlerTest(t)
+
+	notesDir := filepath.Join(vault, "notes")
+	if err := os.MkdirAll(notesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(notes): %v", err)
+	}
+	outsideDir := t.TempDir()
+	escapeLink := filepath.Join(notesDir, "escape")
+	if err := os.Symlink(outsideDir, escapeLink); err != nil {
+		t.Skip("symlink not supported on this platform")
+	}
+
+	result, _, err := handleSaveNote(context.Background(), nil, saveNoteInput{
+		Path:    "notes/escape/pwned.md",
+		Content: "should not write outside vault",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "path must be a relative path within the vault") {
+		t.Fatalf("expected symlink escape error, got %q", text)
+	}
+
+	if _, err := os.Stat(filepath.Join(outsideDir, "pwned.md")); !os.IsNotExist(err) {
+		t.Fatalf("expected no file outside vault, stat err=%v", err)
+	}
+}
+
 func TestHandleSaveNote_CreateNewFile(t *testing.T) {
 	vault := setupHandlerTest(t)
 
@@ -333,6 +399,79 @@ func TestHandleSaveNote_CaseSensitiveMD(t *testing.T) {
 	}
 }
 
+func TestHandleSaveNote_InvalidAgent(t *testing.T) {
+	setupHandlerTest(t)
+
+	result, _, err := handleSaveNote(context.Background(), nil, saveNoteInput{
+		Path:    "notes/agent.md",
+		Content: "content",
+		Agent:   "codex\ninjected",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if text := resultText(t, result); !strings.Contains(text, "invalid agent value") {
+		t.Fatalf("expected invalid agent error, got %q", text)
+	}
+}
+
+func TestHandleSaveNote_WithAgentFrontmatter(t *testing.T) {
+	vault := setupHandlerTest(t)
+
+	result, _, err := handleSaveNote(context.Background(), nil, saveNoteInput{
+		Path:    "notes/agent-note.md",
+		Content: "# Agent Note\nOwned by codex",
+		Agent:   "codex",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if text := resultText(t, result); !strings.Contains(text, "Saved") {
+		t.Fatalf("expected save confirmation, got %q", text)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(vault, "notes", "agent-note.md"))
+	if err != nil {
+		t.Fatalf("read saved note: %v", err)
+	}
+	content := string(raw)
+	if !strings.Contains(content, `agent: "codex"`) {
+		t.Fatalf("expected agent frontmatter, got:\n%s", content)
+	}
+	if !strings.Contains(content, "MCP tool") {
+		t.Fatalf("expected provenance header, got:\n%s", content)
+	}
+
+	records, err := db.GetNoteByPath("notes/agent-note.md")
+	if err != nil || len(records) == 0 {
+		t.Fatalf("expected indexed note, err=%v len=%d", err, len(records))
+	}
+	if records[0].Agent != "codex" {
+		t.Fatalf("expected indexed agent to be codex, got %q", records[0].Agent)
+	}
+}
+
+func TestHandleSaveNote_ReadClaimWarning(t *testing.T) {
+	setupHandlerTest(t)
+
+	if err := db.UpsertClaim("notes/shared.md", "claude", store.ClaimTypeRead, 30*time.Minute); err != nil {
+		t.Fatalf("UpsertClaim: %v", err)
+	}
+
+	result, _, err := handleSaveNote(context.Background(), nil, saveNoteInput{
+		Path:    "notes/shared.md",
+		Content: "# Shared\nupdated",
+		Agent:   "codex",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "read-claims by claude") {
+		t.Fatalf("expected read-claim warning, got %q", text)
+	}
+}
+
 // --- handleSaveDecision ---
 
 func TestHandleSaveDecision_EmptyTitle(t *testing.T) {
@@ -398,6 +537,22 @@ func TestHandleSaveDecision_InvalidStatus(t *testing.T) {
 	text := resultText(t, result)
 	if !strings.Contains(text, "must be") {
 		t.Errorf("expected status validation error, got %q", text)
+	}
+}
+
+func TestHandleSaveDecision_InvalidAgent(t *testing.T) {
+	setupHandlerTest(t)
+
+	result, _, err := handleSaveDecision(context.Background(), nil, saveDecisionInput{
+		Title: "Decision",
+		Body:  "Body",
+		Agent: "bad\ragent",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if text := resultText(t, result); !strings.Contains(text, "invalid agent value") {
+		t.Fatalf("expected invalid agent error, got %q", text)
 	}
 }
 
@@ -491,6 +646,21 @@ func TestHandleCreateHandoff_ContentTooLarge(t *testing.T) {
 	text := resultText(t, result)
 	if !strings.Contains(text, "too large") {
 		t.Errorf("expected size limit error, got %q", text)
+	}
+}
+
+func TestHandleCreateHandoff_InvalidAgent(t *testing.T) {
+	setupHandlerTest(t)
+
+	result, _, err := handleCreateHandoff(context.Background(), nil, createHandoffInput{
+		Summary: "valid summary",
+		Agent:   "bad\000agent",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if text := resultText(t, result); !strings.Contains(text, "invalid agent value") {
+		t.Fatalf("expected invalid agent error, got %q", text)
 	}
 }
 
@@ -891,6 +1061,71 @@ func TestHandleGetSessionContext_WithRecentNotes(t *testing.T) {
 	}
 	if !strings.Contains(text, "recent.md") {
 		t.Errorf("expected 'recent.md' in recent notes, got %q", text)
+	}
+}
+
+func TestHandleGetSessionContext_WithActiveClaims(t *testing.T) {
+	setupHandlerTest(t)
+
+	if err := db.UpsertClaim("cmd/same/main.go", "codex", store.ClaimTypeWrite, 30*time.Minute); err != nil {
+		t.Fatalf("UpsertClaim: %v", err)
+	}
+
+	result, _, err := handleGetSessionContext(context.Background(), nil, emptyInput{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(resultText(t, result)), &payload); err != nil {
+		t.Fatalf("invalid json response: %v", err)
+	}
+	rawClaims, ok := payload["active_claims"].([]any)
+	if !ok || len(rawClaims) != 1 {
+		t.Fatalf("expected one active claim in context, got %#v", payload["active_claims"])
+	}
+}
+
+func TestHandleSearchNotesFiltered_AgentFilter(t *testing.T) {
+	setupHandlerTest(t)
+	embedClient = nil // force keyword fallback path
+
+	vec := make([]float32, 768)
+	if err := db.InsertNote(&store.NoteRecord{
+		Path:         "notes/auth.md",
+		Title:        "Auth Note",
+		Agent:        "codex",
+		Text:         "authentication strategy and tokens",
+		ChunkID:      0,
+		ChunkHeading: "(full)",
+		Modified:     float64(time.Now().Unix()),
+		ContentHash:  "hash-auth",
+		ContentType:  "note",
+		Confidence:   0.6,
+	}, vec); err != nil {
+		t.Fatalf("InsertNote: %v", err)
+	}
+
+	result, _, err := handleSearchNotesFiltered(context.Background(), nil, searchFilteredInput{
+		Query: "authentication strategy",
+		Agent: "claude",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if text := resultText(t, result); !strings.Contains(text, "No results") {
+		t.Fatalf("expected no results for mismatched agent filter, got %q", text)
+	}
+
+	result, _, err = handleSearchNotesFiltered(context.Background(), nil, searchFilteredInput{
+		Query: "authentication strategy",
+		Agent: "codex",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if text := resultText(t, result); !strings.Contains(text, "notes/auth.md") {
+		t.Fatalf("expected codex-authored note, got %q", text)
 	}
 }
 

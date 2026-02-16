@@ -165,6 +165,7 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 	addGrouped("knowledge",
 		pinCmd(),
 		feedbackCmd(),
+		claimCmd(),
 		vaultCmd(),
 	)
 
@@ -217,7 +218,6 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 	}
 }
 
-
 func formatDuration(d time.Duration) string {
 	if d < time.Minute {
 		return fmt.Sprintf("%d seconds", int(d.Seconds()))
@@ -238,7 +238,6 @@ func formatDuration(d time.Duration) string {
 	}
 	return fmt.Sprintf("%d days", days)
 }
-
 
 func formatRelevance(score float64) string {
 	// score is 0-1, higher is better
@@ -281,4 +280,3 @@ func (e *sameError) Error() string {
 func userError(message, hint string) error {
 	return &sameError{message: message, hint: hint}
 }
-

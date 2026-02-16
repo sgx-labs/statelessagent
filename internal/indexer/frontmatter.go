@@ -13,6 +13,7 @@ type NoteMeta struct {
 	Tags        []string `yaml:"tags"`
 	Domain      string   `yaml:"domain"`
 	Workstream  string   `yaml:"workstream"`
+	Agent       string   `yaml:"agent"`
 	ContentType string   `yaml:"content_type"`
 	ReviewBy    string   `yaml:"review_by"`
 	ReviewByAlt string   `yaml:"review-by"` // alternate key

@@ -136,6 +136,7 @@ Your markdown notes are embedded locally via Ollama and stored in a SQLite datab
 | Session recovery | Crash-safe — next session picks up even if terminal closed | No |
 | Decision extraction | Architectural choices remembered across sessions | No |
 | Pinned notes | Critical context always included | No |
+| File claims (`same claim`) | Advisory read/write ownership for multi-agent coordination | No |
 | Context surfacing | Relevant notes injected into AI prompts | No* |
 | `same demo` | Try SAME in 60 seconds | No |
 | `same tutorial` | 6 hands-on lessons | No |
@@ -179,11 +180,11 @@ SAME exposes **12 tools** via MCP for any compatible client.
 | Tool | What it does |
 |------|-------------|
 | `search_notes` | Semantic search across your knowledge base |
-| `search_notes_filtered` | Search with domain/workstream/tag filters |
+| `search_notes_filtered` | Search with domain/workstream/tag/agent filters |
 | `search_across_vaults` | Federated search across multiple vaults |
 | `get_note` | Read full note content by path |
 | `find_similar_notes` | Discover related notes by similarity |
-| `get_session_context` | Pinned notes + latest handoff + recent activity |
+| `get_session_context` | Pinned notes + latest handoff + recent activity + git state + active claims |
 | `recent_activity` | Recently modified notes |
 | `reindex` | Re-scan and re-index the vault |
 | `index_stats` | Index health and statistics |
@@ -192,9 +193,9 @@ SAME exposes **12 tools** via MCP for any compatible client.
 
 | Tool | What it does |
 |------|-------------|
-| `save_note` | Create or update a markdown note (auto-indexed) |
-| `save_decision` | Log a structured project decision |
-| `create_handoff` | Write a session handoff for the next session |
+| `save_note` | Create or update a markdown note (auto-indexed, optional `agent` attribution) |
+| `save_decision` | Log a structured project decision (optional `agent` attribution) |
+| `create_handoff` | Write a session handoff for the next session (optional `agent` attribution) |
 
 Your AI can now write to its own memory, not just read from it. Decisions persist. Handoffs survive. Every session builds on the last.
 
@@ -321,6 +322,10 @@ Requires Go 1.25+ and CGO.
 | `same related <path>` | Find related notes |
 | `same status` | See what SAME is tracking |
 | `same doctor` | Run 18 diagnostic checks |
+| `same claim <path> --agent <name>` | Create an advisory write claim for a file |
+| `same claim --read <path> --agent <name>` | Declare a read dependency on a file |
+| `same claim --list` | Show active read/write claims |
+| `same claim --release <path> [--agent <name>]` | Release claims for a file |
 | `same pin <path>` | Always include a note in every session |
 | `same pin list` | Show pinned notes |
 | `same pin remove <path>` | Unpin a note |
