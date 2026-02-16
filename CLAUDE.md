@@ -25,7 +25,17 @@ make test           # run tests
 make install        # install to $GOPATH/bin or /usr/local/bin
 ```
 
-Requires Go 1.25+ and CGO_ENABLED=1.
+Requires Go 1.23+ and CGO_ENABLED=1.
+
+## Security Testing
+
+```bash
+make security-test   # run all security-focused tests
+```
+
+Security tests cover: prompt injection sanitization, plugin validation, MCP input validation, web middleware, path traversal, claims normalization, search term sanitization, and PII pattern detection.
+
+When adding new MCP handlers or hook output paths, ensure all text returned to agents passes through `neutralizeTags()` (MCP) or `sanitizeContextTags()` (hooks).
 
 ## Git Protocol
 
