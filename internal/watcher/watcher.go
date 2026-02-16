@@ -42,9 +42,9 @@ func Watch(db *store.DB) error {
 
 	// Debounce: collect changed files over a window before reindexing
 	var (
-		mu       sync.Mutex
-		pending  = make(map[string]bool)
-		timer    *time.Timer
+		mu      sync.Mutex
+		pending = make(map[string]bool)
+		timer   *time.Timer
 	)
 
 	const debounceDelay = 2 * time.Second
@@ -152,7 +152,7 @@ func reindexFiles(db *store.DB, paths []string, vaultPath string) {
 			continue
 		}
 
-		if err := db.BulkInsertNotes(records, embeddings); err != nil {
+		if _, err := db.BulkInsertNotes(records, embeddings); err != nil {
 			fmt.Fprintf(os.Stderr, "  [ERROR] storing %s: %v\n", relPath, err)
 			continue
 		}

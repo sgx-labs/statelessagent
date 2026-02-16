@@ -13,7 +13,9 @@ import (
 
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/embedding"
+	"github.com/sgx-labs/statelessagent/internal/graph"
 	"github.com/sgx-labs/statelessagent/internal/memory"
+	"github.com/sgx-labs/statelessagent/internal/ollama"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
@@ -40,6 +42,7 @@ type ProgressFunc func(current, total int, path string)
 type embResult struct {
 	Records    []store.NoteRecord
 	Embeddings [][]float32
+	Content    []byte
 	Path       string
 	Err        error
 }
@@ -71,6 +74,19 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 	embedClient, err := embedding.NewProvider(provCfg)
 	if err != nil {
 		return nil, fmt.Errorf("embedding provider: %w", err)
+	}
+
+	// Initialize Graph Extractor
+	graphDB := graph.NewDB(db.Conn())
+	extractor := graph.NewExtractor(graphDB)
+
+	// Attempt to configure LLM for extraction if available
+	// We prioritize a dedicated chat model if we can talk to Ollama
+	if provCfg.Provider == "ollama" || provCfg.Provider == "" {
+		oc := ollama.NewClientWithURL(provCfg.BaseURL)
+		if model, err := oc.PickBestModel(); err == nil && model != "" {
+			extractor.SetLLM(oc, model)
+		}
 	}
 
 	mdFiles := walkVault(vaultPath)
@@ -141,10 +157,11 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 		go func() {
 			defer wg.Done()
 			for w := range workCh {
-				records, embeddings, err := buildRecordsWithContent(w.path, w.relPath, vaultPath, embedClient, w.content)
+				records, embeddings, content, err := buildRecordsWithContent(w.path, w.relPath, vaultPath, embedClient, w.content)
 				resultCh <- embResult{
 					Records:    records,
 					Embeddings: embeddings,
+					Content:    content,
 					Path:       w.relPath,
 					Err:        err,
 				}
@@ -182,10 +199,21 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 			}
 		}
 
-		if err := db.BulkInsertNotes(result.Records, result.Embeddings); err != nil {
+		insertedIDs, err := db.BulkInsertNotes(result.Records, result.Embeddings)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "  [ERROR] storing %s: %v\n", result.Path, err)
 			stats.Errors++
 			continue
+		}
+
+		// Graph Extraction
+		if rootID, ok := insertedIDs[result.Path]; ok {
+			agent := ""
+			if len(result.Records) > 0 {
+				agent = result.Records[0].Agent
+			}
+			// Best effort extraction
+			_ = extractor.ExtractFromNote(rootID, result.Path, string(result.Content), agent)
 		}
 
 		stats.NewlyIndexed++
@@ -283,7 +311,7 @@ func enrichStats(result map[string]interface{}) {
 // Deletes any existing chunks for the file's relative path, then inserts new ones.
 // This avoids the overhead of a full vault reindex when only one file changed.
 func IndexSingleFile(database *store.DB, filePath, relPath, vaultPath string, embedClient embedding.Provider) error {
-	records, embeddings, err := buildRecords(filePath, relPath, vaultPath, embedClient)
+	records, embeddings, content, err := buildRecords(filePath, relPath, vaultPath, embedClient)
 	if err != nil {
 		return fmt.Errorf("build records: %w", err)
 	}
@@ -296,8 +324,21 @@ func IndexSingleFile(database *store.DB, filePath, relPath, vaultPath string, em
 		return fmt.Errorf("delete old chunks: %w", err)
 	}
 
-	if err := database.BulkInsertNotes(records, embeddings); err != nil {
+	insertedIDs, err := database.BulkInsertNotes(records, embeddings)
+	if err != nil {
 		return fmt.Errorf("insert notes: %w", err)
+	}
+
+	// Graph Extraction
+	// Basic extractor without LLM for single-file update speed
+	graphDB := graph.NewDB(database.Conn())
+	extractor := graph.NewExtractor(graphDB)
+	if rootID, ok := insertedIDs[relPath]; ok {
+		agent := ""
+		if len(records) > 0 {
+			agent = records[0].Agent
+		}
+		_ = extractor.ExtractFromNote(rootID, relPath, string(content), agent)
 	}
 
 	// Rebuild FTS for the updated content
@@ -309,21 +350,22 @@ func IndexSingleFile(database *store.DB, filePath, relPath, vaultPath string, em
 // BuildRecordsForFile builds note records and embeddings for a single file.
 // Exported for use by the watcher.
 func BuildRecordsForFile(filePath, relPath, vaultPath string, embedClient embedding.Provider) ([]store.NoteRecord, [][]float32, error) {
-	return buildRecords(filePath, relPath, vaultPath, embedClient)
+	recs, embs, _, err := buildRecords(filePath, relPath, vaultPath, embedClient)
+	return recs, embs, err
 }
 
-func buildRecords(filePath, relPath, vaultPath string, embedClient embedding.Provider) ([]store.NoteRecord, [][]float32, error) {
+func buildRecords(filePath, relPath, vaultPath string, embedClient embedding.Provider) ([]store.NoteRecord, [][]float32, []byte, error) {
 	return buildRecordsWithContent(filePath, relPath, vaultPath, embedClient, nil)
 }
 
 // buildRecordsWithContent builds records, optionally using pre-read content to avoid a second read.
-func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient embedding.Provider, cachedContent []byte) ([]store.NoteRecord, [][]float32, error) {
+func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient embedding.Provider, cachedContent []byte) ([]store.NoteRecord, [][]float32, []byte, error) {
 	content := cachedContent
 	if content == nil {
 		var err error
 		content, err = os.ReadFile(filePath)
 		if err != nil {
-			return nil, nil, fmt.Errorf("read file: %w", err)
+			return nil, nil, nil, fmt.Errorf("read file: %w", err)
 		}
 	}
 
@@ -333,7 +375,7 @@ func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient em
 
 	info, err := os.Stat(filePath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("stat file: %w", err)
+		return nil, nil, nil, fmt.Errorf("stat file: %w", err)
 	}
 	mtime := float64(info.ModTime().Unix())
 	contentHash := sha256Hash(body)
@@ -410,7 +452,7 @@ func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient em
 		embeddings = append(embeddings, vec)
 	}
 
-	return records, embeddings, nil
+	return records, embeddings, content, nil
 }
 
 // WalkVault returns all markdown file paths in the vault, respecting skip dirs.
@@ -517,10 +559,25 @@ func ReindexLite(db *store.DB, force bool, progress ProgressFunc) (*Stats, error
 		}
 
 		if len(records) > 0 {
-			if err := db.BulkInsertNotesLite(records); err != nil {
+			insertedIDs, err := db.BulkInsertNotesLite(records)
+			if err != nil {
 				fmt.Fprintf(os.Stderr, "  [ERROR] storing %s: %v\n", relPath, err)
 				stats.Errors++
 				continue
+			}
+
+			// Graph Extraction
+			graphDB := graph.NewDB(db.Conn())
+			extractor := graph.NewExtractor(graphDB)
+			if rootID, ok := insertedIDs[relPath]; ok {
+				agent := ""
+				if len(records) > 0 {
+					agent = records[0].Agent
+				}
+				// Re-read content for extraction since buildRecordsLite doesn't return it
+				// This is a tradeoff for Lite mode speed vs cleaner API.
+				content, _ := os.ReadFile(fp)
+				_ = extractor.ExtractFromNote(rootID, relPath, string(content), agent)
 			}
 		}
 

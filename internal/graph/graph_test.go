@@ -1,0 +1,266 @@
+package graph
+
+import (
+	"database/sql"
+	"fmt"
+	"testing"
+
+	_ "github.com/mattn/go-sqlite3"
+)
+
+func setupTestDB(t *testing.T) *DB {
+	t.Helper()
+	conn, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Run graph schema SQL
+	for _, stmt := range GraphSchemaSQL() {
+		if _, err := conn.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { conn.Close() })
+	return NewDB(conn)
+}
+
+func TestUpsertNode(t *testing.T) {
+	db := setupTestDB(t)
+
+	n := &Node{Type: NodeNote, Name: "foo.md"}
+	id, err := db.UpsertNode(n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id == 0 {
+		t.Fatal("expected non-zero ID")
+	}
+
+	// Idempotency
+	id2, err := db.UpsertNode(n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != id2 {
+		t.Errorf("expected same ID %d, got %d", id, id2)
+	}
+
+	// Update
+	n.Properties = `{"foo":"bar"}`
+	id3, err := db.UpsertNode(n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != id3 {
+		t.Errorf("expected same ID %d, got %d", id, id3)
+	}
+
+	fetched, err := db.GetNode(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fetched.Properties != n.Properties {
+		t.Errorf("expected properties %s, got %s", n.Properties, fetched.Properties)
+	}
+}
+
+func TestUpsertEdge(t *testing.T) {
+	db := setupTestDB(t)
+
+	n1 := &Node{Type: NodeNote, Name: "foo.md"}
+	n2 := &Node{Type: NodeFile, Name: "foo.go"}
+	id1, _ := db.UpsertNode(n1)
+	id2, _ := db.UpsertNode(n2)
+
+	e := &Edge{
+		SourceID:     id1,
+		TargetID:     id2,
+		Relationship: RelReferences,
+	}
+	id, err := db.UpsertEdge(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Idempotency
+	id2Edge, err := db.UpsertEdge(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != id2Edge {
+		t.Errorf("expected same ID %d, got %d", id, id2Edge)
+	}
+}
+
+func TestGetNeighbors(t *testing.T) {
+	db := setupTestDB(t)
+
+	// A -> B (imports)
+	// B -> C (imports)
+	// A -> C (depends_on)
+	n1, _ := db.UpsertNode(&Node{Type: "A", Name: "A"})
+	n2, _ := db.UpsertNode(&Node{Type: "B", Name: "B"})
+	n3, _ := db.UpsertNode(&Node{Type: "C", Name: "C"})
+
+	db.UpsertEdge(&Edge{SourceID: n1, TargetID: n2, Relationship: RelImports})
+	db.UpsertEdge(&Edge{SourceID: n2, TargetID: n3, Relationship: RelImports})
+	db.UpsertEdge(&Edge{SourceID: n1, TargetID: n3, Relationship: RelDependsOn})
+
+	// Forward from A
+	neighbors, err := db.GetNeighbors(n1, "", "forward")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(neighbors) != 2 {
+		t.Errorf("expected 2 neighbors, got %d", len(neighbors))
+	}
+
+	// Reverse from C
+	neighbors, err = db.GetNeighbors(n3, "", "reverse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(neighbors) != 2 { // A and B
+		t.Errorf("expected 2 neighbors, got %d", len(neighbors))
+	}
+
+	// Filter by relationship
+	neighbors, err = db.GetNeighbors(n1, RelImports, "forward")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(neighbors) != 1 {
+		t.Errorf("expected 1 neighbor, got %d", len(neighbors))
+	}
+	if neighbors[0].ID != n2 {
+		t.Errorf("expected B, got %d", neighbors[0].ID)
+	}
+}
+
+func TestQueryGraph(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Chain: 1 -> 2 -> 3 -> 4
+	ids := make([]int64, 5)
+	for i := 1; i <= 4; i++ {
+		ids[i], _ = db.UpsertNode(&Node{Type: "N", Name: fmt.Sprintf("%d", i)})
+	}
+	for i := 1; i < 4; i++ {
+		db.UpsertEdge(&Edge{SourceID: ids[i], TargetID: ids[i+1], Relationship: "next"})
+	}
+
+	// Traversal from 1
+	paths, err := db.QueryGraph(QueryOptions{
+		FromNodeID: ids[1],
+		Direction:  "forward",
+		MaxDepth:   5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should find paths to 2, 3, 4
+	// The implementation returns one Path object per discovered node in traversal
+	if len(paths) < 3 {
+		t.Errorf("expected at least 3 paths (to 2, 3, 4), got %d", len(paths))
+	}
+}
+
+func TestFindShortestPath(t *testing.T) {
+	db := setupTestDB(t)
+
+	// 1 -> 2 -> 3
+	// 1 -> 3 (shortcut)
+	n1, _ := db.UpsertNode(&Node{Type: "N", Name: "1"})
+	n2, _ := db.UpsertNode(&Node{Type: "N", Name: "2"})
+	n3, _ := db.UpsertNode(&Node{Type: "N", Name: "3"})
+
+	db.UpsertEdge(&Edge{SourceID: n1, TargetID: n2, Relationship: "next"})
+	db.UpsertEdge(&Edge{SourceID: n2, TargetID: n3, Relationship: "next"})
+	db.UpsertEdge(&Edge{SourceID: n1, TargetID: n3, Relationship: "shortcut"})
+
+	path, err := db.FindShortestPath(n1, n3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path == nil {
+		t.Fatal("path not found")
+	}
+
+	// Should take shortcut (length 2 nodes: 1, 3)
+	if len(path.Nodes) != 2 {
+		t.Errorf("expected path length 2 (1->3), got %d", len(path.Nodes))
+	}
+}
+
+func TestExtractFromNote(t *testing.T) {
+	db := setupTestDB(t)
+	ext := NewExtractor(db)
+
+	content := `
+	package foo
+	import "github.com/example/pkg"
+	
+	// Check internal/bar/baz.go for details.
+	// We decided: use SQLite.
+	`
+
+	// Mock vault note exists? No, graph logic creates note node if missing in graph,
+	// but note_id FK might fail if we enforce FK constraint and vault_notes doesn't exist.
+	// However, in testDB setup, we didn't create vault_notes table.
+	// Graph schema has FOREIGN KEY (note_id) REFERENCES vault_notes(id).
+	// SQLite ignores FKs by default unless PRAGMA foreign_keys = ON.
+	// We didn't enable it in setupTestDB, so it should pass.
+
+	err := ext.ExtractFromNote(100, "foo.go", content, "AgentSmith")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check Agent node
+	agent, err := db.FindNode(NodeAgent, "AgentSmith")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if agent.Name != "AgentSmith" {
+		t.Errorf("expected AgentSmith, got %s", agent.Name)
+	}
+
+	// Check Decision node
+	// "use SQLite"
+	// We don't know the exact name extracted, but let's count decisions
+	stats, _ := db.GetStats()
+	if stats.NodesByType[NodeDecision] != 1 {
+		t.Errorf("expected 1 decision, got %d", stats.NodesByType[NodeDecision])
+	}
+
+	// Check File node
+	if stats.NodesByType[NodeFile] != 1 {
+		t.Errorf("expected 1 file (internal/bar/baz.go), got %d", stats.NodesByType[NodeFile])
+	}
+}
+
+func BenchmarkQueryGraph(b *testing.B) {
+	db := setupTestDB(&testing.T{})
+
+	// Create chain of 1000 nodes
+	prevID, _ := db.UpsertNode(&Node{Type: "N", Name: "0"})
+	startID := prevID
+	for i := 1; i < 1000; i++ {
+		currID, _ := db.UpsertNode(&Node{Type: "N", Name: fmt.Sprintf("%d", i)})
+		db.UpsertEdge(&Edge{SourceID: prevID, TargetID: currID, Relationship: "next"})
+		prevID = currID
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := db.QueryGraph(QueryOptions{
+			FromNodeID: startID,
+			Direction:  "forward",
+			MaxDepth:   5,
+		})
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}

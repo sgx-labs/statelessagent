@@ -70,6 +70,16 @@ docs/eval-methodology.md
 docs/security-research.md
 docs/strategy-and-vision.md
 
+# v0.9.0 research docs (internal planning, competitive analysis, not for public repo)
+docs/v090-knowledge-graph-spec.md
+docs/v090-implementation-guide.md
+docs/mcp-graph-tools-spec.md
+docs/ai-memory-landscape-analysis.md
+docs/competitive-landscape-analysis.md
+docs/breakthrough-features-2026.md
+docs/product-hunt-launch-strategy-2026.md
+docs/tomorrow-morning-checklist.md
+
 # NPM wrapper (downloaded binaries)
 npm/bin/same-binary
 npm/bin/same-binary.exe

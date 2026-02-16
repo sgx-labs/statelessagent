@@ -167,6 +167,7 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 		feedbackCmd(),
 		claimCmd(),
 		vaultCmd(),
+		graphCmd(),
 	)
 
 	addGrouped("diagnostics",

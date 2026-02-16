@@ -55,7 +55,7 @@ func TestInsertAndSearch(t *testing.T) {
 		embeddings[i] = vec
 	}
 
-	if err := db.BulkInsertNotes(records, embeddings); err != nil {
+	if _, err := db.BulkInsertNotes(records, embeddings); err != nil {
 		t.Fatalf("BulkInsertNotes: %v", err)
 	}
 
@@ -118,7 +118,7 @@ func TestKNNOrdering(t *testing.T) {
 		makeVec(0, 1),
 	}
 
-	if err := db.BulkInsertNotes(records, vecs); err != nil {
+	if _, err := db.BulkInsertNotes(records, vecs); err != nil {
 		t.Fatalf("BulkInsertNotes: %v", err)
 	}
 
@@ -160,7 +160,7 @@ func TestMetadataFiltering(t *testing.T) {
 	}
 	vecs := [][]float32{makeVec(0.5), makeVec(0.6)}
 
-	if err := db.BulkInsertNotes(records, vecs); err != nil {
+	if _, err := db.BulkInsertNotes(records, vecs); err != nil {
 		t.Fatalf("BulkInsertNotes: %v", err)
 	}
 
@@ -442,10 +442,10 @@ func TestSchemaVersion(t *testing.T) {
 	}
 	defer db.Close()
 
-	// After migrate(), version should be 5 (through claims + agent migrations).
+	// After migrate(), version should be 6 (through claims + agent + graph migrations).
 	v := db.SchemaVersion()
-	if v != 5 {
-		t.Errorf("expected schema version 5, got %d", v)
+	if v != 6 {
+		t.Errorf("expected schema version 6, got %d", v)
 	}
 }
 
@@ -1106,7 +1106,7 @@ func TestHasVectors_LiteMode(t *testing.T) {
 			ContentHash: "hash", ContentType: "note", Confidence: 0.5,
 		},
 	}
-	if err := db.BulkInsertNotesLite(records); err != nil {
+	if _, err := db.BulkInsertNotesLite(records); err != nil {
 		t.Fatalf("BulkInsertNotesLite: %v", err)
 	}
 
@@ -1155,7 +1155,7 @@ func TestBulkInsertNotesLite(t *testing.T) {
 		},
 	}
 
-	if err := db.BulkInsertNotesLite(records); err != nil {
+	if _, err := db.BulkInsertNotesLite(records); err != nil {
 		t.Fatalf("BulkInsertNotesLite: %v", err)
 	}
 
@@ -1202,10 +1202,10 @@ func TestBulkInsertNotesLite_Empty(t *testing.T) {
 	defer db.Close()
 
 	// Empty insert should not error
-	if err := db.BulkInsertNotesLite(nil); err != nil {
+	if _, err := db.BulkInsertNotesLite(nil); err != nil {
 		t.Fatalf("BulkInsertNotesLite(nil): %v", err)
 	}
-	if err := db.BulkInsertNotesLite([]NoteRecord{}); err != nil {
+	if _, err := db.BulkInsertNotesLite([]NoteRecord{}); err != nil {
 		t.Fatalf("BulkInsertNotesLite(empty): %v", err)
 	}
 }

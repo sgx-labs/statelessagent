@@ -10,10 +10,11 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/sgx-labs/statelessagent/internal/config"
+	"github.com/sgx-labs/statelessagent/internal/graph"
+
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	_ "github.com/mattn/go-sqlite3"
-
-	"github.com/sgx-labs/statelessagent/internal/config"
 )
 
 func init() {
@@ -237,6 +238,7 @@ func (db *DB) migrate() error {
 		{3, db.migrateV3}, // session recovery tracking
 		{4, db.migrateV4}, // agent attribution metadata
 		{5, db.migrateV5}, // multi-agent claims table
+		{6, db.migrateV6}, // knowledge graph tables
 	}
 	for _, m := range versionedMigrations {
 		if currentVersion < m.version {
@@ -471,4 +473,14 @@ func (db *DB) RecordRecovery(sessionID, recoveredFromSession, source string, com
 		sessionID, recoveredFromSession, source, completeness,
 	)
 	return err
+}
+
+// migrateV6 initializes the knowledge graph tables and populates them from existing notes.
+func (db *DB) migrateV6() error {
+	for _, stmt := range graph.GraphSchemaSQL() {
+		if _, err := db.conn.Exec(stmt); err != nil {
+			return fmt.Errorf("graph schema: %w", err)
+		}
+	}
+	return graph.PopulateFromExistingNotes(db.conn)
 }

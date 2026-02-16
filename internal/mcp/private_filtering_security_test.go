@@ -37,7 +37,7 @@ func TestHandleSearchNotes_ExcludesPrivateResults(t *testing.T) {
 			Confidence:   0.5,
 		},
 	}
-	if err := db.BulkInsertNotesLite(recs); err != nil {
+	if _, err := db.BulkInsertNotesLite(recs); err != nil {
 		t.Fatalf("bulk insert: %v", err)
 	}
 

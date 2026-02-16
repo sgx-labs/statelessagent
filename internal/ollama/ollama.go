@@ -54,10 +54,10 @@ type tagsResponse struct {
 
 // embedModels are known embedding-only models that can't do generation.
 var embedModels = map[string]bool{
-	"nomic-embed-text":       true,
+	"nomic-embed-text":        true,
 	"nomic-embed-text-v2-moe": true,
-	"mxbai-embed-large":      true,
-	"all-minilm":             true,
+	"mxbai-embed-large":       true,
+	"all-minilm":              true,
 	"snowflake-arctic-embed":  true,
 	"snowflake-arctic-embed2": true,
 	"embeddinggemma":          true,
@@ -134,6 +134,7 @@ func (c *Client) PickBestModel() (string, error) {
 type generateRequest struct {
 	Model  string `json:"model"`
 	Prompt string `json:"prompt"`
+	Format string `json:"format,omitempty"`
 	Stream bool   `json:"stream"`
 }
 
@@ -143,20 +144,32 @@ type generateResponse struct {
 
 // Generate sends a prompt to Ollama and returns the response.
 func (c *Client) Generate(model, prompt string) (string, error) {
+	return c.generate(model, prompt, "")
+}
+
+// GenerateJSON sends a prompt to Ollama and forces a JSON response.
+func (c *Client) GenerateJSON(model, prompt string) (string, error) {
+	return c.generate(model, prompt, "json")
+}
+
+func (c *Client) generate(model, prompt, format string) (string, error) {
 	body, err := json.Marshal(generateRequest{
 		Model:  model,
 		Prompt: prompt,
+		Format: format,
 		Stream: false,
 	})
 	if err != nil {
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
-	resp, err := c.httpClient.Post(
-		c.baseURL+"/api/generate",
-		"application/json",
-		bytes.NewReader(body),
-	)
+	req, err := http.NewRequest("POST", c.baseURL+"/api/generate", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("connect to Ollama: %w", err)
 	}

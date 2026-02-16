@@ -69,9 +69,10 @@ func (db *DB) InsertNote(rec *NoteRecord, embedding []float32) error {
 }
 
 // BulkInsertNotes inserts multiple note records with their embeddings in a transaction.
-func (db *DB) BulkInsertNotes(records []NoteRecord, embeddings [][]float32) error {
+// Returns a map of path -> note_id for all inserted root chunks (chunk_id=0).
+func (db *DB) BulkInsertNotes(records []NoteRecord, embeddings [][]float32) (map[string]int64, error) {
 	if len(records) != len(embeddings) {
-		return fmt.Errorf("records and embeddings must have same length")
+		return nil, fmt.Errorf("records and embeddings must have same length")
 	}
 
 	db.mu.Lock()
@@ -79,7 +80,7 @@ func (db *DB) BulkInsertNotes(records []NoteRecord, embeddings [][]float32) erro
 
 	tx, err := db.conn.Begin()
 	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -88,15 +89,17 @@ func (db *DB) BulkInsertNotes(records []NoteRecord, embeddings [][]float32) erro
 			text, modified, content_hash, content_type, review_by, confidence, access_count)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
-		return fmt.Errorf("prepare note stmt: %w", err)
+		return nil, fmt.Errorf("prepare note stmt: %w", err)
 	}
 	defer noteStmt.Close()
 
 	vecStmt, err := tx.Prepare("INSERT INTO vault_notes_vec (note_id, embedding) VALUES (?, ?)")
 	if err != nil {
-		return fmt.Errorf("prepare vec stmt: %w", err)
+		return nil, fmt.Errorf("prepare vec stmt: %w", err)
 	}
 	defer vecStmt.Close()
+
+	insertedIDs := make(map[string]int64)
 
 	for i, rec := range records {
 		res, err := noteStmt.Exec(
@@ -105,36 +108,45 @@ func (db *DB) BulkInsertNotes(records []NoteRecord, embeddings [][]float32) erro
 			rec.ContentHash, rec.ContentType, rec.ReviewBy, rec.Confidence, rec.AccessCount,
 		)
 		if err != nil {
-			return fmt.Errorf("insert note %d: %w", i, err)
+			return nil, fmt.Errorf("insert note %d: %w", i, err)
 		}
 
 		id, err := res.LastInsertId()
 		if err != nil {
-			return fmt.Errorf("last insert id %d: %w", i, err)
+			return nil, fmt.Errorf("last insert id %d: %w", i, err)
+		}
+
+		if rec.ChunkID == 0 {
+			insertedIDs[rec.Path] = id
 		}
 
 		vecData, err := sqlite_vec.SerializeFloat32(embeddings[i])
 		if err != nil {
-			return fmt.Errorf("serialize embedding %d: %w", i, err)
+			return nil, fmt.Errorf("serialize embedding %d: %w", i, err)
 		}
 
 		if _, err := vecStmt.Exec(id, vecData); err != nil {
-			return fmt.Errorf("insert vector %d: %w", i, err)
+			return nil, fmt.Errorf("insert vector %d: %w", i, err)
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return insertedIDs, nil
 }
 
 // BulkInsertNotesLite inserts note records WITHOUT embeddings (FTS5-only mode).
 // Used when Ollama is not available. Notes are stored for keyword search only.
-func (db *DB) BulkInsertNotesLite(records []NoteRecord) error {
+// Returns a map of path -> note_id for all inserted root chunks (chunk_id=0).
+func (db *DB) BulkInsertNotesLite(records []NoteRecord) (map[string]int64, error) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 
 	tx, err := db.conn.Begin()
 	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -143,21 +155,36 @@ func (db *DB) BulkInsertNotesLite(records []NoteRecord) error {
 			text, modified, content_hash, content_type, review_by, confidence, access_count)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
-		return fmt.Errorf("prepare stmt: %w", err)
+		return nil, fmt.Errorf("prepare stmt: %w", err)
 	}
 	defer stmt.Close()
 
+	insertedIDs := make(map[string]int64)
+
 	for i, rec := range records {
-		if _, err := stmt.Exec(
+		res, err := stmt.Exec(
 			rec.Path, rec.Title, rec.Tags, rec.Domain, rec.Workstream, rec.Agent,
 			rec.ChunkID, rec.ChunkHeading, rec.Text, rec.Modified,
 			rec.ContentHash, rec.ContentType, rec.ReviewBy, rec.Confidence, rec.AccessCount,
-		); err != nil {
-			return fmt.Errorf("insert note %d: %w", i, err)
+		)
+		if err != nil {
+			return nil, fmt.Errorf("insert note %d: %w", i, err)
+		}
+
+		if rec.ChunkID == 0 {
+			id, err := res.LastInsertId()
+			if err != nil {
+				return nil, fmt.Errorf("last insert id %d: %w", i, err)
+			}
+			insertedIDs[rec.Path] = id
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return insertedIDs, nil
 }
 
 // HasVectors returns true if the vault_notes_vec table has any entries.
