@@ -170,8 +170,18 @@ Suggested actions for the user:
 
 		queryVec, embedErr := embedProvider.GetQueryEmbedding(prompt)
 		if embedErr != nil {
-			// Provider configured but call failed (e.g., Ollama went down)
-			fmt.Fprintf(os.Stderr, "same: embedding failed, falling back to keyword search\n")
+			// Classify the error for better debugging
+			errMsg := embedErr.Error()
+			switch {
+			case strings.Contains(errMsg, "connection_refused"):
+				fmt.Fprintf(os.Stderr, "same: Ollama not running, falling back to keyword search\n")
+			case strings.Contains(errMsg, "permission_denied"):
+				fmt.Fprintf(os.Stderr, "same: Ollama blocked by sandbox policy, falling back to keyword search\n")
+			case strings.Contains(errMsg, "timeout"):
+				fmt.Fprintf(os.Stderr, "same: Ollama timeout (model loading?), falling back to keyword search\n")
+			default:
+				fmt.Fprintf(os.Stderr, "same: embedding failed, falling back to keyword search\n")
+			}
 			writeVerboseLog(fmt.Sprintf("Embedding failed: %v — keyword fallback\n", embedErr))
 			candidates = keywordFallbackSearch(db)
 		} else if isRecency {

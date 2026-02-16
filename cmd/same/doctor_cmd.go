@@ -73,11 +73,31 @@ func runDoctor(jsonOut bool) error {
 
 	// Probe Ollama once up front so embedding-dependent checks can skip gracefully.
 	ollamaAvailable := false
-	if embedClient, err := newEmbedProvider(); err == nil {
-		if _, err := embedClient.GetQueryEmbedding("test"); err == nil {
-			ollamaAvailable = true
+	ollamaSkipReason := "not configured"
+	if embedClient, err := newEmbedProvider(); err != nil {
+		ollamaSkipReason = fmt.Sprintf("provider: %v", err)
+	} else if _, err := embedClient.GetQueryEmbedding("test"); err != nil {
+		// Classify the connection error for better diagnostics
+		errMsg := err.Error()
+		switch {
+		case strings.Contains(errMsg, "connection_refused"):
+			ollamaSkipReason = "connection refused — Ollama not running? Start with 'ollama serve'"
+		case strings.Contains(errMsg, "permission_denied"):
+			ollamaSkipReason = "permission denied — localhost may be blocked by sandbox/runtime policy"
+		case strings.Contains(errMsg, "timeout"):
+			ollamaSkipReason = "timeout — Ollama slow to respond, a model may be loading"
+		case strings.Contains(errMsg, "dns_failure"):
+			ollamaSkipReason = "DNS failure — cannot resolve hostname"
+		default:
+			ollamaSkipReason = fmt.Sprintf("connection failed: %v", err)
 		}
+	} else {
+		ollamaAvailable = true
 	}
+
+	// Track vault availability so DB-dependent checks can skip gracefully
+	// instead of cascading into confusing "permission denied" errors.
+	vaultOK := false
 
 	check := func(name string, hint string, fn func() (string, error)) {
 		detail, err := fn()
@@ -138,22 +158,27 @@ func runDoctor(jsonOut bool) error {
 	}
 
 	// 1. Vault path
-	check("Vault path", "run 'same init' or set VAULT_PATH", func() (string, error) {
+	check("Vault path", "run 'same init' in your project, or set VAULT_PATH=<path> to point at your vault", func() (string, error) {
 		vp := config.VaultPath()
 		if vp == "" {
-			return "", fmt.Errorf("no vault found")
+			return "", fmt.Errorf("no vault found — run 'same init' or set VAULT_PATH env var")
 		}
 		info, err := os.Stat(vp)
 		if err != nil {
-			return "", fmt.Errorf("path does not exist")
+			return "", fmt.Errorf("vault path not accessible (moved or deleted?)")
 		}
 		if !info.IsDir() {
-			return "", fmt.Errorf("not a directory")
+			return "", fmt.Errorf("vault path is not a directory")
 		}
+		vaultOK = true
 		return "", nil
 	})
 
-	// 2. Database
+	// 2. Database — skip if vault path is broken
+	if !vaultOK {
+		skip("Database", "skipped (vault path not found)")
+		skip("Index mode", "skipped (vault path not found)")
+	} else {
 	check("Database", "run 'same init' or 'same reindex'", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
@@ -192,6 +217,24 @@ func runDoctor(jsonOut bool) error {
 		}
 		return "empty", nil
 	})
+	} // end vaultOK guard for Database + Index mode
+
+	// 2c. Upgrade prompt: Ollama available but index is keyword-only
+	if vaultOK && ollamaAvailable {
+		db, err := store.Open()
+		if err == nil {
+			if !db.HasVectors() {
+				noteCount, _ := db.NoteCount()
+				if noteCount > 0 {
+					if !jsonOut {
+						fmt.Printf("\n  %s⚡ Ollama is running but your index is keyword-only.%s\n", cli.Bold, cli.Reset)
+						fmt.Printf("  %s   Run 'same reindex' to enable semantic search.%s\n\n", cli.Dim, cli.Reset)
+					}
+				}
+			}
+			db.Close()
+		}
+	}
 
 	// 3. Embedding provider — skip gracefully in lite mode
 	if ollamaAvailable {
@@ -203,8 +246,15 @@ func runDoctor(jsonOut bool) error {
 			return fmt.Sprintf("connected via %s", embedClient.Name()), nil
 		})
 	} else {
-		skip("Ollama connection", "skipped (lite mode — keyword search active)")
+		skip("Ollama connection", fmt.Sprintf("skipped (%s)", ollamaSkipReason))
 	}
+
+	// 4-6: Search and security checks — skip if vault path is broken
+	if !vaultOK {
+		skip("Search working", "skipped (vault path not found)")
+		skip("Finding relevant notes", "skipped (vault path not found)")
+		skip("Private folders hidden", "skipped (vault path not found)")
+	} else {
 
 	// 4. Vector search — skip gracefully in lite mode
 	if ollamaAvailable {
@@ -315,6 +365,8 @@ func runDoctor(jsonOut bool) error {
 		return "", nil
 	})
 
+	} // end vaultOK guard for search/security checks
+
 	// 7. Ollama localhost only
 	check("Data stays local", "Ollama should run on your computer, not a remote server", func() (string, error) {
 		ollamaURL, err := config.OllamaURL()
@@ -338,10 +390,13 @@ func runDoctor(jsonOut bool) error {
 	})
 
 	// 9. Hook installation
+	if !vaultOK {
+		skip("Hooks installed", "skipped (vault path not found)")
+	} else {
 	check("Hooks installed", "run 'same setup hooks'", func() (string, error) {
 		vp := config.VaultPath()
 		if vp == "" {
-			return "", fmt.Errorf("no vault to check")
+			return "", fmt.Errorf("no vault path — run 'same init' or set VAULT_PATH")
 		}
 		settingsPath := filepath.Join(vp, ".claude", "settings.json")
 		if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
@@ -357,8 +412,31 @@ func runDoctor(jsonOut bool) error {
 		if activeCount == 0 {
 			return "", fmt.Errorf("no SAME hooks found in settings")
 		}
+		// Check portability
+		portable, exists := setup.HooksUsePortablePath(vp)
+		if exists && !portable {
+			return fmt.Sprintf("%d hooks active (non-portable paths — run 'same setup hooks' to fix)", activeCount), nil
+		}
 		return fmt.Sprintf("%d hooks active", activeCount), nil
 	})
+	}
+
+	// 9b. MCP config portability
+	if !vaultOK {
+		skip("MCP config", "skipped (vault path not found)")
+	} else {
+	check("MCP config", "run 'same setup mcp' to update", func() (string, error) {
+		vp := config.VaultPath()
+		portable, exists := setup.MCPUsesPortablePath(vp)
+		if !exists {
+			return "not installed (optional)", nil
+		}
+		if !portable {
+			return "", fmt.Errorf("uses absolute binary path — run 'same setup mcp' to fix for portability")
+		}
+		return "portable", nil
+	})
+	}
 
 	// 10. Vault registry
 	check("Vault registry", "register vaults with 'same vault add <name> <path>'", func() (string, error) {
@@ -384,7 +462,11 @@ func runDoctor(jsonOut bool) error {
 		return fmt.Sprintf("%d vault(s) registered", len(reg.Vaults)), nil
 	})
 
-	// 11. Database integrity (orphaned vectors)
+	// 11-12: Database integrity and freshness — skip if vault path is broken
+	if !vaultOK {
+		skip("Database integrity", "skipped (vault path not found)")
+		skip("Index freshness", "skipped (vault path not found)")
+	} else {
 	check("Database integrity", "run 'same reindex' to rebuild", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
@@ -406,7 +488,6 @@ func runDoctor(jsonOut bool) error {
 		return "", nil
 	})
 
-	// 11. Index freshness
 	check("Index freshness", "run 'same reindex' to update", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
@@ -422,6 +503,7 @@ func runDoctor(jsonOut bool) error {
 		}
 		return fmt.Sprintf("last indexed %s ago", formatDuration(age)), nil
 	})
+	} // end vaultOK guard for integrity checks
 
 	// 12. Log file size
 	check("Log file size", "rotation keeps logs under 5MB automatically", func() (string, error) {
@@ -440,7 +522,12 @@ func runDoctor(jsonOut bool) error {
 		return fmt.Sprintf("%.1f MB", sizeMB), nil
 	})
 
-	// 13. Embedding config
+	// 13-15: Embedding config, SQLite integrity, utilization — skip if vault path broken
+	if !vaultOK {
+		skip("Embedding config", "skipped (vault path not found)")
+		skip("SQLite integrity", "skipped (vault path not found)")
+		skip("Retrieval utilization", "skipped (vault path not found)")
+	} else {
 	check("Embedding config", "run 'same reindex --force' if model changed", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
@@ -462,7 +549,6 @@ func runDoctor(jsonOut bool) error {
 		return fmt.Sprintf("%s, %s dims", provider, dims), nil
 	})
 
-	// 14. SQLite integrity (PRAGMA)
 	check("SQLite integrity", "run 'same repair' to rebuild", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
@@ -472,7 +558,6 @@ func runDoctor(jsonOut bool) error {
 		return "", db.IntegrityCheck()
 	})
 
-	// 15. Retrieval utilization
 	check("Retrieval utilization", "try different queries or adjust your profile", func() (string, error) {
 		db, err := store.Open()
 		if err != nil {
@@ -498,6 +583,7 @@ func runDoctor(jsonOut bool) error {
 		}
 		return detail, nil
 	})
+	} // end vaultOK guard for DB checks
 
 	if jsonOut {
 		report := DoctorReport{
@@ -525,7 +611,9 @@ func runDoctor(jsonOut bool) error {
 		summary += fmt.Sprintf(", %d skipped", skipped)
 	}
 	lines := []string{summary}
-	if !ollamaAvailable {
+	if !vaultOK {
+		lines = append(lines, "Vault not found. Run 'same init' or set VAULT_PATH=<path> to point at your vault.")
+	} else if !ollamaAvailable {
 		lines = append(lines, "SAME is running in lite mode (keyword search). Install Ollama for semantic search.")
 	}
 	if failed > 0 {

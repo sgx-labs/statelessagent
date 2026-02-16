@@ -139,7 +139,7 @@ Your markdown notes are embedded locally via Ollama and stored in a SQLite datab
 | Context surfacing | Relevant notes injected into AI prompts | No* |
 | `same demo` | Try SAME in 60 seconds | No |
 | `same tutorial` | 6 hands-on lessons | No |
-| `same doctor` | 17 diagnostic checks | No |
+| `same doctor` | 18 diagnostic checks | No |
 | Push protection | Safety rails for multi-agent workflows | No |
 | `same seed install` | One-command install of pre-built knowledge vaults | No* |
 | Cross-vault federation | Search across all vaults at once | No* |
@@ -320,7 +320,7 @@ Requires Go 1.25+ and CGO.
 | `same search --all <query>` | Search across all registered vaults |
 | `same related <path>` | Find related notes |
 | `same status` | See what SAME is tracking |
-| `same doctor` | Run 17 diagnostic checks |
+| `same doctor` | Run 18 diagnostic checks |
 | `same pin <path>` | Always include a note in every session |
 | `same pin list` | Show pinned notes |
 | `same pin remove <path>` | Unpin a note |
@@ -466,7 +466,7 @@ When enabled, a pre-push git hook blocks pushes unless a one-time ticket has bee
 <details>
 <summary><strong>Troubleshooting</strong></summary>
 
-Start with `same doctor` — it runs 17 checks and tells you exactly what's wrong.
+Start with `same doctor` — it runs 18 checks and tells you exactly what's wrong.
 
 **"No vault found"**
 SAME can't find your notes directory. Fix:
@@ -489,7 +489,7 @@ Context isn't being surfaced during Claude Code sessions. Fix:
 
 **Context not surfacing**
 Hooks fire but no notes appear. Fix:
-- Run `same doctor` to diagnose all 17 checks
+- Run `same doctor` to diagnose all 18 checks
 - Run `same reindex` if your notes have changed
 - Try `same search "your query"` to test search directly
 - Check if display mode is set to "quiet": `same config show`

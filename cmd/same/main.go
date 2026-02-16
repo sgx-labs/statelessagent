@@ -110,8 +110,9 @@ func newEmbedProvider() (embedding.Provider, error) {
 
 func main() {
 	root := &cobra.Command{
-		Use:   "same",
-		Short: "Give your AI a memory of your project",
+		Use:     "same",
+		Short:   "Give your AI a memory of your project",
+		Version: Version,
 		Long: `SAME (Stateless Agent Memory Engine) gives your AI a memory.
 
 Your AI will remember your project decisions, your preferences, and what you've

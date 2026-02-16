@@ -9,14 +9,24 @@ Fixes keyword-only search (the biggest issue for no-Ollama environments), adds l
 - **Keyword-only search works in `same search` and `same ask`** — added LIKE-based keyword fallback when FTS5 is unavailable. Previously, keyword-only mode indexed notes successfully but search returned "No search index available". The CLI now matches the web dashboard's 3-tier fallback chain: vector → FTS5 → LIKE-based keyword
 - **Context surfacing hooks work in keyword-only mode** — the user-prompt hook previously early-returned when no embedding provider was available, showing a diagnostic instead of searching. Now falls through to keyword search (FTS5 → LIKE), so context surfacing works without Ollama
 - **`same doctor` no longer gives false positive for keyword search** — the "Finding relevant notes" check now actually tests keyword search instead of just counting notes
+- **`same doctor` no longer cascades errors when vault path is wrong** — if vault path fails, database-dependent checks show "skipped" instead of cascading into confusing "permission denied" errors. Summary box shows actionable `VAULT_PATH` guidance
 - **`find_similar_notes` gives clear message in keyword-only mode** — instead of a confusing "not in index" error, explains that similar notes requires semantic search
 - **Config persists active provider** — `same init` now writes the actual embedding provider to config (e.g., `provider = "none"`) instead of always writing `provider = "ollama"`
+- **MCP and hooks portability** — `.mcp.json` and `.claude/settings.json` now use `same` from PATH instead of hardcoded absolute binary paths. Existing users: run `same setup mcp` and `same setup hooks` to update for cross-machine portability
+- **Search no-results guidance** — `same search` now suggests `--all` flag when no results found. Federated search suggests `same reindex`
+- **`same --version` flag** — `same --version` now works (previously only `same version` worked)
+- **Ollama error classification** — connection errors now classified by root cause: `connection_refused` (not running), `permission_denied` (sandbox policy), `timeout` (model loading), `dns_failure`. Doctor, hooks, and retry logs all show classified reasons instead of generic "request failed"
+- **Doctor: Ollama skip reason** — when Ollama is unavailable, doctor shows why (e.g., "permission denied — localhost may be blocked by sandbox/runtime policy") instead of just "skipped (lite mode)"
+- **Doctor: reindex upgrade prompt** — when Ollama is running but index is keyword-only, doctor prompts to run `same reindex` to enable semantic search
+- **Permission-denied errors not retried** — sandbox EACCES/EPERM errors now fast-fail instead of retrying 3 times with exponential backoff
 
 ### Added
 
 - **`provider = "none"` for keyword-only mode** — explicit opt-out of embeddings. Use `SAME_EMBED_PROVIDER=none`, `--provider none`, or set `provider = "none"` in config. Skips Ollama check entirely during init
 - **linux-arm64 pre-built binary** — CI now builds for ARM Linux (Codespaces, OrbStack, Raspberry Pi, AWS Graviton). No more building from source on `aarch64`
 - **`same reindex --verbose`** — shows each file being processed during reindex, matching the `same init -v` flag
+- **Doctor: portability checks** — detects hardcoded absolute binary paths in `.mcp.json` and `.claude/settings.json`, suggests `same setup mcp` / `same setup hooks` to fix
+- **Seed install `--all` hint** — success message now shows `same search --all` as a next step for cross-vault search
 
 ---
 
@@ -175,7 +185,7 @@ Search across all your vaults from one place. Manage multiple vaults from the CL
 - **`same vault feed`** — one-way note propagation between vaults. Copy notes from a source vault into the current vault's `fed/<alias>/` directory. Includes PII guard (scans for email/phone/SSN patterns), symlink rejection, 10MB file size limit, self-feed prevention, and `--dry-run` mode.
 - **`store.AllNotes()`** — returns all chunk_id=0 notes excluding `_PRIVATE/`, ordered by modified date.
 - **20 new tests** — `sanitizeAlias` (14 cases), `safeFeedPath` (19 cases), `FederatedSearch` (empty query, too many vaults, private note exclusion, mixed vault health, graceful skip).
-- **Progressive feature discovery** — CLI teaches new capabilities at the moment they become relevant. `vault add` hints about `--all` when 2+ vaults registered. `search` hints about `same related`. `reindex` hints about `same watch`. `status` shows available vaults and `same ask` when a chat model is detected. `doctor` validates vault registry health (17 checks total).
+- **Progressive feature discovery** — CLI teaches new capabilities at the moment they become relevant. `vault add` hints about `--all` when 2+ vaults registered. `search` hints about `same related`. `reindex` hints about `same watch`. `status` shows available vaults and `same ask` when a chat model is detected. `doctor` validates vault registry health (18 checks total).
 - **Pinned notes in session bootstrap** — pinned notes now survive context compaction. Previously only surfaced during per-prompt context, pinned notes are now included at session start (Priority 1, 2000-char budget) so your AI always has your most important context.
 
 ### Fixed

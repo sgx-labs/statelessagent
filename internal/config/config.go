@@ -803,7 +803,7 @@ var (
 	// ErrNoVault is returned when no vault path can be resolved.
 	ErrNoVault = fmt.Errorf("no vault found — run 'same init' or set VAULT_PATH")
 	// ErrNoDatabase is returned when the SAME database cannot be opened.
-	ErrNoDatabase = fmt.Errorf("cannot open SAME database — run 'same init' or 'same doctor' to diagnose")
+	ErrNoDatabase = fmt.Errorf("cannot open SAME database — run 'same init', 'same reindex', or 'same doctor' to diagnose")
 	// ErrOllamaNotLocal is returned when the Ollama URL points to a non-localhost host.
 	ErrOllamaNotLocal = fmt.Errorf("OLLAMA_URL must point to localhost for security")
 )

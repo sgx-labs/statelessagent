@@ -46,7 +46,7 @@ cmd/same/
   config_cmd.go        # Config show/edit
   demo_cmd.go          # Interactive demo
   display_cmd.go       # Display mode switching
-  doctor_cmd.go        # 17 diagnostic checks
+  doctor_cmd.go        # 18 diagnostic checks
   feedback_cmd.go      # Note relevance feedback
   guard_cmd.go         # Push protection
   hooks_cmd.go         # Hook status listing

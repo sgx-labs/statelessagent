@@ -52,7 +52,12 @@ type claudeSettings struct {
 // SetupHooks installs SAME hooks into .claude/settings.json.
 func SetupHooks(vaultPath string) error {
 	settingsPath := filepath.Join(vaultPath, ".claude", "settings.json")
-	binaryPath := detectBinaryPath()
+	// Use bare "same" from PATH for portability across machines.
+	// Only fall back to absolute path if "same" is not in PATH.
+	binaryPath := "same"
+	if _, err := exec.LookPath("same"); err != nil {
+		binaryPath = detectBinaryPath()
+	}
 
 	// Load existing settings or create new
 	existing := make(map[string]json.RawMessage)
@@ -195,6 +200,52 @@ func HooksInstalled(vaultPath string) map[string]bool {
 	}
 
 	return result
+}
+
+// HooksUsePortablePath checks if hook commands use portable "same" from PATH.
+// Returns true if all hook commands start with "same " (not an absolute path).
+func HooksUsePortablePath(vaultPath string) (portable bool, exists bool) {
+	settingsPath := filepath.Join(vaultPath, ".claude", "settings.json")
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return false, false
+	}
+
+	var settings map[string]json.RawMessage
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return false, false
+	}
+
+	raw, ok := settings["hooks"]
+	if !ok {
+		return false, false
+	}
+	var hooks map[string][]hookEntry
+	if err := json.Unmarshal(raw, &hooks); err != nil {
+		return false, false
+	}
+
+	foundSAME := false
+	for _, entries := range hooks {
+		for _, entry := range entries {
+			for _, h := range entry.Hooks {
+				cmd := h.Command
+				// Check if this is a SAME hook command
+				if !strings.Contains(cmd, "hook ") {
+					continue
+				}
+				foundSAME = true
+				// Portable: starts with "same " (bare command from PATH)
+				// Non-portable: starts with "/" or "\"" or drive letter
+				if !strings.HasPrefix(cmd, "same ") {
+					return false, true
+				}
+			}
+		}
+	}
+
+	return foundSAME, foundSAME
 }
 
 func buildHooks(binaryPath string) map[string][]hookEntry {

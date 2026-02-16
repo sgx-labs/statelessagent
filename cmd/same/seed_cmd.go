@@ -135,6 +135,7 @@ func seedInstallCmd() *cobra.Command {
 			fmt.Printf("\n  Installed to %s\n", cli.ShortenHome(result.DestDir))
 			fmt.Printf("\n  %sNext steps:%s\n", cli.Bold, cli.Reset)
 			fmt.Printf("    same search \"your query\" --vault %s\n", name)
+			fmt.Printf("    same search \"your query\" --all      %s# search all vaults at once%s\n", cli.Dim, cli.Reset)
 			fmt.Printf("    same seed list\n\n")
 			return nil
 		},

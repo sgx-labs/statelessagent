@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/sgx-labs/statelessagent/internal/cli"
@@ -22,7 +23,13 @@ type mcpServer struct {
 // SetupMCP registers SAME as an MCP server in .mcp.json.
 func SetupMCP(vaultPath string) error {
 	mcpPath := filepath.Join(vaultPath, ".mcp.json")
-	binaryPath := detectBinaryPath()
+	// Use bare "same" command to rely on PATH, making the config portable
+	// across machines (codespaces, containers, different OS). Only fall back
+	// to absolute path if "same" is not in PATH at all.
+	binaryPath := "same"
+	if _, err := exec.LookPath("same"); err != nil {
+		binaryPath = detectBinaryPath()
+	}
 
 	// Load existing config or create new
 	var cfg mcpConfig
@@ -119,6 +126,32 @@ func MCPInstalled(vaultPath string) bool {
 
 	_, ok := cfg.Servers["same"]
 	return ok
+}
+
+// MCPUsesPortablePath checks if the MCP config uses a portable binary path.
+// Returns true if the command is "same" (from PATH), false if it's an absolute path.
+// Returns false, false if no MCP config exists.
+func MCPUsesPortablePath(vaultPath string) (portable bool, exists bool) {
+	mcpPath := filepath.Join(vaultPath, ".mcp.json")
+
+	data, err := os.ReadFile(mcpPath)
+	if err != nil {
+		return false, false
+	}
+
+	var cfg mcpConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return false, false
+	}
+
+	server, ok := cfg.Servers["same"]
+	if !ok {
+		return false, false
+	}
+
+	// A portable path is just "same" (relies on PATH resolution).
+	// An absolute path like "/usr/local/bin/same" is not portable.
+	return server.Command == "same", true
 }
 
 // setupMCPInteractive prompts and sets up MCP.

@@ -390,6 +390,118 @@ func TestMCPInstalled_OtherServersOnly(t *testing.T) {
 	}
 }
 
+// --- MCPUsesPortablePath tests ---
+
+func TestMCPUsesPortablePath_NoFile(t *testing.T) {
+	dir := t.TempDir()
+	portable, exists := MCPUsesPortablePath(dir)
+	if exists {
+		t.Error("expected exists=false when no .mcp.json")
+	}
+	if portable {
+		t.Error("expected portable=false when no .mcp.json")
+	}
+}
+
+func TestMCPUsesPortablePath_Portable(t *testing.T) {
+	dir := t.TempDir()
+	cfg := mcpConfig{
+		Servers: map[string]mcpServer{
+			"same": {Command: "same", Args: []string{"mcp"}},
+		},
+	}
+	data, _ := json.MarshalIndent(cfg, "", "  ")
+	os.WriteFile(filepath.Join(dir, ".mcp.json"), data, 0o644)
+
+	portable, exists := MCPUsesPortablePath(dir)
+	if !exists {
+		t.Error("expected exists=true")
+	}
+	if !portable {
+		t.Error("expected portable=true for bare 'same' command")
+	}
+}
+
+func TestMCPUsesPortablePath_AbsolutePath(t *testing.T) {
+	dir := t.TempDir()
+	cfg := mcpConfig{
+		Servers: map[string]mcpServer{
+			"same": {Command: "/usr/local/bin/same", Args: []string{"mcp"}},
+		},
+	}
+	data, _ := json.MarshalIndent(cfg, "", "  ")
+	os.WriteFile(filepath.Join(dir, ".mcp.json"), data, 0o644)
+
+	portable, exists := MCPUsesPortablePath(dir)
+	if !exists {
+		t.Error("expected exists=true")
+	}
+	if portable {
+		t.Error("expected portable=false for absolute path")
+	}
+}
+
+// --- HooksUsePortablePath tests ---
+
+func TestHooksUsePortablePath_NoFile(t *testing.T) {
+	dir := t.TempDir()
+	portable, exists := HooksUsePortablePath(dir)
+	if exists {
+		t.Error("expected exists=false when no settings.json")
+	}
+	if portable {
+		t.Error("expected portable=false when no settings.json")
+	}
+}
+
+func TestHooksUsePortablePath_Portable(t *testing.T) {
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	os.MkdirAll(claudeDir, 0o755)
+
+	settings := map[string]interface{}{
+		"hooks": map[string][]hookEntry{
+			"UserPromptSubmit": {
+				{Matcher: "", Hooks: []hookAction{{Type: "command", Command: "same hook context-surfacing"}}},
+			},
+		},
+	}
+	data, _ := json.MarshalIndent(settings, "", "  ")
+	os.WriteFile(filepath.Join(claudeDir, "settings.json"), data, 0o644)
+
+	portable, exists := HooksUsePortablePath(dir)
+	if !exists {
+		t.Error("expected exists=true")
+	}
+	if !portable {
+		t.Error("expected portable=true for bare 'same' command")
+	}
+}
+
+func TestHooksUsePortablePath_AbsolutePath(t *testing.T) {
+	dir := t.TempDir()
+	claudeDir := filepath.Join(dir, ".claude")
+	os.MkdirAll(claudeDir, 0o755)
+
+	settings := map[string]interface{}{
+		"hooks": map[string][]hookEntry{
+			"UserPromptSubmit": {
+				{Matcher: "", Hooks: []hookAction{{Type: "command", Command: "/usr/local/bin/same hook context-surfacing"}}},
+			},
+		},
+	}
+	data, _ := json.MarshalIndent(settings, "", "  ")
+	os.WriteFile(filepath.Join(claudeDir, "settings.json"), data, 0o644)
+
+	portable, exists := HooksUsePortablePath(dir)
+	if !exists {
+		t.Error("expected exists=true")
+	}
+	if portable {
+		t.Error("expected portable=false for absolute path")
+	}
+}
+
 // --- SetupMCP tests ---
 
 func TestSetupMCP_CreatesNewFile(t *testing.T) {

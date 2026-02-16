@@ -148,7 +148,8 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 	}
 
 	if len(results) == 0 {
-		fmt.Println("No results found.")
+		fmt.Println("\n  No results found.")
+		fmt.Printf("  %sTry a different query, or use --all to search across all vaults.%s\n\n", cli.Dim, cli.Reset)
 		return nil
 	}
 
@@ -222,7 +223,7 @@ func runFederatedSearch(query string, topK int, domain string, jsonOut bool, ver
 			if _, err := os.Stat(dbPath); err == nil {
 				vaultDBPaths[alias] = dbPath
 			} else {
-				fmt.Fprintf(os.Stderr, "Warning: no database for vault %q, skipping\n", alias)
+				fmt.Fprintf(os.Stderr, "Warning: vault %q has no index — run 'same reindex' in that vault\n", alias)
 			}
 		}
 	}
@@ -254,7 +255,8 @@ func runFederatedSearch(query string, topK int, domain string, jsonOut bool, ver
 	}
 
 	if len(results) == 0 {
-		fmt.Printf("No results found across %d vault(s).\n", len(vaultDBPaths))
+		fmt.Printf("\n  No results found across %d vault(s).\n", len(vaultDBPaths))
+		fmt.Printf("  %sTry a different query or run 'same reindex' in each vault.%s\n\n", cli.Dim, cli.Reset)
 		return nil
 	}
 

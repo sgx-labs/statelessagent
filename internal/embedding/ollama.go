@@ -3,11 +3,15 @@ package embedding
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
+	"syscall"
 	"time"
 )
 
@@ -73,14 +77,71 @@ type ollamaEmbeddingResponse struct {
 type httpError struct {
 	StatusCode int
 	Body       string
+	Reason     string // classified reason: "connection_refused", "permission_denied", "timeout", "dns_failure", "network_error"
 }
 
 func (e *httpError) Error() string {
+	if e.StatusCode == 0 && e.Reason != "" {
+		return fmt.Sprintf("ollama: %s (%s)", e.Reason, e.Body)
+	}
 	return fmt.Sprintf("ollama returned %d: %s", e.StatusCode, e.Body)
 }
 
 func (e *httpError) isRetryable() bool {
+	// Permission denied is not retryable (sandbox policy)
+	if e.Reason == "permission_denied" {
+		return false
+	}
 	return e.StatusCode == 0 || e.StatusCode >= 500
+}
+
+// classifyNetworkError examines a network error to produce a human-readable reason.
+func classifyNetworkError(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+
+	// Check for syscall errors (connection refused, permission denied)
+	var sysErr syscall.Errno
+	if errors.As(err, &sysErr) {
+		switch sysErr {
+		case syscall.ECONNREFUSED:
+			return "connection_refused"
+		case syscall.EACCES, syscall.EPERM:
+			return "permission_denied"
+		case syscall.ETIMEDOUT:
+			return "timeout"
+		}
+	}
+
+	// Check for net.OpError with specific context
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		if opErr.Timeout() {
+			return "timeout"
+		}
+	}
+
+	// Check for DNS errors
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return "dns_failure"
+	}
+
+	// String-based fallback for wrapped errors
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "connection refused"):
+		return "connection_refused"
+	case strings.Contains(msg, "permission denied"):
+		return "permission_denied"
+	case strings.Contains(msg, "timeout") || strings.Contains(msg, "deadline exceeded"):
+		return "timeout"
+	case strings.Contains(msg, "no such host"):
+		return "dns_failure"
+	}
+
+	return "network_error"
 }
 
 // GetEmbedding returns an embedding vector for the given text.
@@ -97,8 +158,13 @@ func (p *OllamaProvider) GetEmbedding(text string, purpose string) ([]float32, e
 	for attempt := 0; attempt < ollamaMaxRetries; attempt++ {
 		if attempt > 0 {
 			delay := time.Duration(attempt) * ollamaRetryBase
-			fmt.Fprintf(os.Stderr, "same: ollama request failed, retrying in %s... (attempt %d/%d)\n",
-				delay, attempt+1, ollamaMaxRetries)
+			// Include classified reason for better debugging
+			reason := ""
+			if he, ok := lastErr.(*httpError); ok && he.Reason != "" {
+				reason = fmt.Sprintf(" [%s]", he.Reason)
+			}
+			fmt.Fprintf(os.Stderr, "same: ollama request failed%s, retrying in %s... (attempt %d/%d)\n",
+				reason, delay, attempt+1, ollamaMaxRetries)
 			time.Sleep(delay)
 		}
 
@@ -139,7 +205,8 @@ func (p *OllamaProvider) doEmbedRequest(prompt string) ([]float32, error) {
 		bytes.NewReader(body),
 	)
 	if err != nil {
-		return nil, &httpError{StatusCode: 0, Body: err.Error()}
+		reason := classifyNetworkError(err)
+		return nil, &httpError{StatusCode: 0, Body: err.Error(), Reason: reason}
 	}
 	defer resp.Body.Close()
 
