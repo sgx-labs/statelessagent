@@ -129,7 +129,8 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 		fmt.Printf("\n%d. %s%s\n", i+1, r.Title, typeTag)
 		fmt.Printf("   %s\n", r.Path)
 		if verbose {
-			fmt.Printf("   Score: %.3f  Distance: %.1f  Confidence: %.3f\n", r.Score, r.Distance, r.Confidence)
+			fmt.Printf("   Relevance: %.0f%%  Distance: %.1f  Confidence: %.0f%%\n",
+				r.Score*100, r.Distance, r.Confidence*100)
 		} else {
 			fmt.Printf("   Match: %s\n", formatRelevance(r.Score))
 		}
@@ -238,7 +239,8 @@ func runFederatedSearch(query string, topK int, domain string, jsonOut bool, ver
 		fmt.Printf("\n%d. %s%s  %s[%s]%s\n", i+1, r.Title, typeTag, cli.Dim, r.Vault, cli.Reset)
 		fmt.Printf("   %s\n", r.Path)
 		if verbose {
-			fmt.Printf("   Score: %.3f  Distance: %.1f  Confidence: %.3f\n", r.Score, r.Distance, r.Confidence)
+			fmt.Printf("   Relevance: %.0f%%  Distance: %.1f  Confidence: %.0f%%\n",
+				r.Score*100, r.Distance, r.Confidence*100)
 		} else {
 			fmt.Printf("   Match: %s\n", formatRelevance(r.Score))
 		}

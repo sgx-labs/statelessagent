@@ -10,7 +10,7 @@ func TestQueryWordsForTitleMatch(t *testing.T) {
 		want  []string
 	}{
 		{"what is kubernetes", []string{"kubernetes"}},
-		{"Power Query SharePoint integration", []string{"Power", "Query", "SharePoint", "integration"}},
+		{"kubernetes cluster deployment guide", []string{"kubernetes", "cluster", "deployment", "guide"}},
 		{"SAME strengths weaknesses", []string{"SAME", "strengths", "weaknesses"}},
 		{"AI experiments", []string{"AI", "experiments"}},
 		{"", nil},
@@ -49,11 +49,11 @@ func TestTitleOverlapScore(t *testing.T) {
 		},
 		{
 			name:   "multi-term partial match",
-			terms:  []string{"Power", "Query", "SharePoint", "integration"},
-			title:  "Power Query M Code Reference: SharePoint Connectivity",
+			terms:  []string{"kubernetes", "cluster", "deployment", "guide"},
+			title:  "Kubernetes Cluster Configuration: Deployment Strategies",
 			path:   "",
-			wantGT: 0.25, // 3/4 * 3/8 = 0.375
-			wantLT: 0.40,
+			wantGT: 0.35, // 3/4 * 3/5 = 0.45
+			wantLT: 0.55,
 		},
 		{
 			name:   "no match",
@@ -146,10 +146,10 @@ func TestOverlapForSort(t *testing.T) {
 func TestRankSearchResults(t *testing.T) {
 	results := []SearchResult{
 		{Path: "noise.md", Title: "Unrelated Note", Score: 1.0, ContentType: "note"},
-		{Path: "exact.md", Title: "Power Query SharePoint Guide", Score: 0.6, ContentType: "note"},
+		{Path: "exact.md", Title: "Kubernetes Deployment Guide", Score: 0.6, ContentType: "note"},
 		{Path: "hub.md", Title: "Random Hub", Score: 0.8, ContentType: "hub"},
 	}
-	queryTerms := []string{"Power", "Query", "SharePoint"}
+	queryTerms := []string{"Kubernetes", "Deployment", "Guide"}
 
 	ranked := RankSearchResults(results, queryTerms)
 

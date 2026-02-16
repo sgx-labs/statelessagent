@@ -126,4 +126,11 @@ jobs:
 
       - name: Publish to npm
         working-directory: npm
-        run: npm publish --access public
+        run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          PKG_VER=$(node -p "require('./package.json').version")
+          if npm view "${PKG_NAME}@${PKG_VER}" version 2>/dev/null; then
+            echo "Version ${PKG_VER} already published — skipping"
+          else
+            npm publish --access public
+          fi

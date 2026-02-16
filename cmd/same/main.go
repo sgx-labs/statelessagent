@@ -190,11 +190,15 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 		ciCmd(),
 	)
 
-	// User-facing but ungrouped
-	root.AddCommand(versionCmd())
-	root.AddCommand(updateCmd())
-	root.AddCommand(statsCmd())
-	root.AddCommand(repairCmd())
+	addGrouped("diagnostics",
+		statsCmd(),
+		repairCmd(),
+	)
+
+	addGrouped("config",
+		versionCmd(),
+		updateCmd(),
+	)
 
 	// Internal commands (hidden from --help)
 	for _, cmd := range []*cobra.Command{migrateCmd(), hookCmd(), budgetCmd(), pluginCmd(), pushAllowCmd()} {

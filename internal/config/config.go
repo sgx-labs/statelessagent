@@ -171,6 +171,7 @@ type HooksConfig struct {
 	DecisionExtractor bool `toml:"decision_extractor"`
 	HandoffGenerator  bool `toml:"handoff_generator"`
 	StalenessCheck    bool `toml:"staleness_check"`
+	HandoffMaxAgeDays int  `toml:"handoff_max_age_days"` // Max age in days for loading handoffs (default 2)
 }
 
 // DisplayConfig controls visual output settings.
@@ -453,6 +454,15 @@ func HandoffDirectory() string {
 		return cfg.Vault.HandoffDir
 	}
 	return "sessions"
+}
+
+// HandoffMaxAge returns the maximum age in hours for loading handoff notes.
+// Defaults to 48 hours (2 days). Configurable via hooks.handoff_max_age_days.
+func HandoffMaxAge() int {
+	if cfg := loadConfigSafe(); cfg != nil && cfg.Hooks.HandoffMaxAgeDays > 0 {
+		return cfg.Hooks.HandoffMaxAgeDays * 24
+	}
+	return 48 // 2 days default
 }
 
 // DecisionLogPath returns the path (relative to vault root) for the decision log.

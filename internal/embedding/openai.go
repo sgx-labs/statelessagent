@@ -181,6 +181,9 @@ func (p *OpenAIProvider) doEmbedRequest(body []byte) ([]float32, error) {
 	if p.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
+	// App attribution headers for OpenRouter and compatible services
+	req.Header.Set("X-Title", "SAME")
+	req.Header.Set("HTTP-Referer", "https://statelessagent.com")
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {

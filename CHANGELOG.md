@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.8.2 — Handoff Quality & UX
+
+Comprehensive upgrade to session handoffs based on real-world user feedback. Richer auto-generated handoffs, better session continuity, bug reporting infrastructure, and UX polish.
+
+### Improved
+
+- **Rich auto-handoffs** — now extract decision titles (from `save_decision` calls), notes created (from `save_note` calls), tool usage breakdown, user/assistant message split, and word-boundary truncation for topics
+- **Forward-looking context** — auto-handoffs now include a "Next steps" section extracted from the last assistant messages
+- **Bootstrap parser** — includes ALL sections from handoff files instead of silently dropping unknown ones. Known sections are prioritized, unknown sections appended in original order
+- **Placeholder filtering** — bootstrap strips sections containing only `(see ...)`, `(review ...)`, or `(none)` placeholder text
+- **Configurable handoff age** — `hooks.handoff_max_age_days` in config.toml (default: 2 days). Controls how far back SAME looks for handoff notes at session start
+- **Clearer session loading message** — stderr now shows `"← previous session loaded"` instead of the confusing `"↩ recovered previous session"`
+- **File truncation indicator** — when more than 20 files are changed, handoff shows `"...and N more"` instead of silent truncation
+- **Large note warnings** — reindex warns when notes exceed 30KB, which can reduce search quality
+- **App attribution headers** — openai-compatible provider now sends `X-Title` and `HTTP-Referer` headers for OpenRouter compatibility
+- **`--provider` flag for init** — `same init --provider openai-compatible` skips Ollama check and uses the specified embedding provider
+- **Standardized handoff filenames** — MCP `create_handoff` now uses the same date-based naming convention as auto-handoffs
+- **Interactive seed selection during init** — users with existing notes now see the full seed catalog with an option to install one directly, instead of a dim tip line
+- **Embedding model chooser during init** — shows available models (nomic, snowflake, mxbai, etc.) and lets users pick before indexing
+- **Styled `reindex` and `stats` output** — human-friendly formatted output instead of raw JSON dumps
+- **Grouped help commands** — all commands now organized into groups in `--help` output (no more loose ungrouped commands)
+- **Readable search scores** — verbose mode shows `Relevance: 87%` instead of `Score: 0.873`
+- **Complete MCP tool list** — `same setup mcp` now shows all 12 tools including `search_across_vaults`
+
+### Added
+
+- **Bug reporting** — "Report a Bug" link in README and npm package, GitHub issue templates (bug report + feature request), `same doctor` shows issues URL when checks fail, MCP `index_stats` description guides agents to `same doctor` and GitHub Issues
+- **Stop hook message control** — handoff creation message shows once per session; subsequent updates are silent
+
+### Fixed
+
+- **npm-publish CI** — release workflow now checks if version already exists before publishing, preventing false failures on re-runs
+
+---
+
 ## v0.8.1 — Hotfix
 
 Critical fix for Claude Code v2 transcript format. Stop hooks (decision extractor, handoff generator, feedback loop) were silently returning empty results because the transcript parser expected flat JSON but Claude Code v2 nests messages in a `{"type":"...","message":{...}}` envelope.

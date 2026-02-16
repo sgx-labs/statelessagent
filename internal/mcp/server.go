@@ -151,7 +151,7 @@ func registerTools(server *mcp.Server) {
 	// index_stats
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "index_stats",
-		Description: "Check the health and size of the note index. Use this to verify the index is up to date or to report stats to the user.\n\nReturns note count, chunk count, last indexed timestamp, embedding model info, and database size.",
+		Description: "Check the health and size of the note index. Use this to verify the index is up to date or to report stats to the user.\n\nReturns note count, chunk count, last indexed timestamp, embedding model info, and database size.\n\nIf the user reports problems, suggest they run `same doctor` for diagnostics. For bugs, direct them to: https://github.com/sgx-labs/statelessagent/issues",
 		Annotations: readOnly,
 	}, handleIndexStats)
 
@@ -559,7 +559,8 @@ func handleCreateHandoff(ctx context.Context, req *mcp.CallToolRequest, input cr
 	}
 
 	now := time.Now()
-	filename := fmt.Sprintf("%s-handoff.md", now.Format("2006-01-02T15-04"))
+	// Use time-based suffix to match auto-handoff naming convention
+	filename := fmt.Sprintf("%s-%s-handoff.md", now.Format("2006-01-02"), now.Format("150405"))
 	relPath := filepath.Join(handoffDir, filename)
 
 	safePath := safeVaultPath(relPath)

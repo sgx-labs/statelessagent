@@ -59,6 +59,15 @@ func runHandoffGenerator(db *store.DB, input *HookInput) *HookOutput {
 		return nil
 	}
 
+	// Only show the message on first handoff creation for this session.
+	// Subsequent overwrites update the file silently.
+	key := "handoff_created"
+	if _, alreadyCreated := db.SessionStateGet(input.SessionID, key); alreadyCreated {
+		writeVerboseLog(fmt.Sprintf("handoff-generator: updated %s (silent)\n", result.Path))
+		return nil
+	}
+	_ = db.SessionStateSet(input.SessionID, key, result.Path)
+
 	if !isQuietMode() {
 		fmt.Fprintf(os.Stderr, "same: ✓ handoff saved → %s\n", result.Path)
 	}

@@ -105,6 +105,7 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 		content []byte // cached content from hash check (nil in force mode)
 	}
 	var work []fileWork
+	const largeNoteThreshold = 30 * 1024 // 30KB
 	for _, fp := range mdFiles {
 		relPath := relativePath(fp, vaultPath)
 
@@ -113,6 +114,10 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 			if err != nil {
 				stats.Errors++
 				continue
+			}
+			if len(content) > largeNoteThreshold {
+				fmt.Fprintf(os.Stderr, "same: warning: %s is %dKB — large notes reduce search quality\n",
+					relPath, len(content)/1024)
 			}
 			hash := sha256Hash(string(content))
 			if existing, ok := existingHashes[relPath]; ok && existing == hash {

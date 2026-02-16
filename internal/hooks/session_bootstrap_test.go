@@ -51,17 +51,15 @@ The parser is 80% complete. Tests pass.
 	}
 }
 
-func TestExtractHandoffSections_OnlySummary(t *testing.T) {
-	// "Summary" is not in the priority list, so this should return empty
-	// unless it matches another section name
+func TestExtractHandoffSections_UnknownSectionsIncluded(t *testing.T) {
+	// All sections should now be included, even unknown ones
 	content := `## Summary
 This session was productive.
 `
 
 	result := extractHandoffSections(content)
-	// "Summary" is NOT in the priority list, so result should be empty
-	if result != "" {
-		t.Errorf("expected empty result for Summary-only content, got %q", result)
+	if !strings.Contains(result, "This session was productive") {
+		t.Errorf("expected unknown section to be included, got %q", result)
 	}
 }
 
@@ -207,41 +205,66 @@ All clear.
 }
 
 // ---------------------------------------------------------------------------
-// extractSectionWithOffset
+// extractHandoffSections
 // ---------------------------------------------------------------------------
 
-func TestExtractSectionWithOffset_Basic(t *testing.T) {
-	content := `## Summary
-This is the summary.
+func TestExtractHandoffSections_IncludesAllSections(t *testing.T) {
+	content := `---
+title: Test Handoff
+content_type: handoff
+---
 
-## Details
-These are details.
+# Session Handoff
+
+## What we worked on
+- Setup friend with Claude
+- Debugging auth issues
+
+## Decisions
+- Use JWT for auth
+
+## Custom Section
+Something custom here.
+
+## Files changed
+- main.go
 `
 
-	idx, text := extractSectionWithOffset(content, "Summary")
-	if idx < 0 {
-		t.Fatal("expected non-negative offset")
+	result := extractHandoffSections(content)
+	if !strings.Contains(result, "Setup friend with Claude") {
+		t.Error("expected 'What we worked on' content")
 	}
-	if !strings.Contains(text, "This is the summary") {
-		t.Errorf("expected summary text, got %q", text)
+	if !strings.Contains(result, "Use JWT for auth") {
+		t.Error("expected 'Decisions' content")
 	}
-	// Should NOT contain details section
-	if strings.Contains(text, "details") {
-		t.Errorf("expected section to end at next heading, got %q", text)
+	if !strings.Contains(result, "Something custom here") {
+		t.Error("expected custom section to be included, not dropped")
+	}
+	if !strings.Contains(result, "main.go") {
+		t.Error("expected 'Files changed' content")
 	}
 }
 
-func TestExtractSectionWithOffset_NotFound(t *testing.T) {
-	content := `## Summary
-Only summary here.
+func TestExtractHandoffSections_SkipsPlaceholders(t *testing.T) {
+	content := `## Accomplishments
+- Worked on: something real
+
+## Decisions Made
+(see decision extractor for detailed extraction)
+
+## Next Session
+(review handoff and add specific next steps)
 `
 
-	idx, text := extractSectionWithOffset(content, "Missing Section")
-	if idx >= 0 {
-		t.Errorf("expected -1 offset for missing section, got %d", idx)
+	result := extractHandoffSections(content)
+	if !strings.Contains(result, "something real") {
+		t.Error("expected real accomplishments")
 	}
-	if text != "" {
-		t.Errorf("expected empty text for missing section, got %q", text)
+	if strings.Contains(result, "see decision extractor") {
+		t.Error("placeholder text should be filtered out")
+	}
+	if strings.Contains(result, "review handoff") {
+		t.Error("placeholder text should be filtered out")
 	}
 }
 

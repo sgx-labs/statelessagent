@@ -511,6 +511,9 @@ func runDoctor(jsonOut bool) error {
 	if !ollamaAvailable {
 		lines = append(lines, "SAME is running in lite mode (keyword search). Install Ollama for semantic search.")
 	}
+	if failed > 0 {
+		lines = append(lines, "Still stuck? Report a bug: https://github.com/sgx-labs/statelessagent/issues")
+	}
 	cli.Box(lines)
 
 	cli.Footer()

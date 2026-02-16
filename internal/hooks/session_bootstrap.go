@@ -54,7 +54,7 @@ func runSessionBootstrap(db *store.DB, input *HookInput) *HookOutput {
 				case RecoveryInstance:
 					source = "instance"
 				}
-				fmt.Fprintf(os.Stderr, "same: ↩ recovered previous session (%s, %s)\n", source, formatAge(recovered.EndedAt))
+				fmt.Fprintf(os.Stderr, "same: ← previous session loaded (%s, %s)\n", source, formatAge(recovered.EndedAt))
 			}
 		}
 	}
@@ -202,7 +202,9 @@ func findLatestHandoff() string {
 	return "## Last Session\n" + extracted
 }
 
-// extractHandoffSections pulls the most useful sections from a handoff note.
+// extractHandoffSections pulls sections from a handoff note.
+// All ## sections are included — known sections are ordered first for priority,
+// then any remaining sections are appended in their original order.
 func extractHandoffSections(content string) string {
 	// Strip YAML frontmatter
 	if strings.HasPrefix(content, "---") {
@@ -211,61 +213,111 @@ func extractHandoffSections(content string) string {
 		}
 	}
 
-	// Define sections in priority order. Use longest-match-first groups
-	// to avoid "Next Session" also matching when "Next Session Should" exists.
-	prioritySections := []string{
-		"Next Session Should",
-		"Next Session",
-		"Current State",
-		"What Was Done",
-		"Accomplishments",
-		"Decisions Made",
-		"Files Changed",
+	// Strip the top-level # heading (e.g. "# Session Handoff")
+	if strings.HasPrefix(content, "# ") {
+		if nl := strings.Index(content, "\n"); nl >= 0 {
+			content = strings.TrimSpace(content[nl+1:])
+		}
 	}
 
-	var parts []string
-	matched := make(map[int]bool) // track byte offsets already extracted
+	// Parse all ## sections with their byte offsets
+	type section struct {
+		heading string
+		text    string
+		offset  int
+	}
+	var allSections []section
+	seen := make(map[int]bool)
 
-	for _, section := range prioritySections {
-		idx, text := extractSectionWithOffset(content, section)
-		if text == "" || matched[idx] {
+	// Scan for all ## headings
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "## ") {
 			continue
 		}
-		matched[idx] = true
-		parts = append(parts, "### "+section+"\n"+text)
+		heading := strings.TrimSpace(line[3:])
+		if heading == "" {
+			continue
+		}
+
+		// Collect body until next ## or --- or end
+		var body []string
+		for j := i + 1; j < len(lines); j++ {
+			if strings.HasPrefix(lines[j], "## ") || strings.HasPrefix(lines[j], "---") {
+				break
+			}
+			body = append(body, lines[j])
+		}
+		text := strings.TrimSpace(strings.Join(body, "\n"))
+		if text == "" || text == "(none)" || text == "(none recorded)" || text == "(not recorded)" {
+			continue
+		}
+		// Skip placeholder sections
+		if strings.HasPrefix(text, "(see ") || strings.HasPrefix(text, "(review ") {
+			continue
+		}
+		allSections = append(allSections, section{heading: heading, text: text, offset: i})
+	}
+
+	if len(allSections) == 0 {
+		return ""
+	}
+
+	// Known sections in priority order (matched case-insensitively).
+	// Includes both current and legacy section names for backward compatibility.
+	priorityOrder := []string{
+		"what we worked on",
+		"accomplishments",
+		"what was done",
+		"decisions",
+		"decisions made",
+		"notes created",
+		"notes created or updated",
+		"next steps",
+		"current state",
+		"session",
+		"files changed",
+		"tool usage",
+		"pending",
+		"blockers",
+		"next session should",
+		"next session",
+	}
+
+	// Build priority map for ordering
+	priorityMap := make(map[string]int)
+	for i, name := range priorityOrder {
+		priorityMap[name] = i
+	}
+
+	// Sort: known sections by priority, unknown sections after (in original order)
+	sorted := make([]section, len(allSections))
+	copy(sorted, allSections)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		pi, oki := priorityMap[strings.ToLower(sorted[i].heading)]
+		pj, okj := priorityMap[strings.ToLower(sorted[j].heading)]
+		if oki && okj {
+			return pi < pj
+		}
+		if oki {
+			return true // known before unknown
+		}
+		if okj {
+			return false // unknown after known
+		}
+		return sorted[i].offset < sorted[j].offset // preserve order for unknowns
+	})
+
+	var parts []string
+	for _, s := range sorted {
+		if seen[s.offset] {
+			continue
+		}
+		seen[s.offset] = true
+		parts = append(parts, "### "+s.heading+"\n"+s.text)
 	}
 
 	return strings.Join(parts, "\n\n")
-}
-
-// extractSectionWithOffset extracts the content under a ## heading and returns
-// its byte offset in the source content (used for deduplication).
-func extractSectionWithOffset(content, heading string) (int, string) {
-	// Look for ## heading (case-insensitive)
-	lower := strings.ToLower(content)
-	target := strings.ToLower("## " + heading)
-
-	idx := strings.Index(lower, target)
-	if idx < 0 {
-		return -1, ""
-	}
-
-	// Skip the heading line itself
-	start := idx + len("## "+heading)
-	rest := content[start:]
-
-	// Find the next ## heading
-	nextHeading := strings.Index(rest, "\n## ")
-	if nextHeading >= 0 {
-		rest = rest[:nextHeading]
-	}
-
-	// Also stop at --- (horizontal rule / frontmatter end)
-	if hrIdx := strings.Index(rest, "\n---"); hrIdx >= 0 {
-		rest = rest[:hrIdx]
-	}
-
-	return idx, strings.TrimSpace(rest)
 }
 
 // findActiveDecisions reads decision log files and extracts entries from

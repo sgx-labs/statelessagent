@@ -92,6 +92,7 @@ same demo
 - [Documentation](https://statelessagent.com/docs)
 - [GitHub](https://github.com/sgx-labs/statelessagent)
 - [Discord](https://discord.gg/9KfTkcGs7g)
+- [Report a Bug](https://github.com/sgx-labs/statelessagent/issues/new?template=bug_report.md)
 
 ## License
 

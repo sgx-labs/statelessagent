@@ -512,7 +512,7 @@ func TestHandleCreateHandoff_Success(t *testing.T) {
 	}
 
 	// Verify the handoff file was created
-	today := time.Now().Format("2006-01-02T15-04")
+	today := time.Now().Format("2006-01-02") + "-" + time.Now().Format("150405")
 	handoffPath := filepath.Join(vault, "sessions", today+"-handoff.md")
 	content, err := os.ReadFile(handoffPath)
 	if err != nil {
@@ -545,7 +545,7 @@ func TestHandleCreateHandoff_OptionalFields(t *testing.T) {
 		t.Errorf("expected 'Handoff saved', got %q", text)
 	}
 
-	today := time.Now().Format("2006-01-02T15-04")
+	today := time.Now().Format("2006-01-02") + "-" + time.Now().Format("150405")
 	handoffPath := filepath.Join(vault, "sessions", today+"-handoff.md")
 	content, err := os.ReadFile(handoffPath)
 	if err != nil {

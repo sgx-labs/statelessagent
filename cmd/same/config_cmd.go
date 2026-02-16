@@ -118,6 +118,7 @@ func setupSubCmd() *cobra.Command {
 			fmt.Println("\n  Available MCP tools:")
 			fmt.Println("    search_notes          Semantic search across your vault")
 			fmt.Println("    search_notes_filtered Search with domain/tag/type filters")
+			fmt.Println("    search_across_vaults  Search across multiple vaults")
 			fmt.Println("    get_note              Read a note by path")
 			fmt.Println("    find_similar_notes    Find related notes by similarity")
 			fmt.Println("    save_note             Save a new note to the vault")

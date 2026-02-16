@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -71,8 +70,16 @@ func runReindex(force bool) error {
 		}
 	}
 
-	data, _ := json.MarshalIndent(stats, "", "  ")
-	fmt.Println(string(data))
+	fmt.Println()
+	fmt.Printf("  %sReindex complete%s\n\n", cli.Bold, cli.Reset)
+	fmt.Printf("  Files scanned:   %d\n", stats.TotalFiles)
+	fmt.Printf("  Newly indexed:   %d\n", stats.NewlyIndexed)
+	fmt.Printf("  Unchanged:       %d\n", stats.SkippedUnchanged)
+	if stats.Errors > 0 {
+		fmt.Printf("  Errors:          %s%d%s\n", cli.Yellow, stats.Errors, cli.Reset)
+	}
+	fmt.Printf("  Notes in index:  %d\n", stats.NotesInIndex)
+	fmt.Printf("  Chunks in index: %d\n", stats.ChunksInIndex)
 	fmt.Printf("\n  %sTip: Run 'same watch' in another terminal to auto-reindex as you edit notes.%s\n", cli.Dim, cli.Reset)
 	return nil
 }
@@ -85,7 +92,19 @@ func runStats() error {
 	defer db.Close()
 
 	stats := indexer.GetStats(db)
-	data, _ := json.MarshalIndent(stats, "", "  ")
-	fmt.Println(string(data))
+	fmt.Println()
+	fmt.Printf("  %sIndex Statistics%s\n\n", cli.Bold, cli.Reset)
+	for _, key := range []string{
+		"total_notes_in_index", "total_chunks_in_index",
+		"embedding_model", "embedding_dimensions",
+		"db_size_mb", "status",
+	} {
+		if v, ok := stats[key]; ok {
+			label := strings.ReplaceAll(key, "_", " ")
+			label = strings.ToUpper(label[:1]) + label[1:]
+			fmt.Printf("  %-22s %v\n", label+":", v)
+		}
+	}
+	fmt.Println()
 	return nil
 }

@@ -34,6 +34,7 @@ type InitOptions struct {
 	HooksOnly bool   // skip MCP setup (Claude Code only)
 	Verbose   bool   // show detailed progress (each file being processed)
 	Version   string
+	Provider  string // embedding provider override: ollama, openai, openai-compatible
 }
 
 // ExperienceLevel represents the user's coding experience.
@@ -203,8 +204,11 @@ func RunInit(opts InitOptions) error {
 		experience = askExperienceLevel()
 	}
 
-	// Checking embedding provider
+	// Checking embedding provider (--provider flag overrides config)
 	embedProvider := config.EmbeddingProvider()
+	if opts.Provider != "" {
+		embedProvider = opts.Provider
+	}
 	ollamaOK := true
 
 	if embedProvider == "openai" || embedProvider == "openai-compatible" {
@@ -255,6 +259,11 @@ func RunInit(opts InitOptions) error {
 				ollamaOK = false
 			}
 		}
+	}
+
+	// Offer model selection (interactive only)
+	if !opts.Yes && (ollamaOK || embedProvider == "openai" || embedProvider == "openai-compatible") {
+		offerModelChoice(embedProvider)
 	}
 
 	// Finding notes
@@ -376,7 +385,7 @@ func RunInit(opts InitOptions) error {
 		fmt.Printf("  Your AI will remember your decisions, your architecture,\n")
 		fmt.Printf("  your preferences — across every session.\n")
 		fmt.Println()
-		showSeedIntro()
+		showSeedIntro(opts)
 	} else {
 		offerSeedInstall(opts)
 	}
@@ -525,45 +534,188 @@ func offerSeedInstall(opts InitOptions) bool {
 	return true
 }
 
-// showSeedIntro displays a non-blocking seed vaults section during init.
-// Shows featured seeds from the manifest with a clear CTA. Gracefully
-// degrades if the manifest can't be fetched (offline).
-func showSeedIntro() {
+// showSeedIntro displays the seed vaults section during init.
+// Shows available seeds and lets users pick one to install, or skip.
+// In non-interactive mode (--yes), shows the list without prompting.
+func showSeedIntro(opts InitOptions) {
 	cli.Section("Seed Vaults")
 	fmt.Printf("  Add expert knowledge alongside your own notes.\n")
 	fmt.Printf("  Pre-built, domain-specific — install in one command.\n")
 	fmt.Println()
 
 	manifest, err := seed.FetchManifest(false)
-	if err == nil && len(manifest.Seeds) > 0 {
-		// Featured seeds first, then the rest
-		for _, s := range manifest.Seeds {
-			if s.Featured {
-				fmt.Printf("    %s★%s %-28s %s%d notes — %s%s\n",
-					cli.Cyan, cli.Reset, s.DisplayName,
-					cli.Dim, s.NoteCount, s.Description, cli.Reset)
-			}
-		}
-		for _, s := range manifest.Seeds {
-			if !s.Featured {
-				fmt.Printf("    %s·%s %-28s %s%d notes — %s%s\n",
-					cli.Dim, cli.Reset, s.DisplayName,
-					cli.Dim, s.NoteCount, s.Description, cli.Reset)
-			}
-		}
+	if err != nil || len(manifest.Seeds) == 0 {
+		// Offline or empty manifest — just show commands
+		fmt.Printf("  %sBrowse:%s  same seed list\n", cli.Bold, cli.Reset)
+		fmt.Printf("  %sInstall:%s same seed install <name>\n", cli.Bold, cli.Reset)
 		fmt.Println()
+		return
 	}
 
-	fmt.Printf("  %sBrowse:%s  same seed list\n", cli.Bold, cli.Reset)
-	fmt.Printf("  %sInstall:%s same seed install <name>\n", cli.Bold, cli.Reset)
-	fmt.Printf("  %sCreate:%s  github.com/sgx-labs/seed-vaults#creating-a-seed\n", cli.Bold, cli.Reset)
+	// Show numbered list
+	fmt.Printf("  %sAvailable seeds:%s                                              %sNotes%s\n",
+		cli.Bold, cli.Reset, cli.Dim, cli.Reset)
 	fmt.Println()
-	fmt.Printf("  %sSeeds grow smarter with use — your decisions, handoffs, and notes%s\n", cli.Dim, cli.Reset)
-	fmt.Printf("  %sbuild on top of seed knowledge, creating a feedback loop that gets%s\n", cli.Dim, cli.Reset)
-	fmt.Printf("  %smore valuable every session.%s\n", cli.Dim, cli.Reset)
+	for i, s := range manifest.Seeds {
+		marker := " "
+		if s.Featured {
+			marker = "★"
+		}
+		fmt.Printf("    %s%2d%s)%s %-30s %3d   %s%s%s\n",
+			cli.Cyan, i+1, cli.Reset, marker, s.Name, s.NoteCount, cli.Dim, s.Description, cli.Reset)
+	}
 	fmt.Println()
-	fmt.Printf("  %sSeeds are a community project — PRs welcome.%s\n", cli.Dim, cli.Reset)
-	fmt.Printf("  %sImprove an existing seed or create your own.%s\n", cli.Dim, cli.Reset)
+
+	if opts.Yes {
+		// Non-interactive — show commands only
+		fmt.Printf("  %sInstall:%s same seed install <name>\n", cli.Bold, cli.Reset)
+		fmt.Println()
+		return
+	}
+
+	// Interactive — let user pick
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Printf("  Pick a number to install, or Enter to skip: ")
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Println()
+		return
+	}
+	line = strings.TrimSpace(line)
+
+	if line == "" {
+		fmt.Printf("\n  %sInstall seeds anytime with: same seed install <name>%s\n", cli.Dim, cli.Reset)
+		return
+	}
+
+	var n int
+	if _, err := fmt.Sscanf(line, "%d", &n); err != nil || n < 1 || n > len(manifest.Seeds) {
+		fmt.Printf("  %s!%s Invalid choice\n", cli.Yellow, cli.Reset)
+		return
+	}
+
+	chosen := manifest.Seeds[n-1]
+	destDir := filepath.Join(seed.DefaultSeedDir(), chosen.Name)
+	fmt.Println()
+	fmt.Printf("  Installing %s%s%s to %s...\n\n",
+		cli.Bold, chosen.DisplayName, cli.Reset, cli.ShortenHome(destDir))
+
+	installOpts := seed.InstallOptions{
+		Name:    chosen.Name,
+		Version: opts.Version,
+		OnDownloadStart: func() {
+			fmt.Printf("  Downloading...               ")
+		},
+		OnDownloadDone: func(sizeKB int) {
+			fmt.Printf("done (%d KB)\n", sizeKB)
+		},
+		OnExtractDone: func(fileCount int) {
+			fmt.Printf("  Extracting %d files...       done\n", fileCount)
+		},
+		OnIndexDone: func(chunks int) {
+			if chunks > 0 {
+				fmt.Printf("  Indexing...                  done (%d chunks)\n", chunks)
+			} else {
+				fmt.Printf("  Indexing...                  skipped\n")
+			}
+		},
+	}
+
+	result, err := seed.Install(installOpts)
+	if err != nil {
+		fmt.Printf("  %s!%s Install failed: %v\n", cli.Yellow, cli.Reset, err)
+		fmt.Printf("  %sYou can try again with: same seed install %s%s\n\n", cli.Dim, chosen.Name, cli.Reset)
+		return
+	}
+
+	fmt.Printf("  Registered as vault %q\n", chosen.Name)
+	seed.PrintLegalNotice()
+	fmt.Printf("\n  Installed to %s\n", cli.ShortenHome(result.DestDir))
+	fmt.Printf("\n  %sSearch it with:%s same search \"your query\" --vault %s\n\n",
+		cli.Bold, cli.Reset, chosen.Name)
+}
+
+// offerModelChoice shows available embedding models and lets the user pick one.
+// Only shown during interactive init (not --yes). The default model is pre-selected.
+func offerModelChoice(provider string) {
+	// Filter models for this provider
+	var models []config.ModelInfo
+	for _, m := range config.KnownModels {
+		if provider == "ollama" && m.Provider == "ollama" {
+			models = append(models, m)
+		} else if (provider == "openai" || provider == "openai-compatible") && m.Provider == "openai" {
+			models = append(models, m)
+		}
+	}
+
+	// For openai-compatible, show all ollama models too (they work via any server)
+	if provider == "openai-compatible" {
+		for _, m := range config.KnownModels {
+			if m.Provider == "ollama" {
+				models = append(models, m)
+			}
+		}
+	}
+
+	if len(models) <= 1 {
+		return // nothing to choose
+	}
+
+	current := config.EmbeddingModel
+	ec := config.EmbeddingProviderConfig()
+	if ec.Model != "" {
+		current = ec.Model
+	}
+
+	fmt.Println()
+	fmt.Printf("  %sEmbedding model:%s %s\n", cli.Bold, cli.Reset, current)
+	fmt.Printf("  %sAlternatives available — pick a number to switch, or Enter to keep:%s\n\n", cli.Dim, cli.Reset)
+
+	for i, m := range models {
+		marker := "  "
+		if m.Name == current {
+			marker = fmt.Sprintf("%s→%s ", cli.Cyan, cli.Reset)
+		}
+		fmt.Printf("    %s%s%2d%s) %-28s %4d dims  %s%s%s\n",
+			marker, cli.Cyan, i+1, cli.Reset, m.Name, m.Dims, cli.Dim, m.Description, cli.Reset)
+	}
+	fmt.Println()
+	fmt.Printf("  Choice [Enter = keep %s]: ", current)
+
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Println()
+		return
+	}
+	line = strings.TrimSpace(line)
+
+	if line == "" {
+		return // keep current
+	}
+
+	var n int
+	if _, err := fmt.Sscanf(line, "%d", &n); err != nil || n < 1 || n > len(models) {
+		fmt.Printf("  %s!%s Invalid choice — keeping %s\n", cli.Yellow, cli.Reset, current)
+		return
+	}
+
+	chosen := models[n-1]
+	if chosen.Name == current {
+		return // already selected
+	}
+
+	// Update config
+	vp := config.VaultPath()
+	if vp != "" {
+		if err := config.SetEmbeddingModel(vp, chosen.Name); err != nil {
+			fmt.Printf("  %s!%s Could not save model choice: %v\n", cli.Yellow, cli.Reset, err)
+			return
+		}
+	}
+
+	fmt.Printf("  %s✓%s Switched to %s%s%s (%d dims)\n",
+		cli.Green, cli.Reset, cli.Bold, chosen.Name, cli.Reset, chosen.Dims)
 }
 
 // checkOllama verifies Ollama is running and has the required model.

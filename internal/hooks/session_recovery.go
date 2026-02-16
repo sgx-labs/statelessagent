@@ -109,12 +109,13 @@ func recoverFromHandoff() *RecoveredSession {
 	latest := mdFiles[0]
 	latestPath := filepath.Join(handoffDir, latest.Name())
 
-	// Check freshness — only use handoffs from the last 48 hours
+	// Check freshness — only use handoffs within configured max age
 	info, err := latest.Info()
 	if err != nil {
 		return nil
 	}
-	if time.Since(info.ModTime()) > 48*time.Hour {
+	maxAge := time.Duration(config.HandoffMaxAge()) * time.Hour
+	if time.Since(info.ModTime()) > maxAge {
 		return nil
 	}
 
@@ -191,8 +192,9 @@ func recoverFromInstance(currentSessionID string) *RecoveredSession {
 			continue
 		}
 
-		// Only consider instances from the last 48 hours
-		if time.Since(updated) > 48*time.Hour {
+		// Only consider instances within configured max age
+		maxAge := time.Duration(config.HandoffMaxAge()) * time.Hour
+		if time.Since(updated) > maxAge {
 			continue
 		}
 
