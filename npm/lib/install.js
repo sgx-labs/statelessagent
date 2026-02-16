@@ -20,6 +20,7 @@ var PLATFORM_MAP = {
   "darwin-arm64": "darwin-arm64",
   "darwin-x64": "darwin-arm64", // Rosetta fallback
   "linux-x64": "linux-amd64",
+  "linux-arm64": "linux-arm64",
   "win32-x64": "windows-amd64.exe",
 };
 
@@ -30,7 +31,7 @@ function getBinarySuffix() {
     console.error(
       "[same] Unsupported platform: " +
         key +
-        ". Supported: darwin-arm64, linux-x64, win32-x64"
+        ". Supported: darwin-arm64, darwin-x64, linux-x64, linux-arm64, win32-x64"
     );
     return null;
   }

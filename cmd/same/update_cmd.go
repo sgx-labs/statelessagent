@@ -182,6 +182,8 @@ func runUpdate(force bool) error {
 		assetName = "same-darwin-amd64"
 	case goos == "linux" && goarch == "amd64":
 		assetName = "same-linux-amd64"
+	case goos == "linux" && goarch == "arm64":
+		assetName = "same-linux-arm64"
 	case goos == "windows" && goarch == "amd64":
 		assetName = "same-windows-amd64.exe"
 	default:
