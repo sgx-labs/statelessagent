@@ -1,6 +1,6 @@
 BINARY_NAME := same
 BUILD_DIR := build
-VERSION := 0.8.1
+VERSION := 0.8.2
 LDFLAGS := -ldflags "-s -w -X main.Version=$(VERSION)"
 
 # CGO is required for sqlite3 + sqlite-vec
