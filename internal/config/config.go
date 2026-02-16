@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -740,8 +741,17 @@ func validateVaultPath(path string) string {
 	if err != nil {
 		return path
 	}
-	// Block filesystem roots and shallow system directories
+	// Block filesystem roots and shallow system directories.
+	// On Windows, also block drive roots (C:\) and system directories.
 	dangerous := []string{"/", "/home", "/Users", "/tmp", "/var", "/etc", "/opt"}
+	if runtime.GOOS == "windows" && len(abs) >= 3 {
+		// Add common Windows drive roots and system paths
+		for _, letter := range "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
+			dangerous = append(dangerous, string(letter)+":\\")
+		}
+		driveRoot := abs[:3] // e.g. "C:\"
+		dangerous = append(dangerous, filepath.Join(driveRoot, "Users"), filepath.Join(driveRoot, "Windows"))
+	}
 	for _, d := range dangerous {
 		if abs == d {
 			fmt.Fprintf(os.Stderr, "WARNING: VAULT_PATH=%q is too broad, ignoring.\n", abs)
@@ -887,7 +897,7 @@ func validateDataDir(dir string) string {
 // VaultRegistry holds registered vault paths with aliases.
 type VaultRegistry struct {
 	Vaults  map[string]string `json:"vaults"`  // alias -> path
-	Default string            `json:"default"`  // alias of default vault
+	Default string            `json:"default"` // alias of default vault
 }
 
 // RegistryPath returns the path to the vault registry file.
