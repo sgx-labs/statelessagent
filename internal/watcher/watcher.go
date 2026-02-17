@@ -80,14 +80,22 @@ func Watch(db *store.DB) error {
 					if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
 						name := filepath.Base(event.Name)
 						if !config.SkipDirs[name] {
-							w.Add(event.Name)
+							if err := w.Add(event.Name); err != nil {
+								fmt.Fprintf(os.Stderr, "  [WARN] Could not watch %s: %v\n", event.Name, err)
+							}
 						}
 					}
 				}
 				continue
 			}
 
-			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) || event.Has(fsnotify.Rename) {
+			if event.Has(fsnotify.Rename) {
+				// fsnotify rename events refer to the old path. Remove that entry
+				// from the index so stale paths don't survive file moves.
+				removeFromIndex(db, event.Name, vaultPath)
+			}
+
+			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
 				mu.Lock()
 				pending[event.Name] = true
 				if timer != nil {
@@ -98,12 +106,7 @@ func Watch(db *store.DB) error {
 			}
 
 			if event.Has(fsnotify.Remove) {
-				relPath := relativePath(event.Name, vaultPath)
-				if err := db.DeleteByPath(relPath); err != nil {
-					fmt.Fprintf(os.Stderr, "  [ERROR] remove %s: %v\n", relPath, err)
-				} else {
-					fmt.Fprintf(os.Stderr, "  Removed from index: %s\n", relPath)
-				}
+				removeFromIndex(db, event.Name, vaultPath)
 			}
 
 		case err, ok := <-w.Errors:
@@ -148,6 +151,19 @@ func reindexFiles(db *store.DB, paths []string, vaultPath string) {
 
 	for _, fp := range paths {
 		relPath := relativePath(fp, vaultPath)
+		info, statErr := os.Stat(fp)
+		if statErr != nil {
+			if os.IsNotExist(statErr) {
+				// File disappeared before debounce flush (common on renames/deletes).
+				removeFromIndex(db, fp, vaultPath)
+			} else {
+				fmt.Fprintf(os.Stderr, "  [ERROR] stat %s: %v\n", relPath, statErr)
+			}
+			continue
+		}
+		if info.IsDir() {
+			continue
+		}
 
 		var err error
 		if liteMode {
@@ -166,6 +182,15 @@ func reindexFiles(db *store.DB, paths []string, vaultPath string) {
 			fmt.Fprintf(os.Stderr, "  Indexed: %s\n", relPath)
 		}
 	}
+}
+
+func removeFromIndex(db *store.DB, absPath, vaultPath string) {
+	relPath := relativePath(absPath, vaultPath)
+	if err := db.DeleteByPath(relPath); err != nil {
+		fmt.Fprintf(os.Stderr, "  [ERROR] remove %s: %v\n", relPath, err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "  Removed from index: %s\n", relPath)
 }
 
 func walkDirs(root string) []string {
