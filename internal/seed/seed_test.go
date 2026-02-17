@@ -427,6 +427,8 @@ func TestValidateSeedPath(t *testing.T) {
 		{name: "absolute", input: "/etc/passwd", wantErr: true},
 		{name: "traversal", input: "../seeds", wantErr: true},
 		{name: "dot segment normalized", input: "./seeds", wantErr: false},
+		{name: "embedded dot segment", input: "foo/./seed", wantErr: true},
+		{name: "embedded traversal segment", input: "foo/../seed", wantErr: true},
 		{name: "hidden segment", input: ".hidden/seed", wantErr: true},
 	}
 
@@ -552,6 +554,36 @@ func TestRemove_DeleteFilesSuccess_UnregistersAndDeletes(t *testing.T) {
 	}
 	if _, err := os.Stat(seedPath); !os.IsNotExist(err) {
 		t.Fatalf("seed path should be deleted, stat err=%v", err)
+	}
+}
+
+func TestRemove_RejectsDeletingDefaultSeedRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	root := DefaultSeedDir()
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatalf("mkdir default seed root: %v", err)
+	}
+	reg := &config.VaultRegistry{
+		Vaults:  map[string]string{"test-seed": root},
+		Default: "test-seed",
+	}
+	if err := reg.Save(); err != nil {
+		t.Fatalf("save registry: %v", err)
+	}
+
+	if err := Remove("test-seed", true); err == nil {
+		t.Fatal("expected remove to reject deleting default seed root")
+	}
+
+	after := config.LoadRegistry()
+	if _, ok := after.Vaults["test-seed"]; !ok {
+		t.Fatal("seed should remain registered after rejection")
+	}
+	if after.Default != "test-seed" {
+		t.Fatalf("default should remain unchanged, got %q", after.Default)
 	}
 }
 

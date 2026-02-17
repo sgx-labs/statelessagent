@@ -25,8 +25,8 @@
 - **Provider-neutral diagnostics and status UX** — `same status`/`same doctor` now report embedding/chat/graph runtime state across `ollama`, `openai`, `openai-compatible`, and `none` modes instead of Ollama-only assumptions
 - **`same watch` rename/delete consistency** — watcher now removes stale indexed paths on file rename, cleans up entries when files vanish before debounce flush, and rejects out-of-vault relative-path escapes
 - **`same init --provider` input validation** — invalid provider names now fail fast with a clear error instead of falling into confusing runtime fallback paths
-- **Seed manifest/cache parity checks** — cached manifests now enforce the same seed name/path validation as fresh downloads, preventing trust gaps when falling back to local cache
-- **`same seed remove` consistency safeguards** — destructive path checks now run before registry mutation, and delete failures trigger best-effort registry rollback
+- **Seed manifest/cache parity checks** — cached manifests now enforce the same seed name/path validation as fresh downloads (including rejection of embedded `.` / `..` traversal segments), preventing trust gaps when falling back to local cache
+- **`same seed remove` consistency safeguards** — destructive path checks now run before registry mutation, root seed-dir deletion is explicitly refused, and delete failures trigger best-effort registry rollback
 - **Seed extraction containment checks** — archive extraction boundary validation now uses path-relative containment checks to avoid prefix-confusion edge cases
 - **Vault feed containment checks** — source/destination path enforcement now uses `filepath.Rel`-based boundary checks instead of raw prefix matching for safer cross-platform behavior
 - **Vault subpath guard strictness** — `SafeVaultSubpath` now rejects absolute subpath inputs and uses boundary-safe containment checks before writing handoff/decision files

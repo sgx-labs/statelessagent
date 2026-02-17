@@ -152,6 +152,11 @@ func validateSeedPath(path string) error {
 			return fmt.Errorf("seed path must be relative (got %q)", path)
 		}
 	}
+	for i, part := range strings.Split(normalized, "/") {
+		if part == ".." || (part == "." && i > 0) {
+			return fmt.Errorf("seed path cannot contain dot traversal segments (got %q)", path)
+		}
+	}
 
 	clean := filepath.ToSlash(filepath.Clean(filepath.FromSlash(normalized)))
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") {

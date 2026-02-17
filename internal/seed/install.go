@@ -260,7 +260,7 @@ func Remove(name string, deleteFiles bool) error {
 		if err != nil {
 			return fmt.Errorf("resolve seed dir: %w", err)
 		}
-		if !pathWithin(absSeedDir, absPath) {
+		if absPath == absSeedDir || !pathWithin(absSeedDir, absPath) {
 			return fmt.Errorf("refusing to delete %s — not under %s (use 'same vault remove %s' instead)",
 				absPath, seedDir, name)
 		}
