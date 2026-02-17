@@ -1046,3 +1046,37 @@ func TestHandleGitignore_SkipsIfAlreadyPresent(t *testing.T) {
 		t.Error("gitignore should not be modified when SAME rules already present")
 	}
 }
+
+func TestNormalizeEmbedProvider(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{name: "default empty", input: "", want: "ollama"},
+		{name: "trim + lower", input: "  OpenAI-Compatible  ", want: "openai-compatible"},
+		{name: "ollama", input: "ollama", want: "ollama"},
+		{name: "openai", input: "openai", want: "openai"},
+		{name: "none", input: "none", want: "none"},
+		{name: "invalid", input: "ollamaa", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := normalizeEmbedProvider(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for input %q", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("normalizeEmbedProvider(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}

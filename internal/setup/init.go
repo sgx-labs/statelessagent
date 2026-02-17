@@ -45,6 +45,20 @@ const (
 	LevelDev       ExperienceLevel = "dev"
 )
 
+func normalizeEmbedProvider(provider string) (string, error) {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	if p == "" {
+		return "ollama", nil
+	}
+
+	switch p {
+	case "ollama", "openai", "openai-compatible", "none":
+		return p, nil
+	default:
+		return "", fmt.Errorf("invalid embedding provider %q (valid: ollama, openai, openai-compatible, none)", provider)
+	}
+}
+
 // checkDependencies verifies runtime dependencies (Node, embedding runtime) and
 // optionally checks Go/CGO for users building from source.
 // Warns but does not block setup for missing deps.
@@ -204,6 +218,10 @@ func RunInit(opts InitOptions) error {
 	embedProvider := config.EmbeddingProvider()
 	if opts.Provider != "" {
 		embedProvider = opts.Provider
+	}
+	embedProvider, err = normalizeEmbedProvider(embedProvider)
+	if err != nil {
+		return err
 	}
 
 	// Check dependencies (Node, selected embedding runtime, Go version, CGO)
