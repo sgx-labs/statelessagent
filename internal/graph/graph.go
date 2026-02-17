@@ -211,6 +211,9 @@ func (db *DB) GetNeighbors(nodeID int64, relationship string, direction string) 
 		}
 		nodes = append(nodes, n)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return nodes, nil
 }
 
@@ -328,6 +331,9 @@ func (db *DB) QueryGraph(opts QueryOptions) ([]Path, error) {
 			edgeIDs[edgeID] = true
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	// Fetch all nodes involved
 	nodes := make(map[int64]Node)
@@ -353,6 +359,9 @@ func (db *DB) QueryGraph(opts QueryOptions) ([]Path, error) {
 			}
 			nodes[n.ID] = n
 		}
+		if err := nRows.Err(); err != nil {
+			return nil, err
+		}
 	}
 
 	// Fetch all edges involved
@@ -376,6 +385,9 @@ func (db *DB) QueryGraph(opts QueryOptions) ([]Path, error) {
 				return nil, err
 			}
 			edges[e.ID] = e
+		}
+		if err := eRows.Err(); err != nil {
+			return nil, err
 		}
 	}
 
@@ -438,6 +450,17 @@ func parseIDList(csv string) []int64 {
 
 // FindShortestPath finds the shortest path between two nodes using BFS CTE.
 func (db *DB) FindShortestPath(fromID, toID int64) (*Path, error) {
+	if fromID == toID {
+		n, err := db.GetNode(fromID)
+		if err != nil {
+			return nil, err
+		}
+		return &Path{
+			Nodes: []Node{*n},
+			Edges: []Edge{},
+		}, nil
+	}
+
 	cte := `
 	WITH RECURSIVE bfs(id, source_id, target_id, relationship, weight, depth, path_ids) AS (
 		SELECT id, source_id, target_id, relationship, weight, 1, 
@@ -466,14 +489,15 @@ func (db *DB) FindShortestPath(fromID, toID int64) (*Path, error) {
 	}
 
 	// Reconstruct path
-	idsStr := strings.Split(pathIDs, ",")
+	ids := parseIDList(pathIDs)
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("invalid shortest-path IDs")
+	}
 	path := &Path{
-		Nodes: make([]Node, 0, len(idsStr)),
+		Nodes: make([]Node, 0, len(ids)),
 	}
 
-	for _, idStr := range idsStr {
-		var id int64
-		fmt.Sscanf(idStr, "%d", &id)
+	for _, id := range ids {
 		n, err := db.GetNode(id)
 		if err != nil {
 			return nil, err
@@ -492,10 +516,14 @@ func (db *DB) FindShortestPath(fromID, toID int64) (*Path, error) {
 			path.Nodes[i].ID, path.Nodes[i+1].ID).Scan(
 			&e.ID, &e.SourceID, &e.TargetID, &e.Relationship, &e.Weight, &e.Properties, &e.CreatedAt,
 		)
-		if err == nil {
-			path.Edges = append(path.Edges, e)
-			path.TotalWeight += e.Weight
+		if err != nil {
+			if err == sql.ErrNoRows {
+				continue
+			}
+			return nil, err
 		}
+		path.Edges = append(path.Edges, e)
+		path.TotalWeight += e.Weight
 	}
 
 	return path, nil
@@ -549,6 +577,9 @@ func (db *DB) GetSubgraph(nodeID int64, depth int) (*Subgraph, error) {
 		nodeIDs[e.SourceID] = true
 		nodeIDs[e.TargetID] = true
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	// Fetch all nodes
 	ids := make([]string, 0, len(nodeIDs))
@@ -571,6 +602,9 @@ func (db *DB) GetSubgraph(nodeID int64, depth int) (*Subgraph, error) {
 				return nil, err
 			}
 			sub.Nodes = append(sub.Nodes, n)
+		}
+		if err := nRows.Err(); err != nil {
+			return nil, err
 		}
 	}
 
@@ -605,6 +639,9 @@ func (db *DB) GetStats() (*Stats, error) {
 		}
 		s.NodesByType[t] = c
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	// Edges by relationship
 	rows2, err := db.conn.Query("SELECT relationship, COUNT(*) FROM graph_edges GROUP BY relationship")
@@ -619,6 +656,9 @@ func (db *DB) GetStats() (*Stats, error) {
 			return nil, err
 		}
 		s.EdgesByRelationship[r] = c
+	}
+	if err := rows2.Err(); err != nil {
+		return nil, err
 	}
 
 	if s.TotalNodes > 0 {

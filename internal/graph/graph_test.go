@@ -209,6 +209,29 @@ func TestFindShortestPath(t *testing.T) {
 	}
 }
 
+func TestFindShortestPath_SameNode(t *testing.T) {
+	db := setupTestDB(t)
+
+	n1, _ := db.UpsertNode(&Node{Type: "N", Name: "1"})
+
+	path, err := db.FindShortestPath(n1, n1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path == nil {
+		t.Fatal("expected self path")
+	}
+	if len(path.Nodes) != 1 {
+		t.Fatalf("expected 1 node for self path, got %d", len(path.Nodes))
+	}
+	if len(path.Edges) != 0 {
+		t.Fatalf("expected 0 edges for self path, got %d", len(path.Edges))
+	}
+	if path.Nodes[0].ID != n1 {
+		t.Fatalf("expected self node %d, got %d", n1, path.Nodes[0].ID)
+	}
+}
+
 func TestExtractFromNote(t *testing.T) {
 	db := setupTestDB(t)
 	ext := NewExtractor(db)
