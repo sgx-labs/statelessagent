@@ -754,7 +754,16 @@ func buildRecordsLite(filePath, relPath, vaultPath string) ([]store.NoteRecord, 
 
 func saveStats(stats *Stats) {
 	dataDir := config.DataDir()
-	os.MkdirAll(dataDir, 0o755)
-	data, _ := json.MarshalIndent(stats, "", "  ")
-	os.WriteFile(filepath.Join(dataDir, "index_stats.json"), data, 0o644)
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "same: warning: failed to create stats directory %q: %v\n", dataDir, err)
+		return
+	}
+	data, err := json.MarshalIndent(stats, "", "  ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "same: warning: failed to encode index stats: %v\n", err)
+		return
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "index_stats.json"), data, 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "same: warning: failed to write index stats: %v\n", err)
+	}
 }

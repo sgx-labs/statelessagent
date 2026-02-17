@@ -185,7 +185,10 @@ func writeHandoffFromData(data *handoffData) *HandoffResult {
 		return nil
 	}
 	dir := filepath.Dir(absPath)
-	os.MkdirAll(dir, 0o755)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "same: cannot create handoff directory %q: %v\n", dir, err)
+		return nil
+	}
 
 	if err := os.WriteFile(absPath, []byte(content), 0o600); err != nil {
 		return nil
@@ -491,7 +494,10 @@ func WriteHandoff(
 		return nil
 	}
 	dir := filepath.Dir(absPath)
-	os.MkdirAll(dir, 0o755)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "same: cannot create handoff directory %q: %v\n", dir, err)
+		return nil
+	}
 
 	if err := os.WriteFile(absPath, []byte(content), 0o600); err != nil {
 		return nil

@@ -1003,7 +1003,9 @@ func LoadRegistry() *VaultRegistry {
 // read and write vaults.json concurrently.
 func (r *VaultRegistry) Save() error {
 	path := RegistryPath()
-	os.MkdirAll(filepath.Dir(path), 0o755)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create registry directory: %w", err)
+	}
 
 	// Acquire lockfile
 	lockPath := path + ".lock"
@@ -1221,7 +1223,9 @@ func SetProfile(vaultPath, profileName string) error {
 	}
 
 	// Ensure directory exists
-	os.MkdirAll(filepath.Dir(cfgPath), 0o755)
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
 
 	// Write file
 	return os.WriteFile(cfgPath, buf.Bytes(), 0o600)
@@ -1249,7 +1253,9 @@ func SetDisplayMode(vaultPath, mode string) error {
 	}
 
 	// Ensure directory exists
-	os.MkdirAll(filepath.Dir(cfgPath), 0o755)
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
 
 	// Write file
 	return os.WriteFile(cfgPath, buf.Bytes(), 0o600)
@@ -1274,7 +1280,9 @@ func SetEmbeddingModel(vaultPath, model string) error {
 		return fmt.Errorf("encode config: %w", err)
 	}
 
-	os.MkdirAll(filepath.Dir(cfgPath), 0o755)
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
 	return os.WriteFile(cfgPath, buf.Bytes(), 0o600)
 }
 
@@ -1329,7 +1337,9 @@ func loadUserConfig() userConfig {
 
 func saveUserConfig(cfg userConfig) error {
 	path := userConfigPath()
-	os.MkdirAll(filepath.Dir(path), 0o755)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create user config directory: %w", err)
+	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err

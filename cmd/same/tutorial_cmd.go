@@ -394,7 +394,9 @@ API_KEY=sk-example-key-do-not-share
 	if err := ts.writeNote("api-design.md", public); err != nil {
 		return err
 	}
-	os.MkdirAll(filepath.Join(ts.dir, "_PRIVATE"), 0o755)
+	if err := os.MkdirAll(filepath.Join(ts.dir, "_PRIVATE"), 0o755); err != nil {
+		return fmt.Errorf("create _PRIVATE tutorial directory: %w", err)
+	}
 	if err := ts.writeNote("_PRIVATE/secrets.md", private); err != nil {
 		return err
 	}
