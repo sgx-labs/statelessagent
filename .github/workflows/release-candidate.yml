@@ -34,7 +34,7 @@ jobs:
           CGO_ENABLED: '1'
           SAME_RC_FULL_MATRIX: '1'
           SAME_SMOKE_PROVIDERS: none,ollama,openai-compatible
-          SAME_SMOKE_REQUIRED: none,ollama
+          SAME_SMOKE_REQUIRED: none
           SAME_SMOKE_OPENAI_BASE_URL: ${{ secrets.SAME_SMOKE_OPENAI_BASE_URL }}
           SAME_SMOKE_OPENAI_EMBED_MODEL: ${{ secrets.SAME_SMOKE_OPENAI_EMBED_MODEL }}
           SAME_SMOKE_OPENAI_API_KEY: ${{ secrets.SAME_SMOKE_OPENAI_API_KEY }}

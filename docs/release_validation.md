@@ -55,6 +55,7 @@ Use the `Release Candidate` workflow (`.github/workflows/release-candidate.yml`)
 
 - default run: baseline gate (`make release-candidate`)
 - optional full matrix: set `full_provider_matrix=true` when dispatching
+- in GitHub-hosted runners, non-local providers are treated as optional and are skipped when unreachable
 
 Optional secrets for `openai-compatible` smoke in full matrix:
 - `SAME_SMOKE_OPENAI_BASE_URL`
