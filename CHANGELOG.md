@@ -5,6 +5,7 @@
 ### Added
 
 - **Graph LLM extraction policy controls** — new `SAME_GRAPH_LLM=off|local-only|on` setting gates optional LLM-based graph enrichment during reindex (`off` by default, `local-only` for localhost-only chat endpoints)
+- **Manual CI release gate (`Release Candidate` workflow)** — maintainers can now run baseline release checks (and optional full provider matrix) on demand via GitHub Actions workflow dispatch
 - **Verified self-update downloads** — `same update` now requires `sha256sums.txt` from releases and verifies the downloaded binary checksum before install
 - **`pi` advanced profile preset (`same profile use pi`)** — tuned memory retrieval thresholds for Raspberry Pi / low-resource setups, with CLI guidance for lightweight embedding choices
 - **Provider-agnostic chat routing for `same ask` + graph LLM extraction** — new `SAME_CHAT_*` controls support `auto`, `ollama`, `openai`, and `openai-compatible` providers with optional fallback queues
@@ -22,6 +23,8 @@
 ### Fixed
 
 - **Provider-neutral diagnostics and status UX** — `same status`/`same doctor` now report embedding/chat/graph runtime state across `ollama`, `openai`, `openai-compatible`, and `none` modes instead of Ollama-only assumptions
+- **`same watch` rename/delete consistency** — watcher now removes stale indexed paths on file rename and cleans up entries when files vanish before debounce flush
+- **`same init --provider` input validation** — invalid provider names now fail fast with a clear error instead of falling into confusing runtime fallback paths
 - **Graph consistency on deletes and force-clear** — deleting notes now removes related graph nodes/edges and prunes orphan non-note graph nodes; force-clear now resets graph tables as well
 - **Graph freshness during `same watch`** — watcher now updates graph data in both semantic and keyword-only (`provider = "none"`) modes
 - **Keyword-only reindex UX** — `same reindex` now reliably falls back to lite mode when embeddings are disabled (`provider = "none"`), with clear next-step messaging
