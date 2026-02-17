@@ -17,8 +17,11 @@
 - **Graph consistency on deletes and force-clear** — deleting notes now removes related graph nodes/edges and prunes orphan non-note graph nodes; force-clear now resets graph tables as well
 - **Graph freshness during `same watch`** — watcher now updates graph data in both semantic and keyword-only (`provider = "none"`) modes
 - **Keyword-only reindex UX** — `same reindex` now reliably falls back to lite mode when embeddings are disabled (`provider = "none"`), with clear next-step messaging
+- **Semantic reindex resilience** — when embedding calls fail for every file (e.g., Ollama unavailable), `same reindex` now auto-falls back to lite indexing instead of finishing with an empty index
 - **`--vault` precedence** — CLI `--vault` now correctly overrides env/config vault paths, preventing accidental indexing/querying of the wrong vault
 - **Graph path lookup ergonomics** — `same graph path` now resolves note/file type mismatches (for paths that exist as file nodes but were requested as note nodes, and vice versa)
+- **Graph query readability** — `same graph query` now reconstructs full edge sequences so output shows relationship-labeled paths, not node-only chains
+- **Markdown cross-note linking** — `.md` references now map to note nodes, enabling direct note-to-note traversal (for example, `notes/a.md -> notes/b.md`)
 
 ### Privacy
 

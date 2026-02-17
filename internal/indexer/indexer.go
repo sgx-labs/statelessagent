@@ -3,6 +3,7 @@ package indexer
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -46,6 +47,8 @@ type embResult struct {
 	Path       string
 	Err        error
 }
+
+var errNoEmbeddingsForFile = errors.New("no embeddings generated for file")
 
 // Reindex walks the vault, builds records, embeds them, and stores in the database.
 func Reindex(db *store.DB, force bool) (*Stats, error) {
@@ -180,9 +183,13 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 	}()
 
 	// Collect results and insert
+	embeddingFileFailures := 0
 	for result := range resultCh {
 		if result.Err != nil {
 			fmt.Fprintf(os.Stderr, "  [ERROR] %s: %v\n", result.Path, result.Err)
+			if errors.Is(result.Err, errNoEmbeddingsForFile) {
+				embeddingFileFailures++
+			}
 			stats.Errors++
 			continue
 		}
@@ -231,6 +238,12 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 	chunkCount, _ := db.ChunkCount()
 	stats.NotesInIndex = noteCount
 	stats.ChunksInIndex = chunkCount
+
+	// If every file selected for full reindex failed to produce embeddings,
+	// surface an error so caller can fall back to keyword-only mode.
+	if len(work) > 0 && stats.NewlyIndexed == 0 && embeddingFileFailures == len(work) {
+		return nil, fmt.Errorf("embedding backend unavailable: failed to embed any indexed files")
+	}
 
 	// Record embedding metadata so mismatch guard can detect config changes.
 	// Use embedClient.Model() (resolved name) so it matches CheckEmbeddingMeta
@@ -448,6 +461,7 @@ func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient em
 
 	var records []store.NoteRecord
 	var embeddings [][]float32
+	embedFailures := 0
 
 	for i, chunk := range chunks {
 		embedText := title + "\n" + chunk.Text
@@ -458,6 +472,7 @@ func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient em
 		vec, err := embedClient.GetDocumentEmbedding(embedText)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  [WARN] Failed to embed %s chunk %d: %v\n", relPath, i, err)
+			embedFailures++
 			continue
 		}
 
@@ -484,6 +499,10 @@ func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient em
 			AccessCount:  0,
 		})
 		embeddings = append(embeddings, vec)
+	}
+
+	if len(chunks) > 0 && len(records) == 0 && embedFailures == len(chunks) {
+		return nil, nil, content, fmt.Errorf("%w: %s", errNoEmbeddingsForFile, relPath)
 	}
 
 	return records, embeddings, content, nil
@@ -585,7 +604,7 @@ func ReindexLite(db *store.DB, force bool, progress ProgressFunc) (*Stats, error
 			}
 		}
 
-		records, _, err := buildRecordsLite(fp, relPath, vaultPath)
+		records, content, err := buildRecordsLite(fp, relPath, vaultPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  [ERROR] %s: %v\n", relPath, err)
 			stats.Errors++
@@ -608,9 +627,6 @@ func ReindexLite(db *store.DB, force bool, progress ProgressFunc) (*Stats, error
 				if len(records) > 0 {
 					agent = records[0].Agent
 				}
-				// Re-read content for extraction since buildRecordsLite doesn't return it
-				// This is a tradeoff for Lite mode speed vs cleaner API.
-				content, _ := os.ReadFile(fp)
 				_ = extractor.ExtractFromNote(rootID, relPath, string(content), agent)
 			}
 		}

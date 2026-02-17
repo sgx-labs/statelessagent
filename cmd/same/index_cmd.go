@@ -71,6 +71,8 @@ func runReindex(force bool, verbose bool) error {
 		if strings.Contains(errMsg, "ollama") ||
 			strings.Contains(errMsg, "connection") ||
 			strings.Contains(errMsg, "refused") ||
+			strings.Contains(errMsg, "embedding backend unavailable") ||
+			strings.Contains(errMsg, "no embeddings generated") ||
 			strings.Contains(errMsg, "keyword-only mode") ||
 			strings.Contains(errMsg, `provider is "none"`) {
 			// Embedding unavailable/disabled — offer lite mode

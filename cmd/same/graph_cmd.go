@@ -134,7 +134,11 @@ func graphQueryCmd() *cobra.Command {
 				for j, n := range p.Nodes {
 					prefix := "  "
 					if j > 0 {
-						prefix = "  -> "
+						if j-1 < len(p.Edges) {
+							prefix = fmt.Sprintf("  --[%s]--> ", p.Edges[j-1].Relationship)
+						} else {
+							prefix = "  -> "
+						}
 					}
 					fmt.Printf("%s[%s] %s%s%s\n", prefix, n.Type, cli.Cyan, n.Name, cli.Reset)
 				}

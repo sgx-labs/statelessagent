@@ -2,6 +2,7 @@ package graph
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -164,6 +165,21 @@ func TestQueryGraph(t *testing.T) {
 	if len(paths) < 3 {
 		t.Errorf("expected at least 3 paths (to 2, 3, 4), got %d", len(paths))
 	}
+
+	foundRichPath := false
+	for _, p := range paths {
+		if len(p.Nodes) >= 2 && len(p.Edges) == len(p.Nodes)-1 {
+			foundRichPath = true
+			for _, e := range p.Edges {
+				if e.Relationship != "next" {
+					t.Errorf("expected relationship 'next', got %q", e.Relationship)
+				}
+			}
+		}
+	}
+	if !foundRichPath {
+		t.Fatalf("expected at least one path with reconstructed edges")
+	}
 }
 
 func TestFindShortestPath(t *testing.T) {
@@ -237,6 +253,43 @@ func TestExtractFromNote(t *testing.T) {
 	// Check File node
 	if stats.NodesByType[NodeFile] != 1 {
 		t.Errorf("expected 1 file (internal/bar/baz.go), got %d", stats.NodesByType[NodeFile])
+	}
+}
+
+func TestExtractFromNote_MarkdownReferenceBecomesNoteNode(t *testing.T) {
+	db := setupTestDB(t)
+	ext := NewExtractor(db)
+
+	content := `
+	See notes/other.md for prior context.
+	`
+
+	if err := ext.ExtractFromNote(200, "notes/current.md", content, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.FindNode(NodeNote, "notes/other.md"); err != nil {
+		t.Fatalf("expected markdown reference to create note node: %v", err)
+	}
+
+	if _, err := db.FindNode(NodeFile, "notes/other.md"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected no file node for markdown reference, got: %v", err)
+	}
+
+	var count int
+	if err := db.conn.QueryRow(`
+		SELECT COUNT(*)
+		FROM graph_edges e
+		JOIN graph_nodes src ON src.id = e.source_id
+		JOIN graph_nodes dst ON dst.id = e.target_id
+		WHERE src.type = 'note' AND src.name = 'notes/current.md'
+		  AND dst.type = 'note' AND dst.name = 'notes/other.md'
+		  AND e.relationship = 'references'
+	`).Scan(&count); err != nil {
+		t.Fatalf("count note->note references: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly one note->note reference edge, got %d", count)
 	}
 }
 

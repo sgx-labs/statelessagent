@@ -2,6 +2,8 @@ package indexer
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,32 @@ import (
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
+
+type failingEmbeddingProvider struct{}
+
+func (f failingEmbeddingProvider) GetEmbedding(text string, purpose string) ([]float32, error) {
+	return nil, fmt.Errorf("embedding backend unavailable")
+}
+
+func (f failingEmbeddingProvider) GetDocumentEmbedding(text string) ([]float32, error) {
+	return nil, fmt.Errorf("embedding backend unavailable")
+}
+
+func (f failingEmbeddingProvider) GetQueryEmbedding(text string) ([]float32, error) {
+	return nil, fmt.Errorf("embedding backend unavailable")
+}
+
+func (f failingEmbeddingProvider) Name() string {
+	return "failing"
+}
+
+func (f failingEmbeddingProvider) Model() string {
+	return "failing-model"
+}
+
+func (f failingEmbeddingProvider) Dimensions() int {
+	return 768
+}
 
 func TestChunkByHeadings(t *testing.T) {
 	body := `## Overview
@@ -383,6 +411,16 @@ func TestRelativePathSameDir(t *testing.T) {
 	want := "test.md"
 	if got != want {
 		t.Errorf("relativePath() = %q, want %q", got, want)
+	}
+}
+
+func TestBuildRecords_AllEmbeddingsFailReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	filePath := writeTestNote(t, dir, "note.md", "# Example\n\nThis note should fail embedding.")
+
+	_, _, _, err := buildRecords(filePath, "note.md", dir, failingEmbeddingProvider{})
+	if !errors.Is(err, errNoEmbeddingsForFile) {
+		t.Fatalf("expected errNoEmbeddingsForFile, got %v", err)
 	}
 }
 

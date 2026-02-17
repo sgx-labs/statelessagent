@@ -180,6 +180,7 @@ same graph rebuild
 ```
 
 Graph data is built from indexed notes and stays local in SQLite. `_PRIVATE/` files remain excluded because they are never indexed.
+Markdown note links (for example `notes/next.md`) are connected as note-to-note edges, so you can traverse actual learning paths across your vault.
 
 ---
 

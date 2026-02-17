@@ -93,9 +93,15 @@ func (e *Extractor) extractRegex(nID int64, content string) error {
 	}
 
 	for fPath := range files {
+		nodeType := NodeFile
+		if strings.HasSuffix(strings.ToLower(fPath), ".md") {
+			// Markdown links represent note-to-note knowledge paths.
+			nodeType = NodeNote
+		}
+
 		// Create file node
 		fNode := &Node{
-			Type: NodeFile,
+			Type: nodeType,
 			Name: fPath,
 		}
 		fID, err := e.db.UpsertNode(fNode)

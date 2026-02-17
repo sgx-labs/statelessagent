@@ -3,6 +3,7 @@ package graph
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -244,10 +245,11 @@ func (db *DB) QueryGraph(opts QueryOptions) ([]Path, error) {
 	// Recursive CTE to capture the traversal tree
 	// We capture the path string (comma-separated IDs) to reconstruct paths later
 	cte := `
-	WITH RECURSIVE traversal(id, source_id, target_id, relationship, weight, depth, path_ids) AS (
+	WITH RECURSIVE traversal(id, source_id, target_id, relationship, weight, depth, path_ids, path_edge_ids) AS (
 		-- Base case
 		SELECT id, source_id, target_id, relationship, weight, 1, 
-			cast(source_id as text) || ',' || cast(target_id as text)
+			cast(source_id as text) || ',' || cast(target_id as text),
+			cast(id as text)
 		FROM graph_edges
 		WHERE ` + map[string]string{
 		"forward": "source_id = ?",
@@ -263,7 +265,8 @@ func (db *DB) QueryGraph(opts QueryOptions) ([]Path, error) {
 			t.path_ids || ',' || cast(` + map[string]string{
 		"forward": "e.target_id",
 		"reverse": "e.source_id",
-	}[opts.Direction] + ` as text)
+	}[opts.Direction] + ` as text),
+			t.path_edge_ids || ',' || cast(e.id as text)
 		FROM graph_edges e
 		JOIN traversal t ON ` + map[string]string{
 		"forward": "t.target_id = e.source_id",
@@ -278,7 +281,7 @@ func (db *DB) QueryGraph(opts QueryOptions) ([]Path, error) {
 		"reverse": "e.source_id",
 	}[opts.Direction] + ` as text) || ',') = 0
 	)
-	SELECT id, source_id, target_id, relationship, weight, depth, path_ids FROM traversal
+	SELECT id, source_id, target_id, relationship, weight, depth, path_ids, path_edge_ids FROM traversal
 	LIMIT 1000`
 
 	rows, err := db.conn.Query(cte,
@@ -297,27 +300,33 @@ func (db *DB) QueryGraph(opts QueryOptions) ([]Path, error) {
 	// Parse results and build Path objects
 	// Since we can't easily JOIN nodes in the CTE without explosion, we'll fetch nodes separately
 	type traversalRow struct {
-		EdgeID   int64
-		SourceID int64
-		TargetID int64
-		Rel      string
-		Weight   float64
-		Depth    int
-		PathIDs  string
+		EdgeID      int64
+		SourceID    int64
+		TargetID    int64
+		Rel         string
+		Weight      float64
+		Depth       int
+		PathIDs     string
+		PathEdgeIDs string
 	}
 
 	var rowsData []traversalRow
 	nodeIDs := make(map[int64]bool)
+	edgeIDs := make(map[int64]bool)
 	nodeIDs[startNodeID] = true
 
 	for rows.Next() {
 		var r traversalRow
-		if err := rows.Scan(&r.EdgeID, &r.SourceID, &r.TargetID, &r.Rel, &r.Weight, &r.Depth, &r.PathIDs); err != nil {
+		if err := rows.Scan(&r.EdgeID, &r.SourceID, &r.TargetID, &r.Rel, &r.Weight, &r.Depth, &r.PathIDs, &r.PathEdgeIDs); err != nil {
 			return nil, err
 		}
 		rowsData = append(rowsData, r)
 		nodeIDs[r.SourceID] = true
 		nodeIDs[r.TargetID] = true
+		edgeIDs[r.EdgeID] = true
+		for _, edgeID := range parseIDList(r.PathEdgeIDs) {
+			edgeIDs[edgeID] = true
+		}
 	}
 
 	// Fetch all nodes involved
@@ -346,59 +355,85 @@ func (db *DB) QueryGraph(opts QueryOptions) ([]Path, error) {
 		}
 	}
 
+	// Fetch all edges involved
+	edges := make(map[int64]Edge)
+	if len(edgeIDs) > 0 {
+		ids := make([]string, 0, len(edgeIDs))
+		args := make([]interface{}, 0, len(edgeIDs))
+		for id := range edgeIDs {
+			ids = append(ids, "?")
+			args = append(args, id)
+		}
+		q := "SELECT id, source_id, target_id, relationship, weight, properties, created_at FROM graph_edges WHERE id IN (" + strings.Join(ids, ",") + ")"
+		eRows, err := db.conn.Query(q, args...)
+		if err != nil {
+			return nil, err
+		}
+		defer eRows.Close()
+		for eRows.Next() {
+			var e Edge
+			if err := eRows.Scan(&e.ID, &e.SourceID, &e.TargetID, &e.Relationship, &e.Weight, &e.Properties, &e.CreatedAt); err != nil {
+				return nil, err
+			}
+			edges[e.ID] = e
+		}
+	}
+
 	// Reconstruct paths
 	var paths []Path
+	seen := make(map[string]bool)
 	for _, r := range rowsData {
-		// path_ids is like "1,2,3"
-		idsStr := strings.Split(r.PathIDs, ",")
+		nodeSeq := parseIDList(r.PathIDs)
+		if len(nodeSeq) < 2 {
+			continue
+		}
+		edgeSeq := parseIDList(r.PathEdgeIDs)
+		key := r.PathIDs + "|" + r.PathEdgeIDs
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
 
 		path := Path{
-			Nodes: make([]Node, 0, len(idsStr)),
-			Edges: make([]Edge, 0, len(idsStr)-1), // Approximate
+			Nodes: make([]Node, 0, len(nodeSeq)),
+			Edges: make([]Edge, 0, len(edgeSeq)),
 		}
 
-		// Fill nodes
-		for _, idStr := range idsStr {
-			var id int64
-			fmt.Sscanf(idStr, "%d", &id)
+		for _, id := range nodeSeq {
 			if n, ok := nodes[id]; ok {
 				path.Nodes = append(path.Nodes, n)
 			}
 		}
-
-		// Fill final edge from row data?
-		// No, we need all edges in the path.
-		// The CTE row corresponds to the *last* edge in the path.
-		// But we don't have the intermediate edge IDs in the CTE output (only node IDs).
-		// This is a limitation of the simple CTE above.
-		// However, for this task, maybe returning just the nodes is sufficient or we infer edges?
-		// Or we can rebuild edges from the node sequence if there's only one edge between them.
-		// Let's assume there is only one edge of the requested type/direction between nodes for simplicity,
-		// or fetch the edge.
-
-		// Actually, let's just use the current edge as the "last" edge.
-		// But `Path` struct expects `[]Edge`.
-		// To do this correctly, we would need to capture edge IDs in the recursion too.
-		// Let's update CTE to capture edge IDs?
-		// `path_edge_ids` || ',' || e.id
-
-		// For now, given complexity, I will just return the Nodes and the final Edge?
-		// Or I will skip full edge reconstruction for intermediate steps to save complexity,
-		// as `Path` usually emphasizes nodes.
-		// But `Edges` field exists.
-
-		// Let's fill `Edges` with dummy edges if we can't easily get them, OR just the last edge?
-		// No, that's incorrect.
-		// I will leave `Edges` empty for now to avoid N+1 queries or complex CTEs,
-		// and just populate the last edge if possible.
-		// Wait, the prompt asks for "recursive CTE traversal".
-		// I will implement it such that I return the list of paths ending at each discovered node.
-
-		// Let's prioritize correctness of `Nodes`.
+		for _, edgeID := range edgeSeq {
+			if e, ok := edges[edgeID]; ok {
+				path.Edges = append(path.Edges, e)
+				path.TotalWeight += e.Weight
+			}
+		}
 		paths = append(paths, path)
 	}
 
 	return paths, nil
+}
+
+func parseIDList(csv string) []int64 {
+	if csv == "" {
+		return nil
+	}
+	parts := strings.Split(csv, ",")
+	ids := make([]int64, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(p, 10, 64)
+		if err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // FindShortestPath finds the shortest path between two nodes using BFS CTE.
