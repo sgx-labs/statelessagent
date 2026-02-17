@@ -10,7 +10,7 @@ export CGO_ENABLED := 1
 # Also disable zig's ubsan which causes linker errors on cross-compile
 CROSS_CFLAGS := -I$(CURDIR)/cgo-headers -fno-sanitize=undefined
 
-.PHONY: all build clean test precheck darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 cross-all install
+.PHONY: all build clean test precheck provider-smoke provider-smoke-full darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64 cross-all install
 
 all: build
 
@@ -22,6 +22,14 @@ test:
 
 precheck:
 	@/usr/bin/env bash .scripts/precheck.sh
+
+provider-smoke: build
+	@/usr/bin/env bash .scripts/provider-smoke.sh
+
+provider-smoke-full: build
+	@SAME_SMOKE_PROVIDERS=$${SAME_SMOKE_PROVIDERS:-none,ollama,openai-compatible} \
+	SAME_SMOKE_REQUIRED=$${SAME_SMOKE_REQUIRED:-none} \
+	/usr/bin/env bash .scripts/provider-smoke.sh
 
 # Native macOS arm64 build (native CC, no zig needed)
 darwin-arm64:
