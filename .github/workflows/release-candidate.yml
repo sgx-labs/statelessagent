@@ -1,0 +1,41 @@
+name: Release Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      full_provider_matrix:
+        description: "Run full provider matrix (none, ollama, openai-compatible)"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  release-candidate:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: go.sum
+
+      - name: Enforce repo boundaries
+        run: /usr/bin/env bash .scripts/check-repo-boundaries.sh
+
+      - name: Release candidate baseline gate
+        env:
+          CGO_ENABLED: '1'
+        run: make release-candidate
+
+      - name: Release candidate full matrix
+        if: ${{ inputs.full_provider_matrix }}
+        env:
+          CGO_ENABLED: '1'
+          SAME_RC_FULL_MATRIX: '1'
+          SAME_SMOKE_PROVIDERS: none,ollama,openai-compatible
+          SAME_SMOKE_REQUIRED: none,ollama
+          SAME_SMOKE_OPENAI_BASE_URL: ${{ secrets.SAME_SMOKE_OPENAI_BASE_URL }}
+          SAME_SMOKE_OPENAI_EMBED_MODEL: ${{ secrets.SAME_SMOKE_OPENAI_EMBED_MODEL }}
+          SAME_SMOKE_OPENAI_API_KEY: ${{ secrets.SAME_SMOKE_OPENAI_API_KEY }}
+        run: make release-candidate-full

@@ -49,6 +49,18 @@ To include full provider matrix:
 make release-candidate-full
 ```
 
+## GitHub Manual Gate
+
+Use the `Release Candidate` workflow (`.github/workflows/release-candidate.yml`) for a manual pre-release run in CI.
+
+- default run: baseline gate (`make release-candidate`)
+- optional full matrix: set `full_provider_matrix=true` when dispatching
+
+Optional secrets for `openai-compatible` smoke in full matrix:
+- `SAME_SMOKE_OPENAI_BASE_URL`
+- `SAME_SMOKE_OPENAI_EMBED_MODEL`
+- `SAME_SMOKE_OPENAI_API_KEY`
+
 ## Upgrade Path
 
 Run the on-disk migration regression test:
