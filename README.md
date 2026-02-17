@@ -156,7 +156,7 @@ Your markdown notes are embedded locally via Ollama and stored in a SQLite datab
 | Knowledge graph (`same graph`) | Traverse note/file/agent/decision relationships | No* |
 | Context surfacing | Relevant notes injected into AI prompts | No* |
 | `same demo` | Try SAME in 60 seconds | No |
-| `same tutorial` | 6 hands-on lessons | No |
+| `same tutorial` | 7 hands-on lessons | No |
 | `same doctor` | 18 diagnostic checks | No |
 | Push protection | Safety rails for multi-agent workflows | No |
 | `same seed install` | One-command install of pre-built knowledge vaults | No* |
@@ -181,6 +181,8 @@ same graph rebuild
 
 Graph data is built from indexed notes and stays local in SQLite. `_PRIVATE/` files remain excluded because they are never indexed.
 Markdown note links (for example `notes/next.md`) are connected as note-to-note edges, so you can traverse actual learning paths across your vault.
+
+`same web` now surfaces graph highlights (node/edge density + top relationship types) and shows per-note knowledge connections directly in the note viewer, so you can inspect relationship paths without leaving the dashboard.
 
 ---
 
@@ -348,7 +350,7 @@ Requires Go 1.25+ and CGO.
 |---------|-------------|
 | `same init` | Set up SAME for your project (start here) |
 | `same demo` | See SAME in action with sample notes |
-| `same tutorial` | Learn SAME features hands-on (6 lessons) |
+| `same tutorial` | Learn SAME features hands-on (7 lessons) |
 | `same ask <question>` | Ask a question, get cited answers from your notes |
 | `same search <query>` | Search your notes |
 | `same search --all <query>` | Search across all registered vaults |

@@ -19,6 +19,7 @@
   --red: #ff6b6b;
   --purple: #c084fc;
   --orange: #fb923c;
+  --teal: #2dd4bf;
   --focus: #36cfc9;
   --badge-decision: #3b82f6;
   --badge-handoff: #22c55e;
@@ -552,6 +553,64 @@ body {
 }
 .related-section .section-header { margin-top: 0; }
 
+/* Graph */
+.graph-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.graph-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+}
+.graph-item-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.graph-node-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  max-width: min(48ch, 88vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.graph-node-chip.clickable {
+  cursor: pointer;
+}
+.graph-node-chip.clickable:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.graph-rel-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(45,212,191,0.16);
+  color: var(--teal);
+  font-size: 11px;
+  font-weight: 600;
+}
+.graph-summary {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 8px;
+}
+
 /* Insights */
 .insights-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
 .insight-card {
@@ -765,6 +824,17 @@ body {
       <div class="composition-list" id="composition-list"></div>
     </div>
 
+    <div id="graph-section" style="display:none">
+      <h3 class="section-header">Knowledge Graph</h3>
+      <div class="stats-grid">
+        <div class="stat-card" title="Unique graph nodes extracted from notes, files, decisions, and agents"><div class="stat-value" id="graph-total-nodes">-</div><div class="stat-label">Graph Nodes</div></div>
+        <div class="stat-card" title="Relationships between graph nodes"><div class="stat-value" id="graph-total-edges">-</div><div class="stat-label">Graph Edges</div></div>
+        <div class="stat-card" title="Average number of relationships per node"><div class="stat-value" id="graph-avg-degree">-</div><div class="stat-label">Avg Degree</div></div>
+      </div>
+      <div class="graph-list" id="graph-top-relationships"></div>
+      <div class="cli-actions" id="graph-cli-actions"></div>
+    </div>
+
     <div id="pinned-section" style="display:none">
       <h3 class="section-header">Pinned Notes</h3>
       <div class="note-list" id="pinned-notes"></div>
@@ -852,6 +922,10 @@ body {
       <h3 class="section-header">Related Notes</h3>
       <div class="note-list" id="related-notes"></div>
     </div>
+    <div class="related-section" id="graph-connections-section" style="display:none">
+      <h3 class="section-header">Knowledge Connections</h3>
+      <div class="graph-list" id="graph-connections"></div>
+    </div>
   </div>
 </main>
 
@@ -869,6 +943,7 @@ body {
   var activeSearchIndex = -1;
   var searchResultCards = [];
   var lastSearchTerms = [];
+  var graphStats = null;
 
   // API helpers
   function friendlyErrorMessage(err) {
@@ -1151,6 +1226,36 @@ body {
     return card;
   }
 
+  function formatGraphNodeLabel(node) {
+    var t = (node && node.Type) || (node && node.type) || 'node';
+    var name = (node && node.Name) || (node && node.name) || '';
+    return '[' + t + '] ' + name;
+  }
+
+  function graphNodePath(node) {
+    var t = (node && node.Type) || (node && node.type) || '';
+    var name = (node && node.Name) || (node && node.name) || '';
+    if (t === 'note' && name) return name;
+    return '';
+  }
+
+  function buildGraphNodeChip(node) {
+    var label = formatGraphNodeLabel(node);
+    var path = graphNodePath(node);
+    var attrs = {
+      className: 'graph-node-chip' + (path ? ' clickable' : ''),
+      textContent: label,
+      title: label
+    };
+    if (path) {
+      attrs.onclick = function(e) {
+        e.stopPropagation();
+        window.location.hash = '#note/' + encodeURIComponent(path);
+      };
+    }
+    return el(path ? 'button' : 'span', attrs);
+  }
+
   // Clear and set children on an element
   function setChildren(parent, children) {
     parent.textContent = '';
@@ -1384,9 +1489,11 @@ body {
     Promise.all([
       api('/api/status'),
       api('/api/pinned'),
-      api('/api/notes/recent?limit=15')
+      api('/api/notes/recent?limit=15'),
+      api('/api/graph/stats').catch(function() { return null; })
     ]).then(function(data) {
       var status = data[0], pinned = data[1], recent = data[2];
+      graphStats = data[3];
 
       document.getElementById('stat-notes').textContent = status.note_count.toLocaleString();
       document.getElementById('stat-chunks').textContent = status.chunk_count.toLocaleString();
@@ -1433,7 +1540,8 @@ body {
       ensureAllNotes(function(ok) {
         if (ok === false) return;
         renderComposition();
-        renderInsights(status, pinned);
+        renderGraphHighlights(graphStats);
+        renderInsights(status, pinned, graphStats);
       });
     }).catch(function(err) {
       setError(document.getElementById('recent-notes'), 'Failed to load dashboard', err);
@@ -1454,7 +1562,7 @@ body {
   }
 
   // Compute and render insights based on vault state
-  function renderInsights(status, pinned) {
+  function renderInsights(status, pinned, gstats) {
     var insights = [];
 
     // Index staleness
@@ -1517,6 +1625,17 @@ body {
       insights.push(buildInsight('warn',
         '<strong>No notes indexed.</strong> Create a vault and index your markdown notes, or install a pre-built seed.',
         'same init'));
+    }
+
+    if (gstats && gstats.available) {
+      if (gstats.total_nodes > 0 && gstats.total_edges === 0) {
+        insights.push(buildInsight('warn',
+          '<strong>Graph has nodes but no relationships.</strong> Reindex to run relationship extraction and unlock graph traversal.',
+          'same reindex'));
+      } else if (gstats.total_edges >= 10) {
+        insights.push(buildInsight('good',
+          '<strong>Graph relationships are active.</strong> Use <code>same graph query</code> to trace decisions, references, and ownership.'));
+      }
     }
 
     // Render
@@ -1583,6 +1702,44 @@ body {
     }).catch(function(err) {
       setError(resultsEl, 'Search failed', err);
     });
+  }
+
+  function renderGraphHighlights(gstats) {
+    var section = document.getElementById('graph-section');
+    if (!gstats || !gstats.available) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = 'block';
+    document.getElementById('graph-total-nodes').textContent = (gstats.total_nodes || 0).toLocaleString();
+    document.getElementById('graph-total-edges').textContent = (gstats.total_edges || 0).toLocaleString();
+    document.getElementById('graph-avg-degree').textContent = Number(gstats.avg_degree || 0).toFixed(2);
+
+    var relList = document.getElementById('graph-top-relationships');
+    relList.textContent = '';
+    var top = gstats.top_relationships || [];
+    if (top.length === 0) {
+      relList.appendChild(el('div', {className: 'graph-item'}, [
+        el('div', {className: 'graph-summary', textContent: 'No graph relationships yet. Run `same reindex` to extract links from notes.'})
+      ]));
+    } else {
+      top.forEach(function(item) {
+        var rel = item.relationship || 'related_to';
+        var count = item.count || 0;
+        relList.appendChild(el('div', {className: 'graph-item'}, [
+          el('div', {className: 'graph-item-row'}, [
+            el('span', {className: 'graph-rel-chip', textContent: rel}),
+            el('span', {className: 'graph-summary', textContent: count + ' edge(s)'})
+          ])
+        ]));
+      });
+    }
+
+    var cliActions = document.getElementById('graph-cli-actions');
+    cliActions.textContent = '';
+    cliActions.appendChild(buildCliBtn('same graph stats', 'same graph stats'));
+    cliActions.appendChild(buildCliBtn('same graph query --type note --node "notes/README.md" --depth 2', 'same graph query --type note --node "notes/README.md" --depth 2'));
   }
 
   function updateActiveSearchCard() {
@@ -1800,6 +1957,8 @@ body {
     // Hide related while loading
     var relatedSection = document.getElementById('related-section');
     relatedSection.style.display = 'none';
+    var graphSection = document.getElementById('graph-connections-section');
+    graphSection.style.display = 'none';
 
     api('/api/notes/' + encodeURIComponent(path)).then(function(data) {
       var tags = parseTags(data.tags);
@@ -1833,6 +1992,7 @@ body {
 
       // Load related notes
       loadRelated(data.path);
+      loadGraphConnections(data.path);
     }).catch(function(err) {
       setError(viewer, 'Note not available', err);
     });
@@ -1850,6 +2010,69 @@ body {
       } else {
         section.style.display = 'none';
       }
+    }).catch(function() {
+      section.style.display = 'none';
+    });
+  }
+
+  function renderGraphPath(path) {
+    var nodes = (path && path.Nodes) || (path && path.nodes) || [];
+    var edges = (path && path.Edges) || (path && path.edges) || [];
+    if (!nodes || nodes.length < 2) return null;
+
+    var row = el('div', {className: 'graph-item-row'});
+    nodes.forEach(function(node, idx) {
+      row.appendChild(buildGraphNodeChip(node));
+      if (idx < edges.length) {
+        var edge = edges[idx];
+        var rel = (edge && edge.Relationship) || (edge && edge.relationship) || 'related_to';
+        row.appendChild(el('span', {className: 'graph-rel-chip', textContent: rel}));
+      }
+    });
+
+    var weight = (path && path.TotalWeight) || (path && path.total_weight) || 0;
+    return el('div', {className: 'graph-item'}, [
+      row,
+      el('div', {className: 'graph-summary', textContent: 'Path weight: ' + Number(weight).toFixed(2)})
+    ]);
+  }
+
+  function loadGraphConnections(path) {
+    var section = document.getElementById('graph-connections-section');
+    var list = document.getElementById('graph-connections');
+    list.textContent = '';
+    list.appendChild(el('div', {className: 'loading'}, [el('div', {className: 'spinner'}), ' Loading graph links...']));
+
+    api('/api/graph/connections/' + encodeURIComponent(path) + '?depth=2&dir=forward').then(function(data) {
+      var paths = (data && data.paths) || [];
+      section.style.display = 'block';
+      list.textContent = '';
+
+      if (!paths || paths.length === 0) {
+        list.appendChild(el('div', {className: 'graph-item'}, [
+          el('div', {className: 'graph-summary', textContent: data && data.hint ? data.hint : 'No graph connections for this note yet.'}),
+          el('div', {className: 'cli-actions'}, [
+            buildCliBtn('same reindex', 'same reindex')
+          ])
+        ]));
+        return;
+      }
+
+      var rendered = 0;
+      for (var i = 0; i < paths.length && rendered < 10; i++) {
+        var item = renderGraphPath(paths[i]);
+        if (!item) continue;
+        list.appendChild(item);
+        rendered++;
+      }
+      if (rendered === 0) {
+        list.appendChild(el('div', {className: 'graph-item'}, [
+          el('div', {className: 'graph-summary', textContent: 'No displayable graph paths found for this note.'})
+        ]));
+      }
+      list.appendChild(el('div', {className: 'cli-actions'}, [
+        buildCliBtn('same graph query --type note --node "' + path + '" --depth 2', 'same graph query --type note --node "' + path + '" --depth 2')
+      ]));
     }).catch(function() {
       section.style.display = 'none';
     });

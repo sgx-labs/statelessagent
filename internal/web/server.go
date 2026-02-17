@@ -2,18 +2,22 @@
 package web
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/embedding"
+	"github.com/sgx-labs/statelessagent/internal/graph"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
@@ -43,6 +47,8 @@ func Serve(addr string, embedClient embedding.Provider, version string, vaultPat
 	mux.HandleFunc("/api/search", s.handleSearch)
 	mux.HandleFunc("/api/pinned", s.handlePinned)
 	mux.HandleFunc("/api/related/", s.handleRelated) // /api/related/{path}
+	mux.HandleFunc("/api/graph/stats", s.handleGraphStats)
+	mux.HandleFunc("/api/graph/connections/", s.handleGraphConnections) // /api/graph/connections/{path}
 
 	handler := localhostOnly(securityHeaders(mux))
 
@@ -367,7 +373,216 @@ func (s *server) handleRelated(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, filtered)
 }
 
+func (s *server) handleGraphStats(w http.ResponseWriter, r *http.Request) {
+	gdb := graph.NewDB(s.db.Conn())
+	stats, err := gdb.GetStats()
+	if err != nil {
+		if isNoSuchGraphTableErr(err) {
+			writeJSON(w, map[string]any{
+				"total_nodes":           0,
+				"total_edges":           0,
+				"avg_degree":            0,
+				"nodes_by_type":         map[string]int{},
+				"edges_by_relationship": map[string]int{},
+				"top_relationships":     []map[string]any{},
+				"available":             false,
+			})
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "graph stats unavailable")
+		return
+	}
+
+	top := make([]map[string]any, 0, len(stats.EdgesByRelationship))
+	for rel, count := range stats.EdgesByRelationship {
+		top = append(top, map[string]any{
+			"relationship": rel,
+			"count":        count,
+		})
+	}
+	sort.Slice(top, func(i, j int) bool {
+		ci, _ := top[i]["count"].(int)
+		cj, _ := top[j]["count"].(int)
+		if ci == cj {
+			ri, _ := top[i]["relationship"].(string)
+			rj, _ := top[j]["relationship"].(string)
+			return ri < rj
+		}
+		return ci > cj
+	})
+	if len(top) > 5 {
+		top = top[:5]
+	}
+
+	writeJSON(w, map[string]any{
+		"total_nodes":           stats.TotalNodes,
+		"total_edges":           stats.TotalEdges,
+		"avg_degree":            stats.AvgDegree,
+		"nodes_by_type":         stats.NodesByType,
+		"edges_by_relationship": stats.EdgesByRelationship,
+		"top_relationships":     top,
+		"available":             true,
+	})
+}
+
+func (s *server) handleGraphConnections(w http.ResponseWriter, r *http.Request) {
+	raw := strings.TrimPrefix(r.URL.Path, "/api/graph/connections/")
+	if raw == "" {
+		writeError(w, http.StatusBadRequest, "missing path")
+		return
+	}
+
+	decoded, err := url.PathUnescape(raw)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid path encoding")
+		return
+	}
+	clean := filepath.ToSlash(filepath.Clean(decoded))
+
+	if strings.HasPrefix(clean, "..") || strings.HasPrefix(clean, "/") || strings.HasPrefix(clean, ".") || strings.Contains(clean, "/..") {
+		writeError(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+	if isPrivatePath(clean) {
+		http.NotFound(w, r)
+		return
+	}
+
+	depth := 2
+	if v := r.URL.Query().Get("depth"); v != "" {
+		n, convErr := strconv.Atoi(v)
+		if convErr != nil || n < 1 || n > 5 {
+			writeError(w, http.StatusBadRequest, "depth must be between 1 and 5")
+			return
+		}
+		depth = n
+	}
+
+	direction := r.URL.Query().Get("dir")
+	if direction == "" {
+		direction = "forward"
+	}
+	if direction != "forward" && direction != "reverse" {
+		writeError(w, http.StatusBadRequest, "dir must be forward or reverse")
+		return
+	}
+
+	relationship := strings.TrimSpace(r.URL.Query().Get("rel"))
+	if relationship != "" && !isGraphToken(relationship) {
+		writeError(w, http.StatusBadRequest, "invalid relationship filter")
+		return
+	}
+
+	gdb := graph.NewDB(s.db.Conn())
+	startNode, err := resolveGraphNode(gdb, graph.NodeNote, clean)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, map[string]any{
+				"start_path": clean,
+				"count":      0,
+				"paths":      []graph.Path{},
+				"hint":       "No graph node found for this note. Run same reindex to extract graph links.",
+			})
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "graph lookup failed")
+		return
+	}
+
+	paths, err := gdb.QueryGraph(graph.QueryOptions{
+		FromNodeID:   startNode.ID,
+		Relationship: relationship,
+		MaxDepth:     depth,
+		Direction:    direction,
+	})
+	if err != nil {
+		if isNoSuchGraphTableErr(err) {
+			writeJSON(w, map[string]any{
+				"start_path": clean,
+				"count":      0,
+				"paths":      []graph.Path{},
+				"hint":       "Graph tables are unavailable in this vault. Run same reindex.",
+			})
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "graph query failed")
+		return
+	}
+
+	filtered := make([]graph.Path, 0, len(paths))
+	for _, p := range paths {
+		if graphPathContainsPrivateNode(p) {
+			continue
+		}
+		filtered = append(filtered, p)
+		if len(filtered) >= 60 {
+			break
+		}
+	}
+
+	writeJSON(w, map[string]any{
+		"start_path":    clean,
+		"start_node_id": startNode.ID,
+		"count":         len(filtered),
+		"depth":         depth,
+		"direction":     direction,
+		"relationship":  relationship,
+		"paths":         filtered,
+	})
+}
+
 // --- Helpers ---
+
+func resolveGraphNode(gdb *graph.DB, nodeType, nodeName string) (*graph.Node, error) {
+	node, err := gdb.FindNode(nodeType, nodeName)
+	if err == nil {
+		return node, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	switch nodeType {
+	case graph.NodeNote:
+		return gdb.FindNode(graph.NodeFile, nodeName)
+	case graph.NodeFile:
+		return gdb.FindNode(graph.NodeNote, nodeName)
+	default:
+		return nil, err
+	}
+}
+
+func isGraphToken(v string) bool {
+	if len(v) == 0 || len(v) > 64 {
+		return false
+	}
+	for _, r := range v {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func graphPathContainsPrivateNode(p graph.Path) bool {
+	for _, n := range p.Nodes {
+		if n.Type != graph.NodeNote && n.Type != graph.NodeFile {
+			continue
+		}
+		if isPrivatePath(filepath.ToSlash(n.Name)) {
+			return true
+		}
+	}
+	return false
+}
+
+func isNoSuchGraphTableErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "no such table: graph_")
+}
 
 func isPrivatePath(path string) bool {
 	upper := strings.ToUpper(path)

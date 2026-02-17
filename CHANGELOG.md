@@ -11,6 +11,9 @@
   - `same graph rebuild` — rebuild baseline note/agent/produced graph from indexed notes
 - **Schema migration v6 (`graph_nodes`, `graph_edges`)** — graph tables are now first-class in the versioned migration pipeline
 - **Incremental graph sync test coverage** — added regression coverage for graph cleanup on note delete/force clear and lite single-file updates
+- **Web graph APIs (`/api/graph/stats`, `/api/graph/connections/{path}`)** — dashboard can now read graph density/relationship stats and fetch per-note traversal paths with input validation + private-path filtering
+- **Web dashboard graph UX** — added a graph highlights section (nodes, edges, avg degree, top relationship types) and a note-level “Knowledge Connections” panel that renders relationship-labeled paths
+- **Tutorial graph lesson (`same tutorial graph`)** — onboarding now includes a hands-on relationship traversal lesson showing how links become graph paths
 
 ### Fixed
 
