@@ -747,17 +747,71 @@ func createPushTicket(repo string) error {
 		timeout = 60 // default
 	}
 
-	ticketPath := filepath.Join(os.TempDir(), fmt.Sprintf("push-ticket-%s", repo))
+	ticketPath, ticketRepo, err := pushTicketPath(repo)
+	if err != nil {
+		return err
+	}
 
 	// Create ticket with timestamp:timeout format
 	content := fmt.Sprintf("%d:%d", time.Now().Unix(), timeout)
-	if err := os.WriteFile(ticketPath, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(ticketPath, []byte(content), 0o600); err != nil {
 		return fmt.Errorf("create ticket: %w", err)
 	}
 
-	fmt.Printf("  %s✓%s Push ticket created for %s%s%s\n", cli.Green, cli.Reset, cli.Cyan, repo, cli.Reset)
+	fmt.Printf("  %s✓%s Push ticket created for %s%s%s\n", cli.Green, cli.Reset, cli.Cyan, ticketRepo, cli.Reset)
 	fmt.Printf("  Ticket expires in %d seconds or after one push.\n", timeout)
 	return nil
+}
+
+func pushTicketPath(repo string) (path string, ticketRepo string, err error) {
+	ticketRepo, err = sanitizeRepoTicketName(repo)
+	if err != nil {
+		return "", "", err
+	}
+	return filepath.Join(os.TempDir(), fmt.Sprintf("push-ticket-%s", ticketRepo)), ticketRepo, nil
+}
+
+func sanitizeRepoTicketName(repo string) (string, error) {
+	raw := strings.TrimSpace(repo)
+	if raw == "" {
+		return "", fmt.Errorf("repo is required")
+	}
+
+	normalized := strings.ReplaceAll(raw, "\\", "/")
+	normalized = strings.TrimSuffix(normalized, ".git")
+	base := filepath.Base(normalized)
+	base = strings.TrimSpace(base)
+	if base == "" || base == "." || base == ".." {
+		return "", fmt.Errorf("invalid repo %q", repo)
+	}
+
+	var b strings.Builder
+	for _, r := range base {
+		switch {
+		case isRepoTicketChar(r):
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+	}
+
+	safe := strings.Trim(b.String(), "._-")
+	if safe == "" {
+		return "", fmt.Errorf("invalid repo %q", repo)
+	}
+	if len(safe) > 128 {
+		safe = safe[:128]
+	}
+	return safe, nil
+}
+
+func isRepoTicketChar(r rune) bool {
+	return (r >= 'a' && r <= 'z') ||
+		(r >= 'A' && r <= 'Z') ||
+		(r >= '0' && r <= '9') ||
+		r == '-' ||
+		r == '_' ||
+		r == '.'
 }
 
 func guardPushInstallCmd() *cobra.Command {
@@ -795,15 +849,20 @@ func runGuardPushInstall(force bool) error {
 # Installed by: same guard push-install
 # Requires 'same push-allow' before each push.
 
-REPO=$(basename $(git remote get-url origin 2>/dev/null) .git 2>/dev/null)
+REPO=$(basename "$(git remote get-url origin 2>/dev/null)" .git 2>/dev/null)
 if [ -z "$REPO" ]; then
     echo "Warning: Could not determine repo name. Allowing push."
     exit 0
 fi
 
+SAFE_REPO=$(printf "%s" "$REPO" | tr -c 'A-Za-z0-9_.-' '_' | sed 's/^[._-]*//; s/[._-]*$//')
+if [ -z "$SAFE_REPO" ]; then
+    SAFE_REPO="$REPO"
+fi
+
 # Use TMPDIR if set (macOS), fall back to /tmp
 TMPBASE="${TMPDIR:-/tmp}"
-TICKET="${TMPBASE}push-ticket-$REPO"
+TICKET="${TMPBASE}/push-ticket-$SAFE_REPO"
 
 if [ ! -f "$TICKET" ]; then
     echo ""
