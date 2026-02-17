@@ -395,7 +395,9 @@ func fixConfigVaultPath(configPath, absVaultPath string) {
 
 	fixed := strings.Join(lines, "\n")
 	if fixed != content {
-		os.WriteFile(configPath, []byte(fixed), 0o600)
+		if err := os.WriteFile(configPath, []byte(fixed), 0o600); err != nil {
+			fmt.Fprintf(os.Stderr, "same: warning: failed to rewrite seed config path in %q: %v\n", configPath, err)
+		}
 	}
 }
 

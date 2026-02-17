@@ -24,7 +24,7 @@
 - seed extraction now normalizes manifest `./path` entries and fails loudly on directory-create errors
 - `SafeVaultSubpath` rejects absolute inputs and enforces vault-root containment
 - guard allowlist file entries now use exact path matching to avoid nested basename bypasses
-- key write paths (config/registry/handoff/index stats/tutorial scaffolding) now surface directory-creation failures instead of silently skipping writes
+- key write paths (config/registry/handoff/index stats/tutorial scaffolding/seed config rewrites/verbose logs) now surface write failures instead of silently skipping writes
 
 ## Suggested website copy updates
 

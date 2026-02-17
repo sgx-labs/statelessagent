@@ -188,7 +188,9 @@ func writeVerboseLog(content string) {
 			if idx := bytes.IndexByte(truncated, '\n'); idx >= 0 {
 				truncated = truncated[idx+1:]
 			}
-			os.WriteFile(logPath, truncated, 0o600)
+			if err := os.WriteFile(logPath, truncated, 0o600); err != nil {
+				fmt.Fprintf(os.Stderr, "same: warning: failed to rotate verbose log: %v\n", err)
+			}
 		}
 	}
 
@@ -196,8 +198,12 @@ func writeVerboseLog(content string) {
 	if err != nil {
 		return
 	}
-	f.WriteString(content)
-	f.Close()
+	if _, err := f.WriteString(content); err != nil {
+		fmt.Fprintf(os.Stderr, "same: warning: failed to append verbose log: %v\n", err)
+	}
+	if err := f.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "same: warning: failed to close verbose log file: %v\n", err)
+	}
 }
 
 // logDecision records a context surfacing gate decision to the DB
