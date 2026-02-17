@@ -56,6 +56,13 @@ else
     fail "CHANGELOG.md missing v${MAKE_VER} entry"
 fi
 
+# Repo boundary guard
+if /usr/bin/env bash "$REPO_ROOT/.scripts/check-repo-boundaries.sh" >/dev/null 2>&1; then
+    pass "Repo boundaries (no seed-content/internal planning artifacts tracked)"
+else
+    fail "Repo boundaries violated (run .scripts/check-repo-boundaries.sh)"
+fi
+
 # --- 2. Build ---
 echo ""
 echo -e "${BOLD}Build${RESET}"
@@ -96,8 +103,13 @@ fi
 echo ""
 echo -e "${BOLD}Security${RESET}"
 
-# Run the existing pre-commit check against staged changes (if any)
+# Run the existing pre-commit check against changed files.
 BLOCKLIST="$REPO_ROOT/.scripts/.blocklist"
+BLOCKLIST_LABEL=".scripts/.blocklist"
+if [ ! -f "$BLOCKLIST" ] && [ -f "$REPO_ROOT/.scripts/blocklist.example" ]; then
+    BLOCKLIST="$REPO_ROOT/.scripts/blocklist.example"
+    BLOCKLIST_LABEL=".scripts/blocklist.example"
+fi
 if [ -f "$BLOCKLIST" ]; then
     # Scan all tracked files (not just staged) for PII patterns
     PATTERN=""
@@ -123,7 +135,7 @@ if [ -f "$BLOCKLIST" ]; then
             fi
         done <<< "$CHANGED_FILES"
         if [ -z "$PII_HITS" ]; then
-            pass "No PII in changed files"
+            pass "No PII in changed files (patterns: $BLOCKLIST_LABEL)"
         else
             fail "PII patterns found in:$PII_HITS"
         fi

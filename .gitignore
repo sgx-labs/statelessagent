@@ -63,6 +63,7 @@ website/playbook/
 # Local research & strategy notes (never commit — may contain competitive intel, PII)
 .research/
 research/
+sessions/
 
 # Development knowledge base (bugs, fixes, checklists — may reference internal details)
 .devlog/
@@ -99,3 +100,10 @@ decisions.md
 # Forked repos (local clones for PRs)
 awesome-mcp-servers/
 awesome-mcp-servers-1/
+
+# Seed-content boundary: product code lives here, seed vault content lives in
+# https://github.com/sgx-labs/seed-vaults
+seed-vaults/
+seeds/
+seed-content/
+vaults/

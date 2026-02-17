@@ -49,6 +49,7 @@ cmd/same/
   display_cmd.go       # Display mode switching
   doctor_cmd.go        # 18 diagnostic checks
   feedback_cmd.go      # Note relevance feedback
+  graph_cmd.go         # Knowledge graph query/path/stats/rebuild
   guard_cmd.go         # Push protection
   hooks_cmd.go         # Hook status listing
   index_cmd.go         # Reindex, stats, watch, migrate
@@ -104,6 +105,11 @@ internal/
     provider.go           # Provider interface + factory
     ollama.go             # Ollama embedding provider
     openai.go             # OpenAI-compatible embedding provider
+  graph/               # Knowledge graph schema, extraction, and traversal
+    graph.go              # Node/edge CRUD + recursive CTE traversals
+    extraction.go         # Regex + optional LLM entity/relationship extraction
+    migration.go          # Graph schema SQL + population helpers
+    llm.go                # Ollama-backed JSON extractor for graph enrichment
   indexer/             # Vault file indexer + chunker + frontmatter parser
     indexer.go            # Main indexer, reindex, single-file index
     chunker.go            # Markdown chunking by heading
@@ -148,6 +154,13 @@ internal/
 - Tests use 768-dimension vectors to match nomic-embed-text
 - `store.OpenMemory()` for in-memory test databases
 - `config.VaultOverride` to point at test vault paths
+
+## Repo Boundaries
+
+- `internal/seed/` and `cmd/same/seed_cmd.go` are product feature code and belong in this repo
+- Seed vault content belongs in the separate repo: `https://github.com/sgx-labs/seed-vaults`
+- `docs/design_context.md` is an allowed public philosophy/architecture document (must remain PII-free and launch-tactic-free)
+- Never commit internal planning/research artifacts (`.research/`, `research/`, `sessions/`, local run logs, local tokens/config)
 
 ## Do NOT Change
 

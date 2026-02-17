@@ -46,6 +46,22 @@ That's it. Your AI now has memory.
 
 ---
 
+## Human-First Philosophy
+
+SAME is built around one constraint: your knowledge belongs to you.
+
+- Notes are plain markdown, so your system remains useful even without AI.
+- The tool is designed to help you learn by using it, not lock you into opaque automation.
+- Local-first defaults keep individuals in control of data and workflow.
+- The goal is a better human+AI relationship: symbiotic, practical, and durable.
+
+This is a digital multitool for builders: solo developers, creatives, researchers,
+and small teams who want capability without giving up ownership.
+
+Design details and architecture rationale: [`docs/design_context.md`](docs/design_context.md)
+
+---
+
 ## Add to Your AI Tool
 
 ### Claude Code (hooks + MCP — full experience)
@@ -137,6 +153,7 @@ Your markdown notes are embedded locally via Ollama and stored in a SQLite datab
 | Decision extraction | Architectural choices remembered across sessions | No |
 | Pinned notes | Critical context always included | No |
 | File claims (`same claim`) | Advisory read/write ownership for multi-agent coordination | No |
+| Knowledge graph (`same graph`) | Traverse note/file/agent/decision relationships | No* |
 | Context surfacing | Relevant notes injected into AI prompts | No* |
 | `same demo` | Try SAME in 60 seconds | No |
 | `same tutorial` | 6 hands-on lessons | No |
@@ -148,6 +165,21 @@ Your markdown notes are embedded locally via Ollama and stored in a SQLite datab
 | Privacy tiers | `_PRIVATE/` never indexed, `research/` never committed | No |
 
 *Semantic mode requires Ollama; keyword fallback is automatic.
+
+---
+
+## Knowledge Graph
+
+Explore relationships in your vault with the `graph` command group:
+
+```bash
+same graph stats
+same graph query --type note --node "notes/architecture.md" --depth 2
+same graph path --from-type note --from "notes/architecture.md" --to-type file --to "internal/store/db.go"
+same graph rebuild
+```
+
+Graph data is built from indexed notes and stays local in SQLite. `_PRIVATE/` files remain excluded because they are never indexed.
 
 ---
 

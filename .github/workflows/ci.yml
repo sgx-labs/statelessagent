@@ -16,6 +16,9 @@ jobs:
           go-version: '1.25'
           cache-dependency-path: go.sum
 
+      - name: Enforce repo boundaries
+        run: /usr/bin/env bash .scripts/check-repo-boundaries.sh
+
       - name: Run tests
         env:
           CGO_ENABLED: '1'

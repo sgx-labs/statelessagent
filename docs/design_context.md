@@ -1,8 +1,40 @@
-# SAME Design Context — For Development Instances
+# SAME Design Context — Human-First System Design
 
-This document provides architectural direction, design principles, settled decisions, and tuning rationale that exist outside the source code. It bridges the gap between "how the code works" (readable from the codebase) and "why it works this way and where it's going" (captured during design sessions).
+SAME exists to help people think better with AI, not to make people dependent on AI.
 
-**No PII, vault content, or personal data is included.**
+This document explains the philosophy behind the product: why it is local-first,
+why markdown is the source of truth, why the tool should teach by use, and why
+the goal is to make individuals more capable over time.
+
+If AI tooling changes tomorrow, your notes are still yours. Your knowledge still
+compounds. That is the core design constraint.
+
+**Scope:** product philosophy, architecture direction, and settled technical decisions.
+**Non-scope:** launch tactics, internal planning, user vault data, or PII.
+
+---
+
+## Human-First Thesis
+
+1. **Humans own their knowledge.** SAME stores durable memory in plain markdown.
+2. **Learning is a product feature.** The system should help users improve by doing.
+3. **Local-first by default.** Core workflows work offline with no cloud dependency.
+4. **AI is a multiplier, not the owner.** SAME is designed for a symbiotic workflow.
+5. **Build for the individual.** Solo developers, creatives, and researchers should
+   be able to build meaningful systems without a large team.
+6. **Seeing is believing.** The tool should demonstrate value quickly through use,
+   not require trust in hidden magic.
+
+### Learning loop (product behavior)
+
+The intended loop is simple and repeatable:
+
+1. The user does real work (writes notes, builds code, asks questions).
+2. SAME captures structured artifacts (decisions, handoffs, relationships).
+3. Next sessions start with better orientation and context.
+4. The user learns faster because prior work is visible and reusable.
+
+This loop should make both the human and the agent more capable over time.
 
 ---
 
@@ -188,7 +220,7 @@ These decisions have been made with rationale. The development instance should t
 
 ### Hard Separation: Dev vs. Vault (Feb 6)
 **Decision:** SAME code is only written from the dedicated dev workspace. Vault sessions never touch source code.
-**Why:** PII leaked into the repo three times. Root cause: vault sessions have personal/client data loaded via hooks, which bled into code, test data, and commit messages.
+**Why:** Prior incidents showed that mixing live vault sessions with code work can leak sensitive context into source control. Separate workspaces make this structurally harder.
 **Product insight:** Every SAME user with a public repo has this risk. SAME Guard should become a user-facing feature (it already is).
 
 ---
