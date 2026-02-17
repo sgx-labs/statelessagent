@@ -289,6 +289,24 @@ func TestExtractTarGz(t *testing.T) {
 		}
 	})
 
+	t.Run("normalizes leading dot in seed path", func(t *testing.T) {
+		destDir := t.TempDir()
+		tarData := createTestTarGz(t, "sgx-labs-seed-vaults-abc1234/", map[string]string{
+			"my-seed/bootstrap.md": "# Bootstrap",
+		})
+
+		count, err := extractTarGz(bytes.NewReader(tarData), "./my-seed", destDir)
+		if err != nil {
+			t.Fatalf("extract error: %v", err)
+		}
+		if count != 1 {
+			t.Errorf("file count = %d, want 1", count)
+		}
+		if _, err := os.Stat(filepath.Join(destDir, "bootstrap.md")); err != nil {
+			t.Error("bootstrap.md not found")
+		}
+	})
+
 	t.Run("rejects symlinks", func(t *testing.T) {
 		destDir := t.TempDir()
 		var buf bytes.Buffer

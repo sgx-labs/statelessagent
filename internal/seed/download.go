@@ -71,8 +71,15 @@ func extractTarGz(r io.Reader, seedPath, destDir string) (int, error) {
 	tr := tar.NewReader(gz)
 	var fileCount int
 
-	// Normalize seed path for matching
-	seedPrefix := strings.TrimSuffix(seedPath, "/") + "/"
+	// Normalize seed path for matching so manifests like "./foo" remain compatible.
+	normalizedSeed := strings.ReplaceAll(seedPath, "\\", "/")
+	normalizedSeed = filepath.ToSlash(filepath.Clean(filepath.FromSlash(normalizedSeed)))
+	normalizedSeed = strings.TrimPrefix(normalizedSeed, "./")
+	if normalizedSeed == "" || normalizedSeed == "." || normalizedSeed == ".." ||
+		strings.HasPrefix(normalizedSeed, "../") || strings.HasPrefix(normalizedSeed, "/") {
+		return 0, fmt.Errorf("invalid seed path: %q", seedPath)
+	}
+	seedPrefix := strings.TrimSuffix(normalizedSeed, "/") + "/"
 
 	for {
 		header, err := tr.Next()
@@ -106,14 +113,16 @@ func extractTarGz(r io.Reader, seedPath, destDir string) (int, error) {
 		switch header.Typeflag {
 		case tar.TypeReg:
 			// Regular file — OK
-		case tar.TypeDir:
-			// Directory — create it
-			dirPath, err := validateExtractPath(relPath, destDir)
-			if err != nil {
-				continue // skip invalid paths
-			}
-			os.MkdirAll(dirPath, 0o755)
-			continue
+			case tar.TypeDir:
+				// Directory — create it
+				dirPath, err := validateExtractPath(relPath, destDir)
+				if err != nil {
+					continue // skip invalid paths
+				}
+				if err := os.MkdirAll(dirPath, 0o755); err != nil {
+					return fileCount, fmt.Errorf("create directory %s: %w", relPath, err)
+				}
+				continue
 		default:
 			// Skip symlinks, hardlinks, and anything else
 			continue
