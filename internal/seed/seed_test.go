@@ -5,12 +5,27 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func newLocalHTTPServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("skipping: cannot bind local test listener: %v", err)
+	}
+
+	srv := httptest.NewUnstartedServer(handler)
+	srv.Listener = ln
+	srv.Start()
+	return srv
+}
 
 func TestValidateExtractPath(t *testing.T) {
 	destDir := t.TempDir()
@@ -248,10 +263,10 @@ func TestExtractTarGz(t *testing.T) {
 	t.Run("extracts matching files", func(t *testing.T) {
 		destDir := t.TempDir()
 		tarData := createTestTarGz(t, "sgx-labs-seed-vaults-abc1234/", map[string]string{
-			"my-seed/bootstrap.md":       "# Bootstrap",
-			"my-seed/research/topic.md":  "# Topic",
+			"my-seed/bootstrap.md":        "# Bootstrap",
+			"my-seed/research/topic.md":   "# Topic",
 			"my-seed/config.toml.example": "[vault]",
-			"other-seed/notes.md":        "# Other",
+			"other-seed/notes.md":         "# Other",
 		})
 
 		count, err := extractTarGz(bytes.NewReader(tarData), "my-seed", destDir)
@@ -331,9 +346,9 @@ func TestExtractTarGz(t *testing.T) {
 	t.Run("rejects hidden files", func(t *testing.T) {
 		destDir := t.TempDir()
 		tarData := createTestTarGz(t, "owner-repo-sha/", map[string]string{
-			"my-seed/notes.md":       "# Notes",
-			"my-seed/.env":           "SECRET=x",
-			"my-seed/.git/config":    "[core]",
+			"my-seed/notes.md":    "# Notes",
+			"my-seed/.env":        "SECRET=x",
+			"my-seed/.git/config": "[core]",
 		})
 
 		count, err := extractTarGz(bytes.NewReader(tarData), "my-seed", destDir)
@@ -356,7 +371,7 @@ func TestDownloadAndExtractHTTP(t *testing.T) {
 		"test-seed/research/topic.md": "# Topic",
 	})
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/gzip")
 		w.Write(tarData)
 	}))

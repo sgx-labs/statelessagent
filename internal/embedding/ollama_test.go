@@ -2,11 +2,26 @@ package embedding
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func newLocalHTTPServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("skipping: cannot bind local test listener: %v", err)
+	}
+
+	srv := httptest.NewUnstartedServer(handler)
+	srv.Listener = ln
+	srv.Start()
+	return srv
+}
 
 func TestValidateLocalhostOnly(t *testing.T) {
 	tests := []struct {
@@ -70,7 +85,7 @@ func TestNewOllamaProvider_CustomModel(t *testing.T) {
 }
 
 func TestGetEmbedding_Success(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := ollamaEmbeddingResponse{
 			Embedding: make([]float32, 768),
 		}
@@ -99,7 +114,7 @@ func TestGetEmbedding_Success(t *testing.T) {
 
 func TestGetEmbedding_4xxNoRetry(t *testing.T) {
 	attempts := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("bad request"))
@@ -124,7 +139,7 @@ func TestGetEmbedding_4xxNoRetry(t *testing.T) {
 
 func TestGetEmbedding_5xxRetries(t *testing.T) {
 	attempts := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
 		if attempts < 3 {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -163,7 +178,7 @@ func TestGetEmbedding_5xxRetries(t *testing.T) {
 }
 
 func TestGetEmbedding_EmptyEmbedding(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := ollamaEmbeddingResponse{Embedding: nil}
 		json.NewEncoder(w).Encode(resp)
 	}))
@@ -184,7 +199,7 @@ func TestGetEmbedding_EmptyEmbedding(t *testing.T) {
 
 func TestGetEmbedding_500WithLongText_Truncates(t *testing.T) {
 	attempts := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
 		var req ollamaEmbeddingRequest
 		json.NewDecoder(r.Body).Decode(&req)

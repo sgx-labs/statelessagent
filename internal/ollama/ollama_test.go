@@ -2,13 +2,28 @@ package ollama
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
+func newLocalHTTPServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("skipping: cannot bind local test listener: %v", err)
+	}
+
+	srv := httptest.NewUnstartedServer(handler)
+	srv.Listener = ln
+	srv.Start()
+	return srv
+}
+
 func TestListChatModels_FiltersEmbedding(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/tags" {
 			http.NotFound(w, r)
 			return
@@ -42,7 +57,7 @@ func TestListChatModels_FiltersEmbedding(t *testing.T) {
 }
 
 func TestListChatModels_EmptyResponse(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(tagsResponse{Models: []Model{}})
 	}))
 	defer srv.Close()
@@ -58,7 +73,7 @@ func TestListChatModels_EmptyResponse(t *testing.T) {
 }
 
 func TestPickBestModel_PrefersSmallest(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(tagsResponse{
 			Models: []Model{
 				{Name: "mistral", Size: 4000},
@@ -80,7 +95,7 @@ func TestPickBestModel_PrefersSmallest(t *testing.T) {
 }
 
 func TestPickBestModel_FallsBackToFirst(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(tagsResponse{
 			Models: []Model{
 				{Name: "some-custom-model:7b", Size: 7000},
@@ -100,7 +115,7 @@ func TestPickBestModel_FallsBackToFirst(t *testing.T) {
 }
 
 func TestPickBestModel_NoModels(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(tagsResponse{Models: []Model{}})
 	}))
 	defer srv.Close()
@@ -116,7 +131,7 @@ func TestPickBestModel_NoModels(t *testing.T) {
 }
 
 func TestGenerate_Success(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/generate" {
 			http.NotFound(w, r)
 			return
@@ -151,7 +166,7 @@ func TestGenerate_Success(t *testing.T) {
 }
 
 func TestGenerate_Error(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("model not loaded"))
 	}))
@@ -176,7 +191,7 @@ func TestGenerate_ConnectionRefused(t *testing.T) {
 }
 
 func TestListChatModels_ServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer srv.Close()

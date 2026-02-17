@@ -3,7 +3,6 @@ package embedding
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -81,7 +80,7 @@ func TestNewOpenAIProvider_CompatibleWithAPIKey(t *testing.T) {
 
 func TestOpenAIProvider_SkipsAuthHeader(t *testing.T) {
 	var gotAuth string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		resp := openaiEmbeddingResponse{
 			Data: []struct {
@@ -119,7 +118,7 @@ func TestOpenAIProvider_SkipsAuthHeader(t *testing.T) {
 
 func TestOpenAIProvider_SendsAuthHeader(t *testing.T) {
 	var gotAuth string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		resp := openaiEmbeddingResponse{
 			Data: []struct {
@@ -156,7 +155,7 @@ func TestOpenAIProvider_SendsAuthHeader(t *testing.T) {
 
 func TestOpenAIProvider_CompatibleEndToEnd(t *testing.T) {
 	// Simulate a llama.cpp /v1/embeddings endpoint
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/embeddings" {
 			t.Errorf("expected /v1/embeddings, got %s", r.URL.Path)
 		}
@@ -207,7 +206,7 @@ func TestOpenAIProvider_CompatibleEndToEnd(t *testing.T) {
 
 func TestNewProvider_OpenAICompatible(t *testing.T) {
 	// Verify the factory routes "openai-compatible" correctly
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		vec := make([]float32, 768)
 		for i := range vec {
 			vec[i] = float32(i+1) * 0.001

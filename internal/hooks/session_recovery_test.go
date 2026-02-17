@@ -380,42 +380,27 @@ func TestRecoverFromInstance_PicksMostRecent(t *testing.T) {
 
 // --- TestRecoverFromSessionIndex ---
 
-func TestRecoverFromSessionIndex_ValidIndex(t *testing.T) {
-	// recoverFromSessionIndex reads from ~/.claude/projects/<hash>/sessions-index.json
-	// where <hash> is derived from the current working directory.
-	// We use the real CWD and construct the path accordingly.
+func sessionIndexPathForTest(t *testing.T) string {
+	t.Helper()
+
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("getwd: %v", err)
 	}
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("homedir: %v", err)
-	}
-
 	hash := claudeProjectHash(cwd)
-	indexDir := filepath.Join(homeDir, ".claude", "projects", hash)
-	indexPath := filepath.Join(indexDir, "sessions-index.json")
-
-	// Check if the file already exists — if so, back it up.
-	existingData, existingErr := os.ReadFile(indexPath)
-	if existingErr == nil {
-		// Restore after test.
-		t.Cleanup(func() {
-			os.WriteFile(indexPath, existingData, 0o644)
-		})
-	} else {
-		// Clean up after test.
-		if err := os.MkdirAll(indexDir, 0o755); err != nil {
-			t.Fatalf("mkdir index dir: %v", err)
-		}
-		t.Cleanup(func() {
-			os.Remove(indexPath)
-			// Only remove the dir if we created it and it's empty.
-			os.Remove(indexDir)
-		})
+	indexDir := filepath.Join(tmpHome, ".claude", "projects", hash)
+	if err := os.MkdirAll(indexDir, 0o755); err != nil {
+		t.Fatalf("mkdir index dir: %v", err)
 	}
+	return filepath.Join(indexDir, "sessions-index.json")
+}
+
+func TestRecoverFromSessionIndex_ValidIndex(t *testing.T) {
+	indexPath := sessionIndexPathForTest(t)
 
 	now := time.Now().UTC()
 	idx := sessionsIndex{
@@ -478,30 +463,7 @@ func TestRecoverFromSessionIndex_ValidIndex(t *testing.T) {
 }
 
 func TestRecoverFromSessionIndex_SkipsCurrentSession(t *testing.T) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("homedir: %v", err)
-	}
-
-	hash := claudeProjectHash(cwd)
-	indexDir := filepath.Join(homeDir, ".claude", "projects", hash)
-	indexPath := filepath.Join(indexDir, "sessions-index.json")
-
-	existingData, existingErr := os.ReadFile(indexPath)
-	if existingErr == nil {
-		t.Cleanup(func() { os.WriteFile(indexPath, existingData, 0o644) })
-	} else {
-		os.MkdirAll(indexDir, 0o755)
-		t.Cleanup(func() {
-			os.Remove(indexPath)
-			os.Remove(indexDir)
-		})
-	}
+	indexPath := sessionIndexPathForTest(t)
 
 	now := time.Now().UTC()
 	idx := sessionsIndex{
@@ -530,30 +492,7 @@ func TestRecoverFromSessionIndex_SkipsCurrentSession(t *testing.T) {
 }
 
 func TestRecoverFromSessionIndex_EmptyEntries(t *testing.T) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("homedir: %v", err)
-	}
-
-	hash := claudeProjectHash(cwd)
-	indexDir := filepath.Join(homeDir, ".claude", "projects", hash)
-	indexPath := filepath.Join(indexDir, "sessions-index.json")
-
-	existingData, existingErr := os.ReadFile(indexPath)
-	if existingErr == nil {
-		t.Cleanup(func() { os.WriteFile(indexPath, existingData, 0o644) })
-	} else {
-		os.MkdirAll(indexDir, 0o755)
-		t.Cleanup(func() {
-			os.Remove(indexPath)
-			os.Remove(indexDir)
-		})
-	}
+	indexPath := sessionIndexPathForTest(t)
 
 	idx := sessionsIndex{Version: 1, Entries: []sessionEntry{}}
 	data, _ := json.Marshal(idx)
