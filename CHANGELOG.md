@@ -34,7 +34,7 @@
 - **Vault subpath guard strictness** — `SafeVaultSubpath` now rejects absolute subpath inputs and uses boundary-safe containment checks before writing handoff/decision files
 - **Guard allowlist path matching** — file allowlist entries now require exact path matches (no basename-only fallback), preventing nested-file bypasses like `docs/README.md`
 - **MCP hidden-path write guard** — `safeVaultPath` now rejects dot-prefixed segments anywhere in the path (for example `notes/.hidden/file.md`), not only at root level
-- **Filesystem write error handling** — config saves, registry writes, handoff generation, tutorial/demo setup cleanup, seed config path rewrites/install rollback cleanup, verbose-log rotation/appends, and index stats persistence now handle write/cleanup failures explicitly instead of silently ignoring them
+- **Filesystem write error handling** — config saves, registry writes, handoff + decision-log generation, init `.gitignore` updates, tutorial/demo setup cleanup, seed config path rewrites/install rollback cleanup, verbose-log rotation/appends, and index stats persistence now handle write/cleanup failures explicitly instead of silently ignoring them
 - **Graph consistency on deletes and force-clear** — deleting notes now removes related graph nodes/edges and prunes orphan non-note graph nodes; force-clear now resets graph tables as well
 - **Graph freshness during `same watch`** — watcher now updates graph data in both semantic and keyword-only (`provider = "none"`) modes
 - **Keyword-only reindex UX** — `same reindex` now reliably falls back to lite mode when embeddings are disabled (`provider = "none"`), with clear next-step messaging

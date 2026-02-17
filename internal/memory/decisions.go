@@ -190,16 +190,32 @@ func AppendToDecisionLog(decisions []Decision, logPath string, project string) i
 	if err != nil {
 		return 0
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil {
+			fmt.Fprintf(os.Stderr, "same: warning: failed to close decision log %q: %v\n", logPath, cerr)
+		}
+	}()
+
+	written := 0
 
 	if len(strings.TrimSpace(string(existing))) == 0 {
-		f.WriteString("# Decisions & Conclusions\n\n")
-		f.WriteString("*Auto-extracted decisions are tagged for human review.*\n")
+		if _, err := f.WriteString("# Decisions & Conclusions\n\n"); err != nil {
+			fmt.Fprintf(os.Stderr, "same: warning: failed to write decision log header %q: %v\n", logPath, err)
+			return 0
+		}
+		if _, err := f.WriteString("*Auto-extracted decisions are tagged for human review.*\n"); err != nil {
+			fmt.Fprintf(os.Stderr, "same: warning: failed to write decision log header %q: %v\n", logPath, err)
+			return 0
+		}
 	}
 
 	for _, entry := range entries {
-		f.WriteString(entry)
+		if _, err := f.WriteString(entry); err != nil {
+			fmt.Fprintf(os.Stderr, "same: warning: failed to append decision entry %q: %v\n", logPath, err)
+			return written
+		}
+		written++
 	}
 
-	return len(entries)
+	return written
 }

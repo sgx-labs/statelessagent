@@ -1288,8 +1288,17 @@ func handleGitignore(vaultPath string, autoAccept bool) {
 				cli.Yellow, cli.Reset, err)
 			return
 		}
-		defer f.Close()
-		f.WriteString("\n" + sameGitignoreTemplate)
+		if _, err := f.WriteString("\n" + sameGitignoreTemplate); err != nil {
+			fmt.Printf("  %s!%s Could not update .gitignore: %v\n",
+				cli.Yellow, cli.Reset, err)
+			_ = f.Close()
+			return
+		}
+		if err := f.Close(); err != nil {
+			fmt.Printf("  %s!%s Could not update .gitignore: %v\n",
+				cli.Yellow, cli.Reset, err)
+			return
+		}
 		fmt.Printf("  → Added SAME privacy rules to .gitignore\n")
 		fmt.Printf("    %s.same/data/ (system), _PRIVATE/ (secret), research/ (local-only)%s\n",
 			cli.Dim, cli.Reset)
