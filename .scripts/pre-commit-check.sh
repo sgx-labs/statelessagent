@@ -3,7 +3,9 @@
 # pre-commit-check.sh — Vault Data Leak Prevention
 # ==============================================================================
 # Blocks commits that contain personal identifiers, client-sensitive patterns,
-# or real vault data. Patterns are loaded from .scripts/.blocklist (gitignored).
+# or real vault data. Patterns are loaded from:
+#   1) .scripts/.blocklist (preferred, local + gitignored), or
+#   2) .scripts/blocklist.example (fallback baseline)
 #
 # Hard blocks: personal identity, client names, local paths, real API keys.
 # These should NEVER appear anywhere in this repo.
@@ -25,12 +27,20 @@ fi
 # --- Load blocklist from external file ---
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 BLOCKLIST_FILE="$REPO_ROOT/.scripts/.blocklist"
+BLOCKLIST_LABEL=".scripts/.blocklist"
 
 if [ ! -f "$BLOCKLIST_FILE" ]; then
-    echo -e "${YELLOW}WARNING: No blocklist file found at .scripts/.blocklist${RESET}"
-    echo "  PII scanning is disabled. Create .scripts/.blocklist with one pattern per line."
-    echo "  See .scripts/blocklist.example for the expected format."
-    exit 0
+    if [ -f "$REPO_ROOT/.scripts/blocklist.example" ]; then
+        BLOCKLIST_FILE="$REPO_ROOT/.scripts/blocklist.example"
+        BLOCKLIST_LABEL=".scripts/blocklist.example"
+        echo -e "${YELLOW}WARNING: .scripts/.blocklist not found, using ${BLOCKLIST_LABEL} fallback${RESET}"
+        echo "  For stricter local controls, copy .scripts/blocklist.example to .scripts/.blocklist and customize."
+    else
+        echo -e "${YELLOW}WARNING: No blocklist file found at .scripts/.blocklist${RESET}"
+        echo "  PII scanning is disabled. Create .scripts/.blocklist with one pattern per line."
+        echo "  See .scripts/blocklist.example for the expected format."
+        exit 0
+    fi
 fi
 
 # Read patterns from file, skip comments and blank lines
@@ -43,6 +53,7 @@ while IFS= read -r line; do
 done < "$BLOCKLIST_FILE"
 
 if [ ${#HARD_PATTERNS[@]} -eq 0 ]; then
+    echo -e "${YELLOW}WARNING: ${BLOCKLIST_LABEL} is empty — skipping pre-commit pattern scan${RESET}"
     exit 0
 fi
 
