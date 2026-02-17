@@ -31,3 +31,9 @@ jobs:
 
       - name: Verify binary
         run: ./build/same version
+
+      - name: Provider smoke matrix (keyword baseline)
+        env:
+          SAME_SMOKE_PROVIDERS: none
+          SAME_SMOKE_REQUIRED: none
+        run: /usr/bin/env bash .scripts/provider-smoke.sh

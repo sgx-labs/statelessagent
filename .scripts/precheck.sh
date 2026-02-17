@@ -170,6 +170,19 @@ else
     fail "same --help missing command groups"
 fi
 
+# --- 6. Provider smoke matrix ---
+echo ""
+echo -e "${BOLD}Provider smoke matrix${RESET}"
+info "Default runs provider=none only. Set SAME_SMOKE_PROVIDERS for broader matrix."
+if SMOKE_OUT=$(SAME_SMOKE_PROVIDERS="${SAME_SMOKE_PROVIDERS:-none}" \
+    SAME_SMOKE_REQUIRED="${SAME_SMOKE_REQUIRED:-none}" \
+    /usr/bin/env bash "$REPO_ROOT/.scripts/provider-smoke.sh" 2>&1); then
+    pass "provider smoke matrix (${SAME_SMOKE_PROVIDERS:-none})"
+else
+    fail "provider smoke matrix failed"
+    echo "$SMOKE_OUT" | tail -10 | while IFS= read -r l; do echo "        $l"; done
+fi
+
 # --- Summary ---
 echo ""
 TOTAL=$((PASS + FAIL + WARN))

@@ -52,6 +52,10 @@ type graphRuntimeStatus struct {
 	Status   string `json:"status"`
 	Provider string `json:"provider,omitempty"`
 	Model    string `json:"model,omitempty"`
+	Fallback string `json:"fallback,omitempty"`
+	Hint     string `json:"hint,omitempty"`
+	Nodes    int    `json:"nodes,omitempty"`
+	Edges    int    `json:"edges,omitempty"`
 	Error    string `json:"error,omitempty"`
 }
 
@@ -131,6 +135,13 @@ func runStatus(jsonOut bool) error {
 			dbPath := config.DBPath()
 			if info, err := os.Stat(dbPath); err == nil {
 				data.Vault.DBSizeMB = float64(info.Size()) / (1024 * 1024)
+			}
+
+			if nodes, edges, graphErr := graphCounts(db); graphErr == nil {
+				data.Graph.Nodes = nodes
+				data.Graph.Edges = edges
+			} else if data.Graph.Hint == "" {
+				data.Graph.Hint = "graph tables unavailable — run 'same reindex'"
 			}
 		}
 
@@ -216,11 +227,20 @@ func runStatus(jsonOut bool) error {
 		sizeMB := float64(info.Size()) / (1024 * 1024)
 		fmt.Printf("  DB:      %.1f MB\n", sizeMB)
 	}
+	if nodes, edges, graphErr := graphCounts(db); graphErr == nil {
+		graphStatus.Nodes = nodes
+		graphStatus.Edges = edges
+	} else if graphStatus.Hint == "" {
+		graphStatus.Hint = "graph tables unavailable — run 'same reindex'"
+	}
 
 	cli.Section("AI Runtime")
 	fmt.Printf("  Embedding: %s\n", summarizeRuntime(embeddingStatus))
 	fmt.Printf("  Chat:      %s\n", summarizeRuntime(chatStatus))
 	fmt.Printf("  Graph LLM: %s\n", summarizeGraphRuntime(graphStatus))
+	if graphStatus.Hint != "" {
+		fmt.Printf("  Graph hint:%s %s%s\n", cli.Dim, graphStatus.Hint, cli.Reset)
+	}
 	if chatStatus.Status == "available" {
 		if chatStatus.Model != "" {
 			fmt.Printf("  Ask:       %s'same ask \"question\"' available (%s)%s\n", cli.Dim, chatStatus.Model, cli.Reset)
@@ -459,36 +479,62 @@ func detectGraphStatus() graphRuntimeStatus {
 	switch mode {
 	case "off":
 		st.Status = "disabled"
+		st.Fallback = "regex-only"
 		return st
 	case "local-only":
 		client, err := llm.NewClientWithOptions(llm.Options{LocalOnly: true})
 		if err != nil {
-			st.Status = "unavailable"
+			st.Status = "fallback"
+			st.Fallback = "regex-only"
 			st.Error = sanitizeRuntimeError(err)
+			st.Hint = "configure a local chat provider to enable graph LLM extraction"
 			return st
 		}
 		st.Provider = client.Provider()
 		st.Status = "enabled"
 		if model, modelErr := client.PickBestModel(); modelErr == nil {
 			st.Model = model
+			if strings.TrimSpace(st.Model) == "" {
+				st.Status = "fallback"
+				st.Fallback = "regex-only"
+				st.Hint = "no local chat model detected for graph extraction"
+			}
+		} else {
+			st.Status = "fallback"
+			st.Fallback = "regex-only"
+			st.Error = sanitizeRuntimeError(modelErr)
+			st.Hint = "no local chat model detected for graph extraction"
 		}
 		return st
 	case "on":
 		client, err := llm.NewClient()
 		if err != nil {
-			st.Status = "unavailable"
+			st.Status = "fallback"
+			st.Fallback = "regex-only"
 			st.Error = sanitizeRuntimeError(err)
+			st.Hint = "configure SAME_CHAT_PROVIDER to enable graph LLM extraction"
 			return st
 		}
 		st.Provider = client.Provider()
 		st.Status = "enabled"
 		if model, modelErr := client.PickBestModel(); modelErr == nil {
 			st.Model = model
+			if strings.TrimSpace(st.Model) == "" {
+				st.Status = "fallback"
+				st.Fallback = "regex-only"
+				st.Hint = "no chat model detected for graph extraction"
+			}
+		} else {
+			st.Status = "fallback"
+			st.Fallback = "regex-only"
+			st.Error = sanitizeRuntimeError(modelErr)
+			st.Hint = "no chat model detected for graph extraction"
 		}
 		return st
 	default:
 		st.Mode = "off"
 		st.Status = "disabled"
+		st.Fallback = "regex-only"
 		return st
 	}
 }
@@ -515,10 +561,29 @@ func summarizeGraphRuntime(st graphRuntimeStatus) string {
 	if st.Model != "" {
 		parts = append(parts, "model="+st.Model)
 	}
+	if st.Fallback != "" {
+		parts = append(parts, "fallback="+st.Fallback)
+	}
+	if st.Nodes > 0 || st.Edges > 0 {
+		parts = append(parts, fmt.Sprintf("graph=%dn/%de", st.Nodes, st.Edges))
+	}
 	if st.Error != "" {
 		parts = append(parts, "error="+st.Error)
 	}
 	return strings.Join(parts, " · ")
+}
+
+func graphCounts(db *store.DB) (nodes int, edges int, err error) {
+	if db == nil || db.Conn() == nil {
+		return 0, 0, fmt.Errorf("database unavailable")
+	}
+	if err := db.Conn().QueryRow("SELECT COUNT(*) FROM graph_nodes").Scan(&nodes); err != nil {
+		return 0, 0, err
+	}
+	if err := db.Conn().QueryRow("SELECT COUNT(*) FROM graph_edges").Scan(&edges); err != nil {
+		return 0, 0, err
+	}
+	return nodes, edges, nil
 }
 
 func sanitizeRuntimeError(err error) string {

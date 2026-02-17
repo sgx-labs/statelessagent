@@ -210,17 +210,36 @@ func runDoctor(jsonOut bool) error {
 				return "", fmt.Errorf("cannot open database")
 			}
 			defer db.Close()
+
+			graphNodes := -1
+			graphEdges := -1
+			if err := db.Conn().QueryRow("SELECT COUNT(*) FROM graph_nodes").Scan(&graphNodes); err == nil {
+				_ = db.Conn().QueryRow("SELECT COUNT(*) FROM graph_edges").Scan(&graphEdges)
+			}
+			graphDetail := ""
+			if graphNodes >= 0 && graphEdges >= 0 {
+				graphDetail = fmt.Sprintf(", graph %d nodes/%d edges", graphNodes, graphEdges)
+			}
+
 			if db.HasVectors() {
 				ec := config.EmbeddingProviderConfig()
 				provider := ec.Provider
 				if provider == "" {
 					provider = "ollama"
 				}
-				return fmt.Sprintf("semantic (%s embeddings)", provider), nil
+				return fmt.Sprintf("semantic (%s embeddings%s)", provider, graphDetail), nil
 			}
 			noteCount, _ := db.NoteCount()
 			if noteCount > 0 {
-				return "keyword-only (configure SAME_EMBED_PROVIDER + run 'same reindex' to upgrade)", nil
+				msg := "keyword-only (configure SAME_EMBED_PROVIDER + run 'same reindex' to upgrade"
+				if graphNodes == 0 {
+					msg += "; graph empty — run 'same graph rebuild' after reindex"
+				}
+				msg += ")"
+				if graphDetail != "" {
+					msg += graphDetail
+				}
+				return msg, nil
 			}
 			return "empty", nil
 		})
@@ -249,21 +268,31 @@ func runDoctor(jsonOut bool) error {
 	}
 
 	// 2d. Graph LLM extraction policy
-	check("Graph LLM policy", "set SAME_GRAPH_LLM=off|local-only|on", func() (string, error) {
+	check("Graph LLM policy", "set SAME_GRAPH_LLM=off|local-only|on (regex-only fallback is always available)", func() (string, error) {
 		mode := config.GraphLLMMode()
 		switch mode {
 		case "off":
 			return "off (regex-only graph extraction)", nil
 		case "local-only":
-			if _, err := llm.NewClientWithOptions(llm.Options{LocalOnly: true}); err != nil {
-				return "", fmt.Errorf("local-only enabled but no local chat provider available")
+			client, err := llm.NewClientWithOptions(llm.Options{LocalOnly: true})
+			if err != nil {
+				return fmt.Sprintf("local-only (fallback regex-only: %s)", sanitizeRuntimeError(err)), nil
 			}
-			return "local-only (enabled)", nil
+			model, modelErr := client.PickBestModel()
+			if modelErr != nil || strings.TrimSpace(model) == "" {
+				return "local-only (fallback regex-only: no local chat model detected)", nil
+			}
+			return fmt.Sprintf("local-only (enabled via %s/%s)", client.Provider(), model), nil
 		case "on":
-			if _, err := llm.NewClient(); err != nil {
-				return "", fmt.Errorf("on enabled but no chat provider available")
+			client, err := llm.NewClient()
+			if err != nil {
+				return fmt.Sprintf("on (fallback regex-only: %s)", sanitizeRuntimeError(err)), nil
 			}
-			return "on (enabled)", nil
+			model, modelErr := client.PickBestModel()
+			if modelErr != nil || strings.TrimSpace(model) == "" {
+				return "on (fallback regex-only: no chat model detected)", nil
+			}
+			return fmt.Sprintf("on (enabled via %s/%s)", client.Provider(), model), nil
 		default:
 			return "", fmt.Errorf("invalid graph llm policy")
 		}
