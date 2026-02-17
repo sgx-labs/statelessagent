@@ -343,7 +343,7 @@ func runVaultFeed(sourceAlias, targetAlias string, dryRun bool) error {
 
 	// SECURITY: Verify destDir is within targetPath
 	absDestDir, err := filepath.Abs(destDir)
-	if err != nil || !strings.HasPrefix(absDestDir, absTarget+string(filepath.Separator)) {
+	if err != nil || !pathWithinBase(absTarget, absDestDir) {
 		return fmt.Errorf("invalid feed destination")
 	}
 

@@ -147,6 +147,7 @@ func TestPathWithinBase(t *testing.T) {
 	}{
 		{name: "same path", candidate: base, want: true},
 		{name: "child path", candidate: filepath.Join(base, "notes", "a.md"), want: true},
+		{name: "prefix confusion sibling", candidate: base + "-other", want: false},
 		{name: "outside sibling", candidate: filepath.Join("tmp", "other", "a.md"), want: false},
 		{name: "outside via parent", candidate: filepath.Join(base, "..", "escape.md"), want: false},
 	}
