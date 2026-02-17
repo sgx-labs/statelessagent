@@ -306,7 +306,19 @@ func GetStats(db *store.DB) map[string]interface{} {
 	}
 
 	var result map[string]interface{}
-	json.Unmarshal(data, &result)
+	if err := json.Unmarshal(data, &result); err != nil || result == nil {
+		noteCount, err1 := db.NoteCount()
+		chunkCount, err2 := db.ChunkCount()
+		result = map[string]interface{}{
+			"status": "stats file unreadable; using live query",
+		}
+		if err1 == nil && err2 == nil {
+			result["total_notes_in_index"] = noteCount
+			result["total_chunks_in_index"] = chunkCount
+		} else {
+			result["hint"] = "run 'same reindex' first"
+		}
+	}
 	result["embedding_model"] = config.EmbeddingModel
 	result["embedding_dimensions"] = config.EmbeddingDim()
 	enrichStats(result)

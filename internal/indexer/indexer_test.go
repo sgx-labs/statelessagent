@@ -1191,3 +1191,34 @@ func TestSaveStats(t *testing.T) {
 		t.Errorf("expected Timestamp '2026-01-01T00:00:00Z', got %q", loaded.Timestamp)
 	}
 }
+
+func TestGetStatsCorruptedJSONFallsBackToLiveQuery(t *testing.T) {
+	dir := t.TempDir()
+	config.VaultOverride = dir
+	defer func() { config.VaultOverride = "" }()
+
+	dataDir := filepath.Join(dir, ".same", "data")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("mkdir data dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "index_stats.json"), []byte("{broken"), 0o644); err != nil {
+		t.Fatalf("write corrupted stats: %v", err)
+	}
+
+	db, err := store.OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	stats := GetStats(db)
+	if got := fmt.Sprintf("%v", stats["status"]); !strings.Contains(got, "unreadable") {
+		t.Fatalf("expected unreadable status fallback, got %q", got)
+	}
+	if _, ok := stats["total_notes_in_index"]; !ok {
+		t.Fatalf("expected live note count in fallback stats: %#v", stats)
+	}
+	if _, ok := stats["total_chunks_in_index"]; !ok {
+		t.Fatalf("expected live chunk count in fallback stats: %#v", stats)
+	}
+}
