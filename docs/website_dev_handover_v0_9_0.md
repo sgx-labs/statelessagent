@@ -23,6 +23,7 @@
 - `same seed install --force` now refuses dangerous destination paths (root/home/seed-root parent)
 - seed extraction now normalizes manifest `./path` entries and fails loudly on directory-create errors
 - `SafeVaultSubpath` rejects absolute inputs and enforces vault-root containment
+- MCP write-path validation now rejects hidden/dot segments anywhere in the path (not only root-level dot paths)
 - guard allowlist file entries now use exact path matching to avoid nested basename bypasses
 - key write paths (config/registry/handoff/index stats/tutorial scaffolding/seed config rewrites/verbose logs) now surface write failures instead of silently skipping writes
 

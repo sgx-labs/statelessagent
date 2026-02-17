@@ -127,6 +127,8 @@ func TestSafeVaultPath_DotPathEdgeCases(t *testing.T) {
 		{"dot only", "."},
 		{"double dot", ".."},
 		{"dot-hidden nested", ".hidden/file.md"},
+		{"nested hidden segment", "notes/.hidden/file.md"},
+		{"nested dot-git segment", "notes/.git/config"},
 		{"dot-env file", ".env"},
 		{"dot-claude", ".claude/settings.json"},
 	}

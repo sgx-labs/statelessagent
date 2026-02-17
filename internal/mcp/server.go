@@ -1210,10 +1210,12 @@ func safeVaultPath(path string) string {
 	if strings.HasPrefix(upper, "_PRIVATE/") || upper == "_PRIVATE" {
 		return ""
 	}
-	// SECURITY: block access to dot-directories and dot-files at root level
-	// This prevents overwriting .same/config.toml, .git/, .gitignore, .obsidian/, etc.
-	if strings.HasPrefix(clean, ".") {
-		return ""
+	// SECURITY: block access to dot-directories and dot-files in any path segment.
+	// Prevents writes to hidden locations like .same/, .git/, .obsidian/, or notes/.hidden/.
+	for _, part := range strings.Split(clean, "/") {
+		if strings.HasPrefix(part, ".") {
+			return ""
+		}
 	}
 	full, err := filepath.Abs(filepath.Join(config.VaultPath(), filepath.FromSlash(normalizedInput)))
 	if err != nil {
