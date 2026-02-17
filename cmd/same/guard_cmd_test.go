@@ -15,11 +15,11 @@ func TestSanitizeRepoTicketName(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{name: "owner repo", input: "owner/repo", want: "repo"},
-		{name: "ssh remote", input: "git@github.com:owner/repo.git", want: "repo"},
+		{name: "owner repo", input: "owner/repo", want: "owner_repo"},
+		{name: "ssh remote", input: "git@github.com:owner/repo.git", want: "git_github.com_owner_repo"},
 		{name: "keeps safe chars", input: "my.repo_v2", want: "my.repo_v2"},
 		{name: "replaces unsafe chars", input: "repo name!*", want: "repo_name"},
-		{name: "maps plus to underscore", input: "owner/repo+dev", want: "repo_dev"},
+		{name: "maps plus to underscore", input: "owner/repo+dev", want: "owner_repo_dev"},
 		{name: "empty", input: "   ", wantErr: true},
 		{name: "invalid only", input: "///", wantErr: true},
 	}
@@ -48,14 +48,28 @@ func TestPushTicketPathSanitizesRepoName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pushTicketPath() error: %v", err)
 	}
-	if repo != "repo" {
-		t.Fatalf("ticket repo = %q, want repo", repo)
+	if repo != "owner_repo" {
+		t.Fatalf("ticket repo = %q, want owner_repo", repo)
 	}
 	if strings.Contains(path, "owner/") {
 		t.Fatalf("ticket path should not contain nested repo path, got %q", path)
 	}
-	if filepath.Base(path) != "push-ticket-repo" {
-		t.Fatalf("ticket file = %q, want push-ticket-repo", filepath.Base(path))
+	if filepath.Base(path) != "push-ticket-owner_repo" {
+		t.Fatalf("ticket file = %q, want push-ticket-owner_repo", filepath.Base(path))
+	}
+}
+
+func TestPushTicketPathAvoidsOwnerRepoCollisions(t *testing.T) {
+	path1, repo1, err := pushTicketPath("owner-a/repo")
+	if err != nil {
+		t.Fatalf("pushTicketPath owner-a error: %v", err)
+	}
+	path2, repo2, err := pushTicketPath("owner-b/repo")
+	if err != nil {
+		t.Fatalf("pushTicketPath owner-b error: %v", err)
+	}
+	if repo1 == repo2 || path1 == path2 {
+		t.Fatalf("ticket identity collision: %q (%q) vs %q (%q)", repo1, path1, repo2, path2)
 	}
 }
 
@@ -89,7 +103,10 @@ func TestRunGuardPushInstallWritesTicketPathWithSlash(t *testing.T) {
 		t.Fatalf("read hook: %v", err)
 	}
 	hook := string(content)
-	if !strings.Contains(hook, `SAFE_REPO=$(printf "%s" "$REPO" | tr -c 'A-Za-z0-9_.-' '_' | sed 's/^[._-]*//; s/[._-]*$//')`) {
+	if !strings.Contains(hook, `REMOTE_URL=$(git remote get-url origin 2>/dev/null)`) {
+		t.Fatalf("hook missing remote url detection:\n%s", hook)
+	}
+	if !strings.Contains(hook, `SAFE_REPO=$(printf "%s" "$REMOTE_URL" | tr -c 'A-Za-z0-9_.-' '_' | sed 's/^[._-]*//; s/[._-]*$//')`) {
 		t.Fatalf("hook missing repo sanitization:\n%s", hook)
 	}
 	if !strings.Contains(hook, `TICKET="${TMPBASE}/push-ticket-$SAFE_REPO"`) {

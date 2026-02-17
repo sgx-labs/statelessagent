@@ -508,7 +508,7 @@ same push-allow
 same guard status
 ```
 
-When enabled, a pre-push git hook blocks pushes unless a one-time ticket has been created via `same push-allow`. Tickets expire after 30 seconds by default (configurable via `same guard settings set push-timeout N`).
+When enabled, a pre-push git hook blocks pushes unless a one-time ticket has been created via `same push-allow`. Tickets expire after 60 seconds by default (configurable via `same guard settings set push-timeout N`).
 
 </details>
 

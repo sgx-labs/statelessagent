@@ -731,9 +731,7 @@ This command works with the pre-push hook installed by 'same guard push-install'
 				if err != nil {
 					return fmt.Errorf("not in a git repo or no origin remote. Specify repo name explicitly")
 				}
-				url := strings.TrimSpace(string(out))
-				// Extract repo name from URL
-				repo = filepath.Base(strings.TrimSuffix(url, ".git"))
+				repo = strings.TrimSpace(string(out))
 			}
 			return createPushTicket(repo)
 		},
@@ -777,16 +775,14 @@ func sanitizeRepoTicketName(repo string) (string, error) {
 		return "", fmt.Errorf("repo is required")
 	}
 
-	normalized := strings.ReplaceAll(raw, "\\", "/")
+	normalized := strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
 	normalized = strings.TrimSuffix(normalized, ".git")
-	base := filepath.Base(normalized)
-	base = strings.TrimSpace(base)
-	if base == "" || base == "." || base == ".." {
+	if normalized == "" || normalized == "." || normalized == ".." {
 		return "", fmt.Errorf("invalid repo %q", repo)
 	}
 
 	var b strings.Builder
-	for _, r := range base {
+	for _, r := range normalized {
 		switch {
 		case isRepoTicketChar(r):
 			b.WriteRune(r)
@@ -849,15 +845,18 @@ func runGuardPushInstall(force bool) error {
 # Installed by: same guard push-install
 # Requires 'same push-allow' before each push.
 
-REPO=$(basename "$(git remote get-url origin 2>/dev/null)" .git 2>/dev/null)
-if [ -z "$REPO" ]; then
-    echo "Warning: Could not determine repo name. Allowing push."
+REMOTE_URL=$(git remote get-url origin 2>/dev/null)
+if [ -z "$REMOTE_URL" ]; then
+    echo "Warning: Could not determine origin remote. Allowing push."
     exit 0
 fi
 
-SAFE_REPO=$(printf "%s" "$REPO" | tr -c 'A-Za-z0-9_.-' '_' | sed 's/^[._-]*//; s/[._-]*$//')
+REPO=$(basename "$REMOTE_URL" .git 2>/dev/null)
+[ -z "$REPO" ] && REPO="$REMOTE_URL"
+
+SAFE_REPO=$(printf "%s" "$REMOTE_URL" | tr -c 'A-Za-z0-9_.-' '_' | sed 's/^[._-]*//; s/[._-]*$//')
 if [ -z "$SAFE_REPO" ]; then
-    SAFE_REPO="$REPO"
+    SAFE_REPO=$(printf "%s" "$REPO" | tr -c 'A-Za-z0-9_.-' '_' | sed 's/^[._-]*//; s/[._-]*$//')
 fi
 
 # Use TMPDIR if set (macOS), fall back to /tmp
@@ -872,7 +871,7 @@ if [ ! -f "$TICKET" ]; then
     echo "   when running multiple AI agents."
     echo ""
     echo "   To authorize this push:"
-    echo "     same push-allow $REPO"
+    echo "     same push-allow"
     echo ""
     echo "   Then run your push command again."
     echo ""
@@ -890,7 +889,7 @@ AGE=$((NOW - TICKET_TIME))
 if [ "$AGE" -gt "$TICKET_TIMEOUT" ]; then
     rm -f "$TICKET"
     echo ""
-    echo "❌ Push ticket expired (>${TICKET_TIMEOUT}s). Run: same push-allow $REPO"
+    echo "❌ Push ticket expired (>${TICKET_TIMEOUT}s). Run: same push-allow"
     echo ""
     exit 1
 fi
@@ -909,7 +908,7 @@ echo "✓ Push authorized for $REPO"
 	}
 
 	fmt.Printf("  %s✓%s Pre-push hook installed at %s\n", cli.Green, cli.Reset, hookPath)
-	fmt.Printf("  All pushes now require: same push-allow <repo>\n")
+	fmt.Printf("  All pushes now require: same push-allow\n")
 	fmt.Printf("  Bypass with: git push --no-verify (emergency only)\n")
 	return nil
 }
