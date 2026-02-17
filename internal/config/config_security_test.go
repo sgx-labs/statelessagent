@@ -54,6 +54,29 @@ func TestValidateVaultPath_SymlinkToDangerousRoot(t *testing.T) {
 	}
 }
 
+func TestSafeVaultSubpath_BoundaryChecks(t *testing.T) {
+	vault := t.TempDir()
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = "" })
+	t.Setenv("VAULT_PATH", vault)
+
+	valid, ok := SafeVaultSubpath("sessions/next-handoff.md")
+	if !ok {
+		t.Fatal("expected valid subpath to succeed")
+	}
+	if !pathWithinBase(vault, valid) {
+		t.Fatalf("expected resolved path within vault: %s", valid)
+	}
+
+	if _, ok := SafeVaultSubpath("../escape.md"); ok {
+		t.Fatal("expected traversal subpath to be rejected")
+	}
+
+	if _, ok := SafeVaultSubpath("/etc/passwd"); ok {
+		t.Fatal("expected absolute path subpath to be rejected")
+	}
+}
+
 // --- Config file handling with malformed data ---
 
 func TestLoadConfig_MalformedTOML(t *testing.T) {

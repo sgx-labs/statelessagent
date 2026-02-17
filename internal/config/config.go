@@ -860,15 +860,28 @@ func SafeVaultSubpath(relativePath string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	absPath, err := filepath.Abs(filepath.Join(vaultRoot, filepath.FromSlash(relativePath)))
+	candidate := filepath.FromSlash(relativePath)
+	if filepath.IsAbs(candidate) {
+		return "", false
+	}
+	absPath, err := filepath.Abs(filepath.Join(vaultRoot, candidate))
 	if err != nil {
 		return "", false
 	}
 	// The resolved path must be under the vault root
-	if !strings.HasPrefix(absPath, absVault+string(filepath.Separator)) && absPath != absVault {
+	if !pathWithinBase(absVault, absPath) {
 		return "", false
 	}
 	return absPath, true
+}
+
+func pathWithinBase(base, candidate string) bool {
+	rel, err := filepath.Rel(base, candidate)
+	if err != nil {
+		return false
+	}
+	rel = filepath.ToSlash(rel)
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, "../"))
 }
 
 // Sentinel errors for consistent messaging across CLI and hooks.
