@@ -273,12 +273,8 @@ func runStatus(jsonOut bool) error {
 	}
 
 	activeSource := ""
-	if config.VaultOverride != "" {
-		activeSource = "via --vault flag"
-	} else if cwd, err := os.Getwd(); err == nil && cwd == vp {
-		activeSource = "auto-detected from cwd"
-	} else if activeName != "" && activeName == reg.Default {
-		activeSource = "registry default"
+	if cwd, err := os.Getwd(); err == nil {
+		activeSource = activeVaultSource(config.VaultOverride, cwd, vp, activeName, reg.Default)
 	}
 
 	cli.Section("Vault")
@@ -424,11 +420,33 @@ func detectChatStatus() runtimeStatus {
 	}
 
 	st.Provider = client.Provider()
-	st.Status = "available"
-	if model, modelErr := client.PickBestModel(); modelErr == nil {
+	model, modelErr := client.PickBestModel()
+	if modelErr == nil {
+		st.Status = "available"
 		st.Model = model
+		return st
+	}
+
+	st.Error = sanitizeRuntimeError(modelErr)
+	if st.Provider == "ollama" {
+		st.Status = "not_running"
+	} else {
+		st.Status = "unavailable"
 	}
 	return st
+}
+
+func activeVaultSource(vaultOverride, cwd, vaultPath, activeName, defaultName string) string {
+	if strings.TrimSpace(vaultOverride) != "" {
+		return "via --vault flag"
+	}
+	if strings.TrimSpace(cwd) != "" && cwd == vaultPath {
+		return "auto-detected from cwd"
+	}
+	if activeName != "" && activeName == defaultName {
+		return "registry default"
+	}
+	return ""
 }
 
 func detectGraphStatus() graphRuntimeStatus {

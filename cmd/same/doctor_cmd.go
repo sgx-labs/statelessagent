@@ -591,6 +591,15 @@ func runDoctor(jsonOut bool) error {
 		skip("Retrieval utilization", "skipped (vault path not found)")
 	} else {
 		check("Embedding config", "run 'same reindex --force' if model changed", func() (string, error) {
+			ec := config.EmbeddingProviderConfig()
+			provider := strings.TrimSpace(ec.Provider)
+			if provider == "" {
+				provider = "ollama"
+			}
+			if provider == "none" {
+				return "keyword-only mode (metadata check skipped)", nil
+			}
+
 			db, err := store.Open()
 			if err != nil {
 				return "", fmt.Errorf("cannot open")
@@ -603,12 +612,12 @@ func runDoctor(jsonOut bool) error {
 			if mismatchErr := db.CheckEmbeddingMeta(embedClient.Name(), embedClient.Model(), embedClient.Dimensions()); mismatchErr != nil {
 				return "", mismatchErr
 			}
-			provider, _ := db.GetMeta("embed_provider")
+			storedProvider, _ := db.GetMeta("embed_provider")
 			dims, _ := db.GetMeta("embed_dims")
-			if provider == "" {
+			if storedProvider == "" {
 				return "no metadata stored yet", nil
 			}
-			return fmt.Sprintf("%s, %s dims", provider, dims), nil
+			return fmt.Sprintf("%s, %s dims", storedProvider, dims), nil
 		})
 
 		check("SQLite integrity", "run 'same repair' to rebuild", func() (string, error) {
