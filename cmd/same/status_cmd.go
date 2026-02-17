@@ -272,10 +272,8 @@ func runStatus(jsonOut bool) error {
 		}
 	}
 
-	activeSource := ""
-	if cwd, err := os.Getwd(); err == nil {
-		activeSource = activeVaultSource(config.VaultOverride, cwd, vp, activeName, reg.Default)
-	}
+	cwd, _ := os.Getwd()
+	activeSource := activeVaultSource(config.VaultOverride, cwd, vp, activeName, reg.Default)
 
 	cli.Section("Vault")
 	if activeName != "" {
