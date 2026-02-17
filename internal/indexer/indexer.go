@@ -83,11 +83,21 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 	graphDB := graph.NewDB(db.Conn())
 	extractor := graph.NewExtractor(graphDB)
 
-	// Attempt to configure LLM for extraction if available.
-	// This now follows provider-agnostic chat routing instead of Ollama-only.
-	if chatClient, err := llm.NewClient(); err == nil {
-		if model, modelErr := chatClient.PickBestModel(); modelErr == nil && model != "" {
-			extractor.SetLLM(chatClient, model)
+	// Configure optional graph LLM extraction according to policy.
+	switch config.GraphLLMMode() {
+	case "off":
+		// Regex-only graph extraction.
+	case "local-only":
+		if chatClient, err := llm.NewClientWithOptions(llm.Options{LocalOnly: true}); err == nil {
+			if model, modelErr := chatClient.PickBestModel(); modelErr == nil && model != "" {
+				extractor.SetLLM(chatClient, model)
+			}
+		}
+	case "on":
+		if chatClient, err := llm.NewClient(); err == nil {
+			if model, modelErr := chatClient.PickBestModel(); modelErr == nil && model != "" {
+				extractor.SetLLM(chatClient, model)
+			}
 		}
 	}
 

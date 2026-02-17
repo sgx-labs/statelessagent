@@ -143,11 +143,11 @@ Your markdown notes are embedded locally via Ollama and stored in a SQLite datab
 
 ## Features
 
-| Feature | Description | Requires Ollama? |
+| Feature | Description | Requires provider? |
 |---------|-------------|:-:|
-| Semantic search | Find notes by meaning, not keywords | Yes |
+| Semantic search | Find notes by meaning, not keywords | Embeddings |
 | Keyword search (FTS5) | Full-text search fallback | No |
-| `same ask` (RAG) | Ask questions, get cited answers from your notes | Yes (chat model) |
+| `same ask` (RAG) | Ask questions, get cited answers from your notes | Chat model |
 | Session handoffs | Auto-generated continuity notes | No |
 | Session recovery | Crash-safe — next session picks up even if terminal closed | No |
 | Decision extraction | Architectural choices remembered across sessions | No |
@@ -164,7 +164,7 @@ Your markdown notes are embedded locally via Ollama and stored in a SQLite datab
 | MCP server (12 tools) | Works with any MCP client | No* |
 | Privacy tiers | `_PRIVATE/` never indexed, `research/` never committed | No |
 
-*Semantic mode requires Ollama; keyword fallback is automatic.
+*Semantic mode requires embeddings; keyword fallback is automatic.
 
 ---
 
@@ -181,6 +181,7 @@ same graph rebuild
 
 Graph data is built from indexed notes and stays local in SQLite. `_PRIVATE/` files remain excluded because they are never indexed.
 Markdown note links (for example `notes/next.md`) are connected as note-to-note edges, so you can traverse actual learning paths across your vault.
+LLM graph extraction is `off` by default; enable it explicitly with `SAME_GRAPH_LLM=local-only` (local endpoints only) or `SAME_GRAPH_LLM=on`.
 
 `same web` now surfaces graph highlights (node/edge density + top relationship types) and shows per-note knowledge connections directly in the note viewer, so you can inspect relationship paths without leaving the dashboard.
 
@@ -470,6 +471,7 @@ Configuration priority (highest wins):
 | `SAME_CHAT_BASE_URL` | *(provider default)* | Chat API base URL for OpenAI-compatible endpoints |
 | `SAME_CHAT_API_KEY` | *(none)* | Chat API key (or use `OPENAI_API_KEY`) |
 | `SAME_CHAT_FALLBACKS` | *(none)* | Comma-separated fallback providers for auto mode (e.g. `ollama,openai-compatible`) |
+| `SAME_GRAPH_LLM` | `off` | Graph LLM extraction policy: `off`, `local-only`, or `on` |
 | `SAME_SKIP_DIRS` | *(none)* | Extra dirs to skip (comma-separated) |
 | `SAME_NOISE_PATHS` | *(none)* | Paths filtered from context surfacing (comma-separated) |
 

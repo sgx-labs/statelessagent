@@ -94,6 +94,15 @@ jobs:
         with:
           path: artifacts
 
+      - name: Generate SHA256 checksums
+        run: |
+          sha256sum \
+            artifacts/same-darwin-arm64/same-darwin-arm64 \
+            artifacts/same-linux-amd64/same-linux-amd64 \
+            artifacts/same-linux-arm64/same-linux-arm64 \
+            artifacts/same-windows-amd64.exe/same-windows-amd64.exe \
+            > artifacts/sha256sums.txt
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -103,6 +112,7 @@ jobs:
             artifacts/same-linux-amd64/same-linux-amd64
             artifacts/same-linux-arm64/same-linux-arm64
             artifacts/same-windows-amd64.exe/same-windows-amd64.exe
+            artifacts/sha256sums.txt
 
   npm-publish:
     needs: release

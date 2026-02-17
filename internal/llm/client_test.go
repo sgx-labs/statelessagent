@@ -73,6 +73,38 @@ func TestNewClient_ExplicitOpenAIRequiresAPIKey(t *testing.T) {
 	}
 }
 
+func TestNewClientWithOptions_LocalOnlyRejectsRemoteProvider(t *testing.T) {
+	t.Setenv("SAME_CHAT_PROVIDER", "openai")
+	t.Setenv("SAME_CHAT_API_KEY", "sk-test")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("SAME_CHAT_BASE_URL", "")
+	t.Setenv("SAME_CHAT_FALLBACKS", "")
+
+	_, err := NewClientWithOptions(Options{LocalOnly: true})
+	if err == nil {
+		t.Fatal("expected error when local-only blocks remote-only provider")
+	}
+	if !strings.Contains(err.Error(), "no local chat provider configured") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestNewClientWithOptions_LocalOnlyAllowsLocalOpenAICompatible(t *testing.T) {
+	t.Setenv("SAME_CHAT_PROVIDER", "openai-compatible")
+	t.Setenv("SAME_CHAT_BASE_URL", "http://localhost:11434/v1")
+	t.Setenv("SAME_CHAT_MODEL", "llama3.2")
+	t.Setenv("SAME_CHAT_API_KEY", "")
+	t.Setenv("SAME_CHAT_FALLBACKS", "")
+
+	client, err := NewClientWithOptions(Options{LocalOnly: true})
+	if err != nil {
+		t.Fatalf("NewClientWithOptions: %v", err)
+	}
+	if client.Provider() != "openai-compatible" {
+		t.Fatalf("expected openai-compatible provider, got %q", client.Provider())
+	}
+}
+
 type roundTripFunc func(req *http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {

@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased (v0.9.0)
+## v0.9.0 — Knowledge Graph, Provider Flexibility, and Hardening
 
 ### Added
 
+- **Graph LLM extraction policy controls** — new `SAME_GRAPH_LLM=off|local-only|on` setting gates optional LLM-based graph enrichment during reindex (`off` by default, `local-only` for localhost-only chat endpoints)
+- **Verified self-update downloads** — `same update` now requires `sha256sums.txt` from releases and verifies the downloaded binary checksum before install
 - **`pi` advanced profile preset (`same profile use pi`)** — tuned memory retrieval thresholds for Raspberry Pi / low-resource setups, with CLI guidance for lightweight embedding choices
 - **Provider-agnostic chat routing for `same ask` + graph LLM extraction** — new `SAME_CHAT_*` controls support `auto`, `ollama`, `openai`, and `openai-compatible` providers with optional fallback queues
 - **Knowledge graph command group (`same graph`)** — new CLI for graph traversal and diagnostics:
@@ -19,6 +21,7 @@
 
 ### Fixed
 
+- **Provider-neutral diagnostics and status UX** — `same status`/`same doctor` now report embedding/chat/graph runtime state across `ollama`, `openai`, `openai-compatible`, and `none` modes instead of Ollama-only assumptions
 - **Graph consistency on deletes and force-clear** — deleting notes now removes related graph nodes/edges and prunes orphan non-note graph nodes; force-clear now resets graph tables as well
 - **Graph freshness during `same watch`** — watcher now updates graph data in both semantic and keyword-only (`provider = "none"`) modes
 - **Keyword-only reindex UX** — `same reindex` now reliably falls back to lite mode when embeddings are disabled (`provider = "none"`), with clear next-step messaging

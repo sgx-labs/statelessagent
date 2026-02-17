@@ -2,6 +2,7 @@ package llm
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -25,6 +26,15 @@ type clientConfig struct {
 	Fallbacks []string
 }
 
+// Options controls chat client resolution behavior.
+type Options struct {
+	// LocalOnly restricts provider selection to local endpoints only.
+	// Currently this allows:
+	//   - ollama
+	//   - openai-compatible with localhost/127.0.0.1/::1 base URL
+	LocalOnly bool
+}
+
 // NewClient constructs a chat client using provider-aware defaults.
 //
 // Provider selection:
@@ -32,8 +42,17 @@ type clientConfig struct {
 //   - SAME_CHAT_PROVIDER=auto (default): follows embedding provider first,
 //     then tries configured fallbacks.
 func NewClient() (Client, error) {
+	return NewClientWithOptions(Options{})
+}
+
+// NewClientWithOptions constructs a chat client using provider-aware defaults
+// and optional resolution constraints.
+func NewClientWithOptions(opts Options) (Client, error) {
 	cfg := resolveClientConfig()
 	providers := providerOrder(cfg)
+	if opts.LocalOnly {
+		providers = filterLocalProviders(providers, cfg)
+	}
 
 	var errs []string
 	for _, provider := range providers {
@@ -45,6 +64,9 @@ func NewClient() (Client, error) {
 	}
 
 	if len(errs) == 0 {
+		if opts.LocalOnly {
+			return nil, fmt.Errorf("no local chat provider configured")
+		}
 		return nil, fmt.Errorf("no chat provider configured")
 	}
 	return nil, fmt.Errorf("no chat provider available (%s)", strings.Join(errs, "; "))
@@ -168,6 +190,30 @@ func normalizeProvider(provider string) string {
 	default:
 		return p
 	}
+}
+
+func filterLocalProviders(providers []string, cfg clientConfig) []string {
+	local := make([]string, 0, len(providers))
+	for _, provider := range providers {
+		switch normalizeProvider(provider) {
+		case "ollama":
+			local = append(local, provider)
+		case "openai-compatible":
+			if isLoopbackBaseURL(cfg.BaseURL) {
+				local = append(local, provider)
+			}
+		}
+	}
+	return local
+}
+
+func isLoopbackBaseURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	host := strings.TrimSpace(u.Hostname())
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 type ollamaClient struct {

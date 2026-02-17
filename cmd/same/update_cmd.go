@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +17,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sgx-labs/statelessagent/internal/cli"
+)
+
+const (
+	maxReleaseMetadataSize = 2 * 1024 * 1024   // 2MB
+	maxChecksumFileSize    = 512 * 1024        // 512KB
+	maxBinaryDownloadSize  = 200 * 1024 * 1024 // 200MB
 )
 
 func versionCmd() *cobra.Command {
@@ -55,7 +64,7 @@ func runVersionCheck() error {
 		return nil
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxReleaseMetadataSize))
 	if err != nil {
 		fmt.Printf("same %s\n", Version)
 		return nil
@@ -94,7 +103,8 @@ func updateCmd() *cobra.Command {
 This command will:
   1. Check the current version against GitHub releases
   2. Download the appropriate binary for your platform
-  3. Replace the current binary with the new version
+  3. Verify SHA256 checksum from release manifest
+  4. Replace the current binary with the new version
 
 Example:
   same update          Check and install if newer version available
@@ -137,7 +147,7 @@ func runUpdate(force bool) error {
 		return fmt.Errorf("GitHub API returned %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxReleaseMetadataSize))
 	if err != nil {
 		return fmt.Errorf("read response: %w", err)
 	}
@@ -190,18 +200,28 @@ func runUpdate(force bool) error {
 		return fmt.Errorf("unsupported platform: %s/%s", goos, goarch)
 	}
 
-	// Find the download URL
-	var downloadURL string
-	for _, asset := range release.Assets {
-		if asset.Name == assetName {
-			downloadURL = asset.BrowserDownloadURL
-			break
-		}
-	}
-
-	if downloadURL == "" {
+	downloadURL, ok := findReleaseAssetURL(release.Assets, assetName)
+	if !ok {
 		return fmt.Errorf("no binary found for %s/%s in release %s", goos, goarch, release.TagName)
 	}
+
+	checksumURL, ok := findReleaseAssetURL(release.Assets, "sha256sums.txt")
+	if !ok {
+		return fmt.Errorf("release %s is missing sha256sums.txt; refusing unverified update", release.TagName)
+	}
+
+	fmt.Printf("\n  Fetching checksums...")
+	checksumMap, err := fetchSHA256Sums(client, checksumURL)
+	if err != nil {
+		fmt.Printf(" %sfailed%s\n", cli.Red, cli.Reset)
+		return fmt.Errorf("checksum fetch failed: %w", err)
+	}
+	expectedSHA256, ok := checksumMap[assetName]
+	if !ok {
+		fmt.Printf(" %sfailed%s\n", cli.Red, cli.Reset)
+		return fmt.Errorf("checksum for asset %s not found in sha256sums.txt", assetName)
+	}
+	fmt.Printf(" %s✓%s\n", cli.Green, cli.Reset)
 
 	fmt.Printf("\n  Downloading %s...", assetName)
 
@@ -236,13 +256,30 @@ func runUpdate(force bool) error {
 	}
 	tmpPath := tmpFile.Name()
 
-	// Download the file
-	_, err = io.Copy(tmpFile, dlResp.Body)
-	tmpFile.Close()
+	// Download + hash the file (with a hard size cap).
+	hasher := sha256.New()
+	limited := &io.LimitedReader{R: dlResp.Body, N: maxBinaryDownloadSize + 1}
+	n, err := io.Copy(io.MultiWriter(tmpFile, hasher), limited)
+	closeErr := tmpFile.Close()
+	if err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		os.Remove(tmpPath)
 		fmt.Printf(" %sfailed%s\n", cli.Red, cli.Reset)
 		return fmt.Errorf("write file: %w", err)
+	}
+	if n > maxBinaryDownloadSize {
+		os.Remove(tmpPath)
+		fmt.Printf(" %sfailed%s\n", cli.Red, cli.Reset)
+		return fmt.Errorf("download too large (> %d MB)", maxBinaryDownloadSize/(1024*1024))
+	}
+
+	actualSHA256 := hex.EncodeToString(hasher.Sum(nil))
+	if !strings.EqualFold(actualSHA256, expectedSHA256) {
+		os.Remove(tmpPath)
+		fmt.Printf(" %sfailed%s\n", cli.Red, cli.Reset)
+		return fmt.Errorf("checksum mismatch for %s (expected %s, got %s)", assetName, expectedSHA256, actualSHA256)
 	}
 
 	// Make executable
@@ -285,4 +322,70 @@ func runUpdate(force bool) error {
 
 	cli.Footer()
 	return nil
+}
+
+func findReleaseAssetURL(assets []struct {
+	Name               string `json:"name"`
+	BrowserDownloadURL string `json:"browser_download_url"`
+}, name string) (string, bool) {
+	for _, asset := range assets {
+		if asset.Name == name {
+			return asset.BrowserDownloadURL, true
+		}
+	}
+	return "", false
+}
+
+func fetchSHA256Sums(client *http.Client, checksumURL string) (map[string]string, error) {
+	resp, err := client.Get(checksumURL)
+	if err != nil {
+		return nil, fmt.Errorf("download checksum file: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("checksum endpoint returned %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxChecksumFileSize))
+	if err != nil {
+		return nil, fmt.Errorf("read checksum file: %w", err)
+	}
+
+	out := make(map[string]string)
+	scanner := bufio.NewScanner(strings.NewReader(string(body)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		sum := strings.ToLower(strings.TrimSpace(fields[0]))
+		if len(sum) != 64 || !isHexString(sum) {
+			continue
+		}
+		name := filepath.Base(strings.TrimSpace(fields[len(fields)-1]))
+		if name == "" {
+			continue
+		}
+		out[name] = sum
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("parse checksum file: %w", err)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("checksum file was empty or malformed")
+	}
+	return out, nil
+}
+
+func isHexString(s string) bool {
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
 }

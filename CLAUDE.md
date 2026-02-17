@@ -52,3 +52,33 @@ When adding new MCP handlers or hook output paths, ensure all text returned to a
 - Do NOT use vault search MCP tools
 - Do NOT copy patterns, paths, or names from other projects
 - Do NOT develop vault-specific features without using synthetic test data
+
+## Session Continuity
+
+**Every session MUST maintain the project memory.** Context lost between sessions is the #1 productivity killer for this project.
+
+### At session start:
+1. Read `memory/MEMORY.md` (loaded automatically via auto-memory)
+2. Check `git log --oneline -10` to understand recent work
+3. Check `git status` for uncommitted work in progress
+
+### At session end (before the user closes):
+1. **Update `memory/MEMORY.md`** with:
+   - Current version and commit hash
+   - What was done this session (bullet points)
+   - What's uncommitted in the working tree
+   - What's next / unfinished
+2. Keep MEMORY.md under 200 lines (it's loaded into system prompt)
+3. Move detailed notes to topic files in the memory directory if needed
+
+### What to capture:
+- Architectural decisions and WHY they were made
+- Bugs found and how they were fixed
+- Features added with their scope
+- Things that were tried and didn't work
+- Current state of git (ahead of origin? uncommitted work?)
+
+### What NOT to put in MEMORY.md:
+- PII or local paths
+- Duplicates of what's already in CHANGELOG.md
+- Speculative plans that haven't been discussed with the user

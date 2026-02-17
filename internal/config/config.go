@@ -129,6 +129,7 @@ type Config struct {
 	Vault     VaultConfig     `toml:"vault"`
 	Ollama    OllamaConfig    `toml:"ollama"`
 	Embedding EmbeddingConfig `toml:"embedding"`
+	Graph     GraphConfig     `toml:"graph"`
 	Memory    MemoryConfig    `toml:"memory"`
 	Hooks     HooksConfig     `toml:"hooks"`
 	Display   DisplayConfig   `toml:"display"`
@@ -166,6 +167,11 @@ type EmbeddingConfig struct {
 	Dimensions int    `toml:"dimensions"` // vector dimensions (0 = provider default)
 }
 
+// GraphConfig holds knowledge-graph extraction settings.
+type GraphConfig struct {
+	LLMMode string `toml:"llm_mode"` // "off" (default), "local-only", "on"
+}
+
 // HooksConfig controls which hooks are enabled.
 type HooksConfig struct {
 	ContextSurfacing  bool `toml:"context_surfacing"`
@@ -194,6 +200,9 @@ func DefaultConfig() *Config {
 		Embedding: EmbeddingConfig{
 			Provider: "ollama",
 			Model:    EmbeddingModel,
+		},
+		Graph: GraphConfig{
+			LLMMode: "off",
 		},
 		Memory: MemoryConfig{
 			MaxTokenBudget:     1600,
@@ -271,6 +280,9 @@ func LoadConfig() (*Config, error) {
 	if v := os.Getenv("SAME_EMBED_API_KEY"); v != "" {
 		cfg.Embedding.APIKey = v
 	}
+	if v := os.Getenv("SAME_GRAPH_LLM"); v != "" {
+		cfg.Graph.LLMMode = v
+	}
 	// Also check OPENAI_API_KEY as a convenience fallback
 	if cfg.Embedding.APIKey == "" && (cfg.Embedding.Provider == "openai" || cfg.Embedding.Provider == "openai-compatible") {
 		if v := os.Getenv("OPENAI_API_KEY"); v != "" {
@@ -316,8 +328,19 @@ func LoadConfigFrom(configPath string) (*Config, error) {
 	if v := os.Getenv("SAME_EMBED_MODEL"); v != "" {
 		cfg.Embedding.Model = v
 	}
+	if v := os.Getenv("SAME_EMBED_BASE_URL"); v != "" {
+		cfg.Embedding.BaseURL = v
+	}
 	if v := os.Getenv("SAME_EMBED_API_KEY"); v != "" {
 		cfg.Embedding.APIKey = v
+	}
+	if v := os.Getenv("SAME_GRAPH_LLM"); v != "" {
+		cfg.Graph.LLMMode = v
+	}
+	if cfg.Embedding.APIKey == "" && (cfg.Embedding.Provider == "openai" || cfg.Embedding.Provider == "openai-compatible") {
+		if v := os.Getenv("OPENAI_API_KEY"); v != "" {
+			cfg.Embedding.APIKey = v
+		}
 	}
 
 	return cfg, nil
@@ -385,7 +408,8 @@ func generateTOMLContent(vaultPath string) string {
 	b.WriteString("#\n")
 	b.WriteString("# Priority: CLI flags > environment variables > this file > built-in defaults\n")
 	b.WriteString("# Environment variables: VAULT_PATH, OLLAMA_URL, SAME_HANDOFF_DIR,\n")
-	b.WriteString("#   SAME_DECISION_LOG, SAME_SKIP_DIRS, SAME_NOISE_PATHS, SAME_DATA_DIR\n\n")
+	b.WriteString("#   SAME_DECISION_LOG, SAME_SKIP_DIRS, SAME_NOISE_PATHS, SAME_DATA_DIR,\n")
+	b.WriteString("#   SAME_GRAPH_LLM\n\n")
 
 	b.WriteString("[vault]\n")
 	if vaultPath != "" {
@@ -413,6 +437,13 @@ func generateTOMLContent(vaultPath string) string {
 	b.WriteString("# api_key = \"\"                  # required for cloud providers\n")
 	b.WriteString("#                               # or set SAME_EMBED_API_KEY / OPENAI_API_KEY\n")
 	b.WriteString("# dimensions = 0                # 0 = use provider default\n\n")
+
+	b.WriteString("[graph]\n")
+	b.WriteString("# LLM extraction policy:\n")
+	b.WriteString("#   \"off\"        = regex-only graph extraction (default)\n")
+	b.WriteString("#   \"local-only\" = allow LLM extraction only with local chat endpoints\n")
+	b.WriteString("#   \"on\"         = allow LLM extraction with any configured chat provider\n")
+	b.WriteString("llm_mode = \"off\"\n\n")
 
 	b.WriteString("[memory]\n")
 	b.WriteString("# Presets: same profile use precise|balanced|broad|pi\n")
@@ -590,6 +621,29 @@ func EmbeddingProviderConfig() EmbeddingConfig {
 	}
 
 	return ec
+}
+
+// GraphLLMMode returns the graph LLM extraction policy:
+// "off" (default), "local-only", or "on".
+func GraphLLMMode() string {
+	mode := ""
+	if v := os.Getenv("SAME_GRAPH_LLM"); v != "" {
+		mode = v
+	} else if cfg := loadConfigSafe(); cfg != nil {
+		mode = cfg.Graph.LLMMode
+	}
+
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", "off", "false", "0", "disabled":
+		return "off"
+	case "local-only", "local":
+		return "local-only"
+	case "on", "true", "1", "enabled":
+		return "on"
+	default:
+		// Fail closed for unknown values.
+		return "off"
+	}
 }
 
 // loadConfigSafe loads config without risking recursion. Returns nil on error.

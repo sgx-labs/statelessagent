@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/sgx-labs/statelessagent/internal/cli"
 	"github.com/sgx-labs/statelessagent/internal/config"
+	"github.com/sgx-labs/statelessagent/internal/llm"
 	"github.com/sgx-labs/statelessagent/internal/setup"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
@@ -21,7 +23,7 @@ func doctorCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check system health and diagnose issues",
-		Long:  "Runs health checks on your SAME setup: verifies Ollama is running, your notes are indexed, and search is working.",
+		Long:  "Runs health checks on your SAME setup: verifies providers are configured, your notes are indexed, and search is working.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDoctor(jsonOut)
 		},
@@ -71,28 +73,28 @@ func runDoctor(jsonOut bool) error {
 	skipped := 0
 	var results []DoctorResult
 
-	// Probe Ollama once up front so embedding-dependent checks can skip gracefully.
-	ollamaAvailable := false
-	ollamaSkipReason := "not configured"
+	// Probe embedding provider once up front so semantic checks can skip gracefully.
+	embedAvailable := false
+	embedSkipReason := "not configured"
 	if embedClient, err := newEmbedProvider(); err != nil {
-		ollamaSkipReason = fmt.Sprintf("provider: %v", err)
+		embedSkipReason = fmt.Sprintf("provider: %v", err)
 	} else if _, err := embedClient.GetQueryEmbedding("test"); err != nil {
 		// Classify the connection error for better diagnostics
 		errMsg := err.Error()
 		switch {
 		case strings.Contains(errMsg, "connection_refused"):
-			ollamaSkipReason = "connection refused — Ollama not running? Start with 'ollama serve'"
+			embedSkipReason = "connection refused — local embedding endpoint not running"
 		case strings.Contains(errMsg, "permission_denied"):
-			ollamaSkipReason = "permission denied — localhost may be blocked by sandbox/runtime policy"
+			embedSkipReason = "permission denied — localhost may be blocked by sandbox/runtime policy"
 		case strings.Contains(errMsg, "timeout"):
-			ollamaSkipReason = "timeout — Ollama slow to respond, a model may be loading"
+			embedSkipReason = "timeout — embedding endpoint slow to respond"
 		case strings.Contains(errMsg, "dns_failure"):
-			ollamaSkipReason = "DNS failure — cannot resolve hostname"
+			embedSkipReason = "DNS failure — cannot resolve hostname"
 		default:
-			ollamaSkipReason = fmt.Sprintf("connection failed: %v", err)
+			embedSkipReason = fmt.Sprintf("connection failed: %v", err)
 		}
 	} else {
-		ollamaAvailable = true
+		embedAvailable = true
 	}
 
 	// Track vault availability so DB-dependent checks can skip gracefully
@@ -137,7 +139,7 @@ func runDoctor(jsonOut bool) error {
 		}
 	}
 
-	// skip marks a check as skipped (lite mode) instead of failed.
+	// skip marks a check as skipped (keyword-only mode) instead of failed.
 	skip := func(name string, reason string) {
 		if jsonOut {
 			results = append(results, DoctorResult{
@@ -179,55 +181,65 @@ func runDoctor(jsonOut bool) error {
 		skip("Database", "skipped (vault path not found)")
 		skip("Index mode", "skipped (vault path not found)")
 	} else {
-	check("Database", "run 'same init' or 'same reindex'", func() (string, error) {
-		db, err := store.Open()
-		if err != nil {
-			return "", fmt.Errorf("cannot open")
-		}
-		defer db.Close()
-		noteCount, err := db.NoteCount()
-		if err != nil {
-			return "", fmt.Errorf("cannot query")
-		}
-		chunkCount, err := db.ChunkCount()
-		if err != nil {
-			return "", fmt.Errorf("cannot query")
-		}
-		if noteCount == 0 {
-			return "", fmt.Errorf("empty")
-		}
-		return fmt.Sprintf("%s notes, %s chunks",
-			cli.FormatNumber(noteCount),
-			cli.FormatNumber(chunkCount)), nil
-	})
+		check("Database", "run 'same init' or 'same reindex'", func() (string, error) {
+			db, err := store.Open()
+			if err != nil {
+				return "", fmt.Errorf("cannot open")
+			}
+			defer db.Close()
+			noteCount, err := db.NoteCount()
+			if err != nil {
+				return "", fmt.Errorf("cannot query")
+			}
+			chunkCount, err := db.ChunkCount()
+			if err != nil {
+				return "", fmt.Errorf("cannot query")
+			}
+			if noteCount == 0 {
+				return "", fmt.Errorf("empty")
+			}
+			return fmt.Sprintf("%s notes, %s chunks",
+				cli.FormatNumber(noteCount),
+				cli.FormatNumber(chunkCount)), nil
+		})
 
-	// 2b. Index mode
-	check("Index mode", "run 'same reindex' with Ollama for semantic search", func() (string, error) {
-		db, err := store.Open()
-		if err != nil {
-			return "", fmt.Errorf("cannot open database")
-		}
-		defer db.Close()
-		if db.HasVectors() {
-			return "semantic (Ollama embeddings)", nil
-		}
-		noteCount, _ := db.NoteCount()
-		if noteCount > 0 {
-			return "keyword-only (install Ollama + run 'same reindex' to upgrade)", nil
-		}
-		return "empty", nil
-	})
+		// 2b. Index mode
+		check("Index mode", "run 'same reindex' with an embedding provider for semantic search", func() (string, error) {
+			db, err := store.Open()
+			if err != nil {
+				return "", fmt.Errorf("cannot open database")
+			}
+			defer db.Close()
+			if db.HasVectors() {
+				ec := config.EmbeddingProviderConfig()
+				provider := ec.Provider
+				if provider == "" {
+					provider = "ollama"
+				}
+				return fmt.Sprintf("semantic (%s embeddings)", provider), nil
+			}
+			noteCount, _ := db.NoteCount()
+			if noteCount > 0 {
+				return "keyword-only (configure SAME_EMBED_PROVIDER + run 'same reindex' to upgrade)", nil
+			}
+			return "empty", nil
+		})
 	} // end vaultOK guard for Database + Index mode
 
-	// 2c. Upgrade prompt: Ollama available but index is keyword-only
-	if vaultOK && ollamaAvailable {
+	// 2c. Upgrade prompt: embedding provider reachable but index is keyword-only
+	if vaultOK && embedAvailable {
 		db, err := store.Open()
 		if err == nil {
 			if !db.HasVectors() {
 				noteCount, _ := db.NoteCount()
 				if noteCount > 0 {
 					if !jsonOut {
-						fmt.Printf("\n  %s⚡ Ollama is running but your index is keyword-only.%s\n", cli.Bold, cli.Reset)
+						ec := config.EmbeddingProviderConfig()
+						provider := ec.Provider
+						if provider == "" {
+							provider = "ollama"
+						}
+						fmt.Printf("\n  %s⚡ %s provider is reachable but your index is keyword-only.%s\n", cli.Bold, provider, cli.Reset)
 						fmt.Printf("  %s   Run 'same reindex' to enable semantic search.%s\n\n", cli.Dim, cli.Reset)
 					}
 				}
@@ -236,9 +248,30 @@ func runDoctor(jsonOut bool) error {
 		}
 	}
 
-	// 3. Embedding provider — skip gracefully in lite mode
-	if ollamaAvailable {
-		check("Ollama connection", "make sure Ollama is running (look for llama icon), or use keyword-only mode", func() (string, error) {
+	// 2d. Graph LLM extraction policy
+	check("Graph LLM policy", "set SAME_GRAPH_LLM=off|local-only|on", func() (string, error) {
+		mode := config.GraphLLMMode()
+		switch mode {
+		case "off":
+			return "off (regex-only graph extraction)", nil
+		case "local-only":
+			if _, err := llm.NewClientWithOptions(llm.Options{LocalOnly: true}); err != nil {
+				return "", fmt.Errorf("local-only enabled but no local chat provider available")
+			}
+			return "local-only (enabled)", nil
+		case "on":
+			if _, err := llm.NewClient(); err != nil {
+				return "", fmt.Errorf("on enabled but no chat provider available")
+			}
+			return "on (enabled)", nil
+		default:
+			return "", fmt.Errorf("invalid graph llm policy")
+		}
+	})
+
+	// 3. Embedding provider — skip gracefully in keyword-only mode
+	if embedAvailable {
+		check("Embedding connection", "check SAME_EMBED_PROVIDER and endpoint settings", func() (string, error) {
 			embedClient, err := newEmbedProvider()
 			if err != nil {
 				return "", fmt.Errorf("not connected (keyword search still works)")
@@ -246,7 +279,7 @@ func runDoctor(jsonOut bool) error {
 			return fmt.Sprintf("connected via %s", embedClient.Name()), nil
 		})
 	} else {
-		skip("Ollama connection", fmt.Sprintf("skipped (%s)", ollamaSkipReason))
+		skip("Embedding connection", fmt.Sprintf("skipped (%s)", embedSkipReason))
 	}
 
 	// 4-6: Search and security checks — skip if vault path is broken
@@ -256,128 +289,157 @@ func runDoctor(jsonOut bool) error {
 		skip("Private folders hidden", "skipped (vault path not found)")
 	} else {
 
-	// 4. Vector search — skip gracefully in lite mode
-	if ollamaAvailable {
-		check("Search working", "run 'same reindex' to rebuild", func() (string, error) {
-			db, err := store.Open()
-			if err != nil {
-				return "", err
-			}
-			defer db.Close()
+		// 4. Vector search — skip gracefully in keyword-only mode
+		if embedAvailable {
+			check("Search working", "run 'same reindex' to rebuild", func() (string, error) {
+				db, err := store.Open()
+				if err != nil {
+					return "", err
+				}
+				defer db.Close()
 
-			embedClient, err := newEmbedProvider()
-			if err != nil {
-				return "", fmt.Errorf("provider error")
-			}
-			vec, err := embedClient.GetQueryEmbedding("test query")
-			if err != nil {
-				return "", fmt.Errorf("embedding failed")
-			}
+				embedClient, err := newEmbedProvider()
+				if err != nil {
+					return "", fmt.Errorf("provider error")
+				}
+				vec, err := embedClient.GetQueryEmbedding("test query")
+				if err != nil {
+					return "", fmt.Errorf("embedding failed")
+				}
 
-			results, err := db.VectorSearch(vec, store.SearchOptions{TopK: 1})
-			if err != nil {
-				return "", fmt.Errorf("search failed")
-			}
-			if len(results) == 0 {
-				return "", fmt.Errorf("no results")
-			}
-			return "", nil
-		})
-	} else {
-		skip("Search working", "skipped (lite mode — needs Ollama for vector search)")
-	}
+				results, err := db.VectorSearch(vec, store.SearchOptions{TopK: 1})
+				if err != nil {
+					return "", fmt.Errorf("search failed")
+				}
+				if len(results) == 0 {
+					return "", fmt.Errorf("no results")
+				}
+				return "", nil
+			})
+		} else {
+			skip("Search working", "skipped (keyword-only mode — needs embeddings for vector search)")
+		}
 
-	// 5. Context surfacing — fall back to keyword test in lite mode
-	if ollamaAvailable {
-		check("Finding relevant notes", "try 'same search <query>' to test", func() (string, error) {
-			db, err := store.Open()
-			if err != nil {
-				return "", err
-			}
-			defer db.Close()
+		// 5. Context surfacing — fall back to keyword test in keyword-only mode
+		if embedAvailable {
+			check("Finding relevant notes", "try 'same search <query>' to test", func() (string, error) {
+				db, err := store.Open()
+				if err != nil {
+					return "", err
+				}
+				defer db.Close()
 
-			embedClient, err := newEmbedProvider()
-			if err != nil {
-				return "", fmt.Errorf("provider error")
-			}
-			vec, err := embedClient.GetQueryEmbedding("what notes are in this vault")
-			if err != nil {
-				return "", fmt.Errorf("embedding failed")
-			}
+				embedClient, err := newEmbedProvider()
+				if err != nil {
+					return "", fmt.Errorf("provider error")
+				}
+				vec, err := embedClient.GetQueryEmbedding("what notes are in this vault")
+				if err != nil {
+					return "", fmt.Errorf("embedding failed")
+				}
 
-			raw, err := db.VectorSearchRaw(vec, 3)
-			if err != nil {
-				return "", fmt.Errorf("raw search failed")
-			}
-			if len(raw) == 0 {
-				return "", fmt.Errorf("no results")
-			}
-			return "", nil
-		})
-	} else {
-		check("Finding relevant notes", "try 'same search <query>' to test", func() (string, error) {
-			db, err := store.Open()
-			if err != nil {
-				return "", err
-			}
-			defer db.Close()
-			noteCount, _ := db.NoteCount()
-			if noteCount == 0 {
-				return "", fmt.Errorf("no notes indexed")
-			}
-			// Actually test keyword search works (FTS5 or LIKE-based)
-			mode := "keyword"
-			if db.FTSAvailable() {
-				results, ftsErr := db.FTS5Search("test", store.SearchOptions{TopK: 1})
-				if ftsErr != nil || results == nil {
-					mode = "keyword (LIKE)"
+				raw, err := db.VectorSearchRaw(vec, 3)
+				if err != nil {
+					return "", fmt.Errorf("raw search failed")
+				}
+				if len(raw) == 0 {
+					return "", fmt.Errorf("no results")
+				}
+				return "", nil
+			})
+		} else {
+			check("Finding relevant notes", "try 'same search <query>' to test", func() (string, error) {
+				db, err := store.Open()
+				if err != nil {
+					return "", err
+				}
+				defer db.Close()
+				noteCount, _ := db.NoteCount()
+				if noteCount == 0 {
+					return "", fmt.Errorf("no notes indexed")
+				}
+				// Actually test keyword search works (FTS5 or LIKE-based)
+				mode := "keyword"
+				if db.FTSAvailable() {
+					results, ftsErr := db.FTS5Search("test", store.SearchOptions{TopK: 1})
+					if ftsErr != nil || results == nil {
+						mode = "keyword (LIKE)"
+					} else {
+						mode = "keyword (FTS5)"
+					}
 				} else {
-					mode = "keyword (FTS5)"
+					terms := store.ExtractSearchTerms("test")
+					_, kwErr := db.KeywordSearch(terms, 1)
+					if kwErr != nil {
+						return "", fmt.Errorf("keyword search failed: %w", kwErr)
+					}
+					mode = "keyword (LIKE)"
 				}
-			} else {
-				terms := store.ExtractSearchTerms("test")
-				_, kwErr := db.KeywordSearch(terms, 1)
-				if kwErr != nil {
-					return "", fmt.Errorf("keyword search failed: %w", kwErr)
-				}
-				mode = "keyword (LIKE)"
+				return fmt.Sprintf("%s (%s notes)", mode, cli.FormatNumber(noteCount)), nil
+			})
+		}
+
+		// 6. Private content excluded
+		check("Private folders hidden", "'same reindex --force' to refresh", func() (string, error) {
+			db, err := store.Open()
+			if err != nil {
+				return "", err
 			}
-			return fmt.Sprintf("%s (%s notes)", mode, cli.FormatNumber(noteCount)), nil
-		})
-	}
+			defer db.Close()
 
-	// 6. Private content excluded
-	check("Private folders hidden", "'same reindex --force' to refresh", func() (string, error) {
-		db, err := store.Open()
-		if err != nil {
-			return "", err
-		}
-		defer db.Close()
-
-		var count int
-		err = db.Conn().QueryRow("SELECT COUNT(*) FROM vault_notes WHERE path LIKE '_PRIVATE/%'").Scan(&count)
-		if err != nil {
+			var count int
+			err = db.Conn().QueryRow("SELECT COUNT(*) FROM vault_notes WHERE path LIKE '_PRIVATE/%'").Scan(&count)
+			if err != nil {
+				return "", nil
+			}
+			if count > 0 {
+				return "", fmt.Errorf("%d _PRIVATE/ entries in index", count)
+			}
 			return "", nil
-		}
-		if count > 0 {
-			return "", fmt.Errorf("%d _PRIVATE/ entries in index", count)
-		}
-		return "", nil
-	})
+		})
 
 	} // end vaultOK guard for search/security checks
 
-	// 7. Ollama localhost only
-	check("Data stays local", "Ollama should run on your computer, not a remote server", func() (string, error) {
-		ollamaURL, err := config.OllamaURL()
-		if err != nil {
-			return "", err
+	// 7. Embedding endpoint policy
+	check("Embedding endpoint policy", "use localhost endpoints for fully local processing", func() (string, error) {
+		ec := config.EmbeddingProviderConfig()
+		provider := strings.TrimSpace(ec.Provider)
+		if provider == "" {
+			provider = "ollama"
 		}
-		if !strings.Contains(ollamaURL, "localhost") && !strings.Contains(ollamaURL, "127.0.0.1") && !strings.Contains(ollamaURL, "::1") {
-			// SECURITY: Don't leak the actual URL in error message
-			return "", fmt.Errorf("Ollama URL is not localhost")
+
+		switch provider {
+		case "none":
+			return "keyword-only (no embedding endpoint)", nil
+		case "ollama":
+			ollamaURL, err := config.OllamaURL()
+			if err != nil {
+				return "", err
+			}
+			u, err := url.Parse(ollamaURL)
+			if err != nil {
+				return "", fmt.Errorf("invalid embedding endpoint URL")
+			}
+			return fmt.Sprintf("local (%s)", u.Host), nil
+		case "openai":
+			return "remote (api.openai.com)", nil
+		case "openai-compatible":
+			baseURL := strings.TrimSpace(ec.BaseURL)
+			if baseURL == "" {
+				return "", fmt.Errorf("openai-compatible requires base_url")
+			}
+			u, err := url.Parse(baseURL)
+			if err != nil {
+				return "", fmt.Errorf("invalid embedding endpoint URL")
+			}
+			host := strings.TrimSpace(u.Hostname())
+			if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+				return fmt.Sprintf("local (%s)", u.Host), nil
+			}
+			return fmt.Sprintf("remote (%s)", u.Host), nil
+		default:
+			return "", fmt.Errorf("unknown embedding provider")
 		}
-		return "", nil
 	})
 
 	// 8. Config file validity
@@ -393,49 +455,49 @@ func runDoctor(jsonOut bool) error {
 	if !vaultOK {
 		skip("Hooks installed", "skipped (vault path not found)")
 	} else {
-	check("Hooks installed", "run 'same setup hooks'", func() (string, error) {
-		vp := config.VaultPath()
-		if vp == "" {
-			return "", fmt.Errorf("no vault path — run 'same init' or set VAULT_PATH")
-		}
-		settingsPath := filepath.Join(vp, ".claude", "settings.json")
-		if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
-			return "", fmt.Errorf("no .claude/settings.json found")
-		}
-		hookStatus := setup.HooksInstalled(vp)
-		activeCount := 0
-		for _, v := range hookStatus {
-			if v {
-				activeCount++
+		check("Hooks installed", "run 'same setup hooks'", func() (string, error) {
+			vp := config.VaultPath()
+			if vp == "" {
+				return "", fmt.Errorf("no vault path — run 'same init' or set VAULT_PATH")
 			}
-		}
-		if activeCount == 0 {
-			return "", fmt.Errorf("no SAME hooks found in settings")
-		}
-		// Check portability
-		portable, exists := setup.HooksUsePortablePath(vp)
-		if exists && !portable {
-			return fmt.Sprintf("%d hooks active (non-portable paths — run 'same setup hooks' to fix)", activeCount), nil
-		}
-		return fmt.Sprintf("%d hooks active", activeCount), nil
-	})
+			settingsPath := filepath.Join(vp, ".claude", "settings.json")
+			if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
+				return "", fmt.Errorf("no .claude/settings.json found")
+			}
+			hookStatus := setup.HooksInstalled(vp)
+			activeCount := 0
+			for _, v := range hookStatus {
+				if v {
+					activeCount++
+				}
+			}
+			if activeCount == 0 {
+				return "", fmt.Errorf("no SAME hooks found in settings")
+			}
+			// Check portability
+			portable, exists := setup.HooksUsePortablePath(vp)
+			if exists && !portable {
+				return fmt.Sprintf("%d hooks active (non-portable paths — run 'same setup hooks' to fix)", activeCount), nil
+			}
+			return fmt.Sprintf("%d hooks active", activeCount), nil
+		})
 	}
 
 	// 9b. MCP config portability
 	if !vaultOK {
 		skip("MCP config", "skipped (vault path not found)")
 	} else {
-	check("MCP config", "run 'same setup mcp' to update", func() (string, error) {
-		vp := config.VaultPath()
-		portable, exists := setup.MCPUsesPortablePath(vp)
-		if !exists {
-			return "not installed (optional)", nil
-		}
-		if !portable {
-			return "", fmt.Errorf("uses absolute binary path — run 'same setup mcp' to fix for portability")
-		}
-		return "portable", nil
-	})
+		check("MCP config", "run 'same setup mcp' to update", func() (string, error) {
+			vp := config.VaultPath()
+			portable, exists := setup.MCPUsesPortablePath(vp)
+			if !exists {
+				return "not installed (optional)", nil
+			}
+			if !portable {
+				return "", fmt.Errorf("uses absolute binary path — run 'same setup mcp' to fix for portability")
+			}
+			return "portable", nil
+		})
 	}
 
 	// 10. Vault registry
@@ -467,42 +529,42 @@ func runDoctor(jsonOut bool) error {
 		skip("Database integrity", "skipped (vault path not found)")
 		skip("Index freshness", "skipped (vault path not found)")
 	} else {
-	check("Database integrity", "run 'same reindex' to rebuild", func() (string, error) {
-		db, err := store.Open()
-		if err != nil {
-			return "", fmt.Errorf("cannot open")
-		}
-		defer db.Close()
-		var orphaned int
-		err = db.Conn().QueryRow(`
+		check("Database integrity", "run 'same reindex' to rebuild", func() (string, error) {
+			db, err := store.Open()
+			if err != nil {
+				return "", fmt.Errorf("cannot open")
+			}
+			defer db.Close()
+			var orphaned int
+			err = db.Conn().QueryRow(`
 			SELECT COUNT(*) FROM vault_notes_vec v
 			LEFT JOIN vault_notes n ON v.note_id = n.id
 			WHERE n.id IS NULL
 		`).Scan(&orphaned)
-		if err != nil {
-			return "", nil // table may not exist yet, not an error
-		}
-		if orphaned > 0 {
-			return "", fmt.Errorf("%d orphaned vectors", orphaned)
-		}
-		return "", nil
-	})
+			if err != nil {
+				return "", nil // table may not exist yet, not an error
+			}
+			if orphaned > 0 {
+				return "", fmt.Errorf("%d orphaned vectors", orphaned)
+			}
+			return "", nil
+		})
 
-	check("Index freshness", "run 'same reindex' to update", func() (string, error) {
-		db, err := store.Open()
-		if err != nil {
-			return "", fmt.Errorf("cannot open")
-		}
-		defer db.Close()
-		age, err := db.IndexAge()
-		if err != nil {
-			return "", nil // no index yet
-		}
-		if age > 7*24*time.Hour {
-			return "", fmt.Errorf("last indexed %s ago", formatDuration(age))
-		}
-		return fmt.Sprintf("last indexed %s ago", formatDuration(age)), nil
-	})
+		check("Index freshness", "run 'same reindex' to update", func() (string, error) {
+			db, err := store.Open()
+			if err != nil {
+				return "", fmt.Errorf("cannot open")
+			}
+			defer db.Close()
+			age, err := db.IndexAge()
+			if err != nil {
+				return "", nil // no index yet
+			}
+			if age > 7*24*time.Hour {
+				return "", fmt.Errorf("last indexed %s ago", formatDuration(age))
+			}
+			return fmt.Sprintf("last indexed %s ago", formatDuration(age)), nil
+		})
 	} // end vaultOK guard for integrity checks
 
 	// 12. Log file size
@@ -528,61 +590,61 @@ func runDoctor(jsonOut bool) error {
 		skip("SQLite integrity", "skipped (vault path not found)")
 		skip("Retrieval utilization", "skipped (vault path not found)")
 	} else {
-	check("Embedding config", "run 'same reindex --force' if model changed", func() (string, error) {
-		db, err := store.Open()
-		if err != nil {
-			return "", fmt.Errorf("cannot open")
-		}
-		defer db.Close()
-		embedClient, err := newEmbedProvider()
-		if err != nil {
-			return "", fmt.Errorf("cannot create provider: %v", err)
-		}
-		if mismatchErr := db.CheckEmbeddingMeta(embedClient.Name(), embedClient.Model(), embedClient.Dimensions()); mismatchErr != nil {
-			return "", mismatchErr
-		}
-		provider, _ := db.GetMeta("embed_provider")
-		dims, _ := db.GetMeta("embed_dims")
-		if provider == "" {
-			return "no metadata stored yet", nil
-		}
-		return fmt.Sprintf("%s, %s dims", provider, dims), nil
-	})
-
-	check("SQLite integrity", "run 'same repair' to rebuild", func() (string, error) {
-		db, err := store.Open()
-		if err != nil {
-			return "", fmt.Errorf("cannot open")
-		}
-		defer db.Close()
-		return "", db.IntegrityCheck()
-	})
-
-	check("Retrieval utilization", "try different queries or adjust your profile", func() (string, error) {
-		db, err := store.Open()
-		if err != nil {
-			return "", fmt.Errorf("cannot open")
-		}
-		defer db.Close()
-		usage, err := db.GetRecentUsage(5)
-		if err != nil || len(usage) == 0 {
-			return "no usage data yet", nil
-		}
-		total := 0
-		referenced := 0
-		for _, u := range usage {
-			total++
-			if u.WasReferenced {
-				referenced++
+		check("Embedding config", "run 'same reindex --force' if model changed", func() (string, error) {
+			db, err := store.Open()
+			if err != nil {
+				return "", fmt.Errorf("cannot open")
 			}
-		}
-		rate := float64(referenced) / float64(total)
-		detail := fmt.Sprintf("%.0f%% of injected context was used", rate*100)
-		if rate < 0.20 {
-			return fmt.Sprintf("%.0f%% — this improves as your AI references more notes", rate*100), nil
-		}
-		return detail, nil
-	})
+			defer db.Close()
+			embedClient, err := newEmbedProvider()
+			if err != nil {
+				return "", fmt.Errorf("cannot create provider: %v", err)
+			}
+			if mismatchErr := db.CheckEmbeddingMeta(embedClient.Name(), embedClient.Model(), embedClient.Dimensions()); mismatchErr != nil {
+				return "", mismatchErr
+			}
+			provider, _ := db.GetMeta("embed_provider")
+			dims, _ := db.GetMeta("embed_dims")
+			if provider == "" {
+				return "no metadata stored yet", nil
+			}
+			return fmt.Sprintf("%s, %s dims", provider, dims), nil
+		})
+
+		check("SQLite integrity", "run 'same repair' to rebuild", func() (string, error) {
+			db, err := store.Open()
+			if err != nil {
+				return "", fmt.Errorf("cannot open")
+			}
+			defer db.Close()
+			return "", db.IntegrityCheck()
+		})
+
+		check("Retrieval utilization", "try different queries or adjust your profile", func() (string, error) {
+			db, err := store.Open()
+			if err != nil {
+				return "", fmt.Errorf("cannot open")
+			}
+			defer db.Close()
+			usage, err := db.GetRecentUsage(5)
+			if err != nil || len(usage) == 0 {
+				return "no usage data yet", nil
+			}
+			total := 0
+			referenced := 0
+			for _, u := range usage {
+				total++
+				if u.WasReferenced {
+					referenced++
+				}
+			}
+			rate := float64(referenced) / float64(total)
+			detail := fmt.Sprintf("%.0f%% of injected context was used", rate*100)
+			if rate < 0.20 {
+				return fmt.Sprintf("%.0f%% — this improves as your AI references more notes", rate*100), nil
+			}
+			return detail, nil
+		})
 	} // end vaultOK guard for DB checks
 
 	if jsonOut {
@@ -613,8 +675,8 @@ func runDoctor(jsonOut bool) error {
 	lines := []string{summary}
 	if !vaultOK {
 		lines = append(lines, "Vault not found. Run 'same init' or set VAULT_PATH=<path> to point at your vault.")
-	} else if !ollamaAvailable {
-		lines = append(lines, "SAME is running in lite mode (keyword search). Install Ollama for semantic search.")
+	} else if !embedAvailable {
+		lines = append(lines, "SAME is running in keyword-only mode. Configure SAME_EMBED_PROVIDER and run 'same reindex' for semantic search.")
 	}
 	if failed > 0 {
 		lines = append(lines, "Still stuck? Report a bug: https://github.com/sgx-labs/statelessagent/issues")

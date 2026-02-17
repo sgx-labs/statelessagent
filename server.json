@@ -3,7 +3,7 @@
   "name": "io.github.sgx-labs/same",
   "title": "SAME - Stateless Agent Memory Engine",
   "description": "Persistent memory for AI coding agents. Local-first SQLite + vector search, 12 MCP tools.",
-  "version": "0.8.3",
+  "version": "0.9.0",
   "websiteUrl": "https://statelessagent.com",
   "repository": {
     "url": "https://github.com/sgx-labs/statelessagent",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@sgx-labs/same",
-      "version": "0.8.3",
+      "version": "0.9.0",
       "transport": {
         "type": "stdio"
       },
