@@ -16,6 +16,12 @@
 - `same status` now reports embedding/chat/graph runtime state (not Ollama-only)
 - `same doctor` now checks provider config and graph LLM policy across `ollama`, `openai`, `openai-compatible`, and `none`
 
+4. Operational boundary hardening landed across file-path flows.
+- `same watch` now cleans up stale entries on rename/missing-file races
+- vault feed source/target containment checks use boundary-safe path validation
+- seed manifest cache now enforces the same validation as fresh manifest downloads
+- `SafeVaultSubpath` rejects absolute inputs and enforces vault-root containment
+
 ## Suggested website copy updates
 
 ### Security / trust section
@@ -48,4 +54,3 @@ Lead with trust + control, then flexibility:
 1. Control: local-first, explicit policies
 2. Trust: verified updates
 3. Flexibility: bring-your-own provider stack
-
