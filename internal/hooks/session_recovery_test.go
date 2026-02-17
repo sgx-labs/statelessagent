@@ -385,6 +385,7 @@ func sessionIndexPathForTest(t *testing.T) string {
 
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
+	t.Setenv("USERPROFILE", tmpHome)
 
 	cwd, err := os.Getwd()
 	if err != nil {
