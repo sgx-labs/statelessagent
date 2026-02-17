@@ -503,17 +503,17 @@ func handleSaveNote(ctx context.Context, req *mcp.CallToolRequest, input saveNot
 				}
 			}
 
-			f, err := os.OpenFile(safePath, os.O_APPEND|os.O_WRONLY, 0o600)
-			if err != nil {
-				return textResult("Error: could not open note for appending. Check file permissions and lock state."), nil, nil
+				f, err := os.OpenFile(safePath, os.O_APPEND|os.O_WRONLY, 0o600)
+				if err != nil {
+					return textResult("Error: could not open note for appending. Check file permissions and lock state."), nil, nil
+				}
+				// F14: Add provenance marker for appended MCP content
+				_, err = f.WriteString("\n<!-- Appended via SAME MCP tool -->\n" + input.Content)
+				closeErr := f.Close()
+				if err != nil || closeErr != nil {
+					return textResult("Error: could not append note content. Check vault permissions and available disk space."), nil, nil
+				}
 			}
-			// F14: Add provenance marker for appended MCP content
-			_, err = f.WriteString("\n<!-- Appended via SAME MCP tool -->\n" + input.Content)
-			f.Close()
-			if err != nil {
-				return textResult("Error: could not append note content. Check vault permissions and available disk space."), nil, nil
-			}
-		}
 	} else {
 		content := input.Content
 		if agent != "" {
@@ -624,8 +624,8 @@ func handleSaveDecision(ctx context.Context, req *mcp.CallToolRequest, input sav
 		return textResult("Error: could not open decision log for writing. Check file permissions."), nil, nil
 	}
 	_, err = f.WriteString(entry)
-	f.Close()
-	if err != nil {
+	closeErr := f.Close()
+	if err != nil || closeErr != nil {
 		return textResult("Error: could not write to decision log. Check available disk space and permissions."), nil, nil
 	}
 
