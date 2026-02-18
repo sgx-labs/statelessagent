@@ -3,7 +3,10 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestOllamaURL_Default(t *testing.T) {
@@ -154,6 +157,37 @@ func TestLoadConfig_InvalidTOML(t *testing.T) {
 	_, err := LoadConfig()
 	if err == nil {
 		t.Error("expected error for invalid TOML")
+	}
+}
+
+func TestAcquireFileLock_StaleLockRemoveFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission model differs on Windows")
+	}
+
+	dir := t.TempDir()
+	lockPath := filepath.Join(dir, "vaults.lock")
+	if err := os.WriteFile(lockPath, []byte("123\n"), 0o600); err != nil {
+		t.Fatalf("write stale lockfile: %v", err)
+	}
+
+	stale := time.Now().Add(-11 * time.Second)
+	if err := os.Chtimes(lockPath, stale, stale); err != nil {
+		t.Fatalf("set stale lock mtime: %v", err)
+	}
+
+	// Remove write permission so stale lock cleanup fails.
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Skipf("chmod unsupported: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	_, err := acquireFileLock(lockPath)
+	if err == nil {
+		t.Fatal("expected stale lock cleanup failure")
+	}
+	if !strings.Contains(err.Error(), "remove stale lockfile") {
+		t.Fatalf("expected stale-lock removal error, got: %v", err)
 	}
 }
 

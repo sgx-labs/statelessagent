@@ -952,19 +952,23 @@ func validateDataDir(dir string) string {
 		}
 		// Check writable by attempting to create a temp file
 		testFile := filepath.Join(abs, ".same_write_test")
-			if f, err := os.Create(testFile); err != nil {
-				fmt.Fprintf(os.Stderr, "WARNING: SAME_DATA_DIR=%q is not writable, using default.\n", abs)
-				return filepath.Join(VaultPath(), ".same", "data")
-			} else {
-				if cerr := f.Close(); cerr != nil {
-					fmt.Fprintf(os.Stderr, "WARNING: SAME_DATA_DIR=%q writable-check failed (%v), using default.\n", abs, cerr)
-					_ = os.Remove(testFile)
-					return filepath.Join(VaultPath(), ".same", "data")
+		if f, err := os.Create(testFile); err != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: SAME_DATA_DIR=%q is not writable, using default.\n", abs)
+			return filepath.Join(VaultPath(), ".same", "data")
+		} else {
+			if cerr := f.Close(); cerr != nil {
+				fmt.Fprintf(os.Stderr, "WARNING: SAME_DATA_DIR=%q writable-check failed (%v), using default.\n", abs, cerr)
+				if rmErr := os.Remove(testFile); rmErr != nil && !os.IsNotExist(rmErr) {
+					fmt.Fprintf(os.Stderr, "WARNING: SAME_DATA_DIR=%q cleanup failed (%v).\n", abs, rmErr)
 				}
-				_ = os.Remove(testFile)
+				return filepath.Join(VaultPath(), ".same", "data")
 			}
-			return abs
+			if rmErr := os.Remove(testFile); rmErr != nil && !os.IsNotExist(rmErr) {
+				fmt.Fprintf(os.Stderr, "WARNING: SAME_DATA_DIR=%q cleanup failed (%v).\n", abs, rmErr)
+			}
 		}
+		return abs
+	}
 
 	// Path doesn't exist — try to create it
 	if err := os.MkdirAll(abs, 0o755); err != nil {
@@ -1043,14 +1047,22 @@ func acquireFileLock(lockPath string) (func(), error) {
 		if err == nil {
 			if _, werr := fmt.Fprintf(f, "%d\n", os.Getpid()); werr != nil {
 				_ = f.Close()
-				_ = os.Remove(lockPath)
+				if rmErr := os.Remove(lockPath); rmErr != nil && !os.IsNotExist(rmErr) {
+					return nil, fmt.Errorf("write lockfile: %v (cleanup failed: %w)", werr, rmErr)
+				}
 				return nil, fmt.Errorf("write lockfile: %w", werr)
 			}
 			if cerr := f.Close(); cerr != nil {
-				_ = os.Remove(lockPath)
+				if rmErr := os.Remove(lockPath); rmErr != nil && !os.IsNotExist(rmErr) {
+					return nil, fmt.Errorf("close lockfile: %v (cleanup failed: %w)", cerr, rmErr)
+				}
 				return nil, fmt.Errorf("close lockfile: %w", cerr)
 			}
-			return func() { os.Remove(lockPath) }, nil
+			return func() {
+				if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
+					fmt.Fprintf(os.Stderr, "same: warning: failed to remove registry lockfile %s: %v\n", lockPath, err)
+				}
+			}, nil
 		}
 		if !os.IsExist(err) {
 			return nil, err
@@ -1058,7 +1070,9 @@ func acquireFileLock(lockPath string) (func(), error) {
 		// Check for stale lock (older than 10 seconds)
 		if info, statErr := os.Stat(lockPath); statErr == nil {
 			if time.Since(info.ModTime()) > 10*time.Second {
-				os.Remove(lockPath)
+				if rmErr := os.Remove(lockPath); rmErr != nil && !os.IsNotExist(rmErr) {
+					return nil, fmt.Errorf("remove stale lockfile %s: %w", lockPath, rmErr)
+				}
 				continue
 			}
 		}
