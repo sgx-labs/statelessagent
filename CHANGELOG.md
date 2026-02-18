@@ -35,6 +35,7 @@
 - **Vault subpath guard strictness** — `SafeVaultSubpath` now rejects absolute subpath inputs and uses boundary-safe containment checks before writing handoff/decision files
 - **Guard allowlist path matching** — file allowlist entries now require exact path matches (no basename-only fallback), preventing nested-file bypasses like `docs/README.md`
 - **MCP hidden-path write guard** — `safeVaultPath` now rejects dot-prefixed segments anywhere in the path (for example `notes/.hidden/file.md`), not only at root level
+- **MCP path containment checks** — `safeVaultPath` now uses `filepath.Rel`-based vault-boundary checks for absolute/symlink containment instead of separator prefix matching
 - **Web API path validation parity** — note/related/graph connection endpoints now share a single path safety guard that rejects traversal, hidden-dot segments, and Windows drive-prefix absolute paths
 - **Filesystem write error handling** — config saves, registry writes, MCP note/decision appends, handoff + decision-log generation, init `.gitignore` updates, tutorial/demo setup cleanup, seed config path rewrites/install rollback cleanup, verbose-log rotation/appends, and index stats persistence now handle write/cleanup failures explicitly instead of silently ignoring them
 - **Self-update cleanup hardening** — `same update` now surfaces temp-file cleanup failures explicitly and validates Windows backup-path cleanup before binary replacement

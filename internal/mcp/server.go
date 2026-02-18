@@ -1221,7 +1221,7 @@ func safeVaultPath(path string) string {
 	if err != nil {
 		return ""
 	}
-	if !strings.HasPrefix(full, vaultRoot+string(filepath.Separator)) && full != vaultRoot {
+	if !pathWithin(vaultRoot, full) {
 		return ""
 	}
 
@@ -1242,20 +1242,29 @@ func safeVaultPath(path string) string {
 			if ancestor == "." || ancestor == string(filepath.Separator) {
 				return ""
 			}
-			resolvedAncestor, aerr := filepath.EvalSymlinks(ancestor)
-			if aerr != nil {
-				continue
+				resolvedAncestor, aerr := filepath.EvalSymlinks(ancestor)
+				if aerr != nil {
+					continue
+				}
+				if !pathWithin(resolvedVault, resolvedAncestor) {
+					return ""
+				}
+				return full
 			}
-			if !strings.HasPrefix(resolvedAncestor, resolvedVault+string(filepath.Separator)) && resolvedAncestor != resolvedVault {
-				return ""
-			}
-			return full
 		}
-	}
-	if !strings.HasPrefix(resolved, resolvedVault+string(filepath.Separator)) && resolved != resolvedVault {
+	if !pathWithin(resolvedVault, resolved) {
 		return ""
 	}
 	return full
+}
+
+func pathWithin(base, candidate string) bool {
+	rel, err := filepath.Rel(base, candidate)
+	if err != nil {
+		return false
+	}
+	rel = filepath.ToSlash(rel)
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, "../"))
 }
 
 // filterPrivatePaths removes _PRIVATE/ results from search output (defense-in-depth).
