@@ -13,7 +13,7 @@ import (
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/graph"
 	"github.com/sgx-labs/statelessagent/internal/indexer"
-	"github.com/sgx-labs/statelessagent/internal/ollama"
+	"github.com/sgx-labs/statelessagent/internal/llm"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
@@ -65,7 +65,7 @@ type tutorialState struct {
 	dir       string
 	db        *store.DB
 	dbPath    string
-	hasVec    bool   // true if Ollama is available for embeddings
+	hasVec    bool   // true if semantic embeddings are available
 	origVault string // saved VaultOverride to restore on close
 }
 
@@ -288,7 +288,7 @@ Tokens are stored in httpOnly cookies to prevent XSS attacks.
 		fmt.Printf("    even though the exact word wasn't there.\n")
 	} else {
 		fmt.Printf("  %sNo results — this can happen in keyword-only mode.%s\n", cli.Dim, cli.Reset)
-		fmt.Printf("  %sInstall Ollama for semantic search that understands meaning.%s\n", cli.Dim, cli.Reset)
+		fmt.Printf("  %sConfigure embeddings (ollama/openai/openai-compatible) for semantic search that understands meaning.%s\n", cli.Dim, cli.Reset)
 	}
 	return nil
 }
@@ -482,10 +482,10 @@ tags: [deployment, ops]
 	question := "how do we deploy?"
 	fmt.Printf("  %s$%s same ask \"%s\"\n\n", cli.Dim, cli.Reset, question)
 
-	// Try to actually answer with Ollama
-	llm, llmErr := ollama.NewClient()
-	if llmErr == nil {
-		bestModel, _ := llm.PickBestModel()
+	// Try to answer using the configured chat provider.
+	chatClient, chatErr := llm.NewClient()
+	if chatErr == nil {
+		bestModel, _ := chatClient.PickBestModel()
 		if bestModel != "" {
 			results, _ := ts.search(question, 5)
 			if len(results) > 0 {
@@ -502,22 +502,23 @@ QUESTION: %s
 Answer:`, ctx.String(), question)
 
 				fmt.Printf("  %sThinking with %s...%s\n\n", cli.Dim, bestModel, cli.Reset)
-				answer, err := llm.Generate(bestModel, prompt)
+				answer, err := chatClient.Generate(bestModel, prompt)
 				if err == nil && answer != "" {
 					for _, line := range strings.Split(answer, "\n") {
 						fmt.Printf("  %s\n", line)
 					}
-					fmt.Printf("\n  %s✓%s Answer sourced from your notes. 100%% local.\n", cli.Green, cli.Reset)
+					fmt.Printf("\n  %s✓%s Answer sourced from your notes.\n", cli.Green, cli.Reset)
 					return nil
 				}
 			}
 		}
 	}
 
-	// Ollama not available
-	fmt.Printf("  %sOllama not running — 'same ask' requires a local LLM.%s\n", cli.Dim, cli.Reset)
-	fmt.Printf("  Install Ollama (https://ollama.com) and a chat model:\n")
-	fmt.Printf("    %s$%s ollama pull llama3.2\n", cli.Dim, cli.Reset)
+	// No chat provider available.
+	fmt.Printf("  %sNo chat provider available — 'same ask' needs chat configured.%s\n", cli.Dim, cli.Reset)
+	fmt.Printf("  Configure one of these options:\n")
+	fmt.Printf("    %s• Local: SAME_CHAT_PROVIDER=ollama and run 'ollama pull llama3.2'%s\n", cli.Dim, cli.Reset)
+	fmt.Printf("    %s• Cloud/OpenAI-compatible: set SAME_CHAT_PROVIDER + model (+ base URL/API key as needed)%s\n", cli.Dim, cli.Reset)
 	fmt.Printf("  Then try: %ssame ask \"how do we deploy?\"%s\n", cli.Cyan, cli.Reset)
 	return nil
 }
