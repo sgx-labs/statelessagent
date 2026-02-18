@@ -434,6 +434,20 @@ func TestManifestCachePath(t *testing.T) {
 	}
 }
 
+func TestSaveManifestCache_InvalidParentPath(t *testing.T) {
+	root := t.TempDir()
+	blocker := filepath.Join(root, "not-a-dir")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatalf("create blocker file: %v", err)
+	}
+
+	cachePath := filepath.Join(blocker, "seed-manifest.json")
+	err := saveManifestCache(cachePath, &Manifest{SchemaVersion: 1})
+	if err == nil {
+		t.Fatal("expected saveManifestCache to fail when parent is not a directory")
+	}
+}
+
 func TestExtractFile_RejectsDeclaredSizeOverflow(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "overflow.md")
 	err := extractFile(strings.NewReader("ABCDE"), dest, 4)

@@ -494,6 +494,20 @@ func TestSaveBudgetReport_StatusMap(t *testing.T) {
 	}
 }
 
+func TestSaveBudgetReport_MkdirFailure(t *testing.T) {
+	root := t.TempDir()
+	blocker := filepath.Join(root, "not-a-dir")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatalf("create blocker file: %v", err)
+	}
+
+	report := map[string]string{"status": "ok"}
+	outPath := filepath.Join(blocker, "report.json")
+	if err := SaveBudgetReport(report, outPath); err == nil {
+		t.Fatal("expected SaveBudgetReport to fail when output parent is not a directory")
+	}
+}
+
 // --- ExtractDecisionsFromMessages ---
 
 func TestExtractDecisionsFromMessages_AssistantOnly(t *testing.T) {

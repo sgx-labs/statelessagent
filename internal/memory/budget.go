@@ -215,6 +215,8 @@ func SaveBudgetReport(report interface{}, outputPath string) error {
 		return err
 	}
 	dir := filepath.Dir(outputPath)
-	os.MkdirAll(dir, 0o755)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create report directory: %w", err)
+	}
 	return os.WriteFile(outputPath, data, 0o644)
 }

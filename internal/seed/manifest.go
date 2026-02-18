@@ -101,8 +101,10 @@ func FetchManifest(forceRefresh bool) (*Manifest, error) {
 		return nil, fmt.Errorf("invalid manifest: %w", err)
 	}
 
-	// Write cache
-	saveManifestCache(cachePath, &manifest)
+	// Write cache (best effort; network fetch already succeeded)
+	if err := saveManifestCache(cachePath, &manifest); err != nil {
+		fmt.Fprintf(os.Stderr, "same: warning: failed to update seed manifest cache (%s): %v\n", cachePath, err)
+	}
 
 	return &manifest, nil
 }
@@ -211,15 +213,20 @@ func loadCachedManifest(path string, allowStale bool) (*Manifest, error) {
 }
 
 // saveManifestCache writes the manifest to the cache file.
-func saveManifestCache(path string, m *Manifest) {
+func saveManifestCache(path string, m *Manifest) error {
 	cache := manifestCache{
 		FetchedAt: time.Now(),
 		Manifest:  *m,
 	}
 	data, err := json.MarshalIndent(cache, "", "  ")
 	if err != nil {
-		return
+		return fmt.Errorf("marshal cache: %w", err)
 	}
-	os.MkdirAll(filepath.Dir(path), 0o755)
-	os.WriteFile(path, data, 0o600)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create cache directory: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("write cache file: %w", err)
+	}
+	return nil
 }
