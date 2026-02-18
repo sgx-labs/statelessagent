@@ -157,7 +157,7 @@ Your markdown notes are embedded with your configured provider (local or cloud) 
 | Context surfacing | Relevant notes injected into AI prompts | No* |
 | `same demo` | Try SAME in 60 seconds | No |
 | `same tutorial` | 7 hands-on lessons | No |
-| `same doctor` | 18 diagnostic checks | No |
+| `same doctor` | 19 diagnostic checks | No |
 | Push protection | Safety rails for multi-agent workflows | No |
 | `same seed install` | One-command install of pre-built knowledge vaults | No* |
 | Cross-vault federation | Search across all vaults at once | No* |
@@ -202,7 +202,7 @@ same seed install claude-code-power-user
 | `ai-agent-architecture` | 58 | Agent design patterns, orchestration, memory strategies |
 | `personal-productivity-os` | 118 | GTD, time blocking, habit systems, review frameworks |
 
-10 seeds available — 622+ notes of expert knowledge. Browse with `same seed list`.
+10 seeds available — 612+ notes of expert knowledge. Browse with `same seed list`.
 
 [Browse all seeds](https://github.com/sgx-labs/seed-vaults)
 
@@ -361,7 +361,7 @@ Requires Go 1.25+ and CGO.
 | `same search --all <query>` | Search across all registered vaults |
 | `same related <path>` | Find related notes |
 | `same status` | See what SAME is tracking |
-| `same doctor` | Run 18 diagnostic checks |
+| `same doctor` | Run 19 diagnostic checks |
 | `same claim <path> --agent <name>` | Create an advisory write claim for a file |
 | `same claim --read <path> --agent <name>` | Declare a read dependency on a file |
 | `same claim --list` | Show active read/write claims |
@@ -450,7 +450,7 @@ Supported embedding models (auto-detected dimensions):
 | `bge-m3` | 1024 | Multilingual (BAAI) |
 | `text-embedding-3-small` | 1536 | OpenAI cloud API |
 
-Any model not listed works too — set dimensions explicitly with `SAME_EMBED_DIMS`.
+Any model not listed works too — set `dimensions` explicitly in `.same/config.toml` under `[embedding]`.
 
 Configuration priority (highest wins):
 

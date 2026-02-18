@@ -172,7 +172,7 @@ Critical fix for Claude Code v2 transcript format. Stop hooks (decision extracto
 - **Internal commands hidden** — `hook`, `migrate`, `budget`, `plugin`, `push-allow` no longer appear in `same --help`. Still accessible for debugging.
 - **Seed tab completion** — `same seed install`, `same seed info`, and `same seed remove` now offer tab-completable seed names.
 - **Cleaner CLI output** — `SilenceErrors` and `SilenceUsage` prevent cobra from dumping usage text on errors. Seed install indexing messages simplified.
-- **Corrected documentation** — README, CHANGELOG, and AGENTS.md updated with accurate seed counts (10 seeds, 622+ notes) and diagnostic check counts (17).
+- **Corrected documentation** — README, CHANGELOG, and AGENTS.md updated with accurate seed counts (10 seeds, 612+ notes) and diagnostic check counts (19).
 
 ---
 

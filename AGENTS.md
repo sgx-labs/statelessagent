@@ -47,7 +47,7 @@ cmd/same/
   config_cmd.go        # Config show/edit
   demo_cmd.go          # Interactive demo
   display_cmd.go       # Display mode switching
-  doctor_cmd.go        # 18 diagnostic checks
+  doctor_cmd.go        # 19 diagnostic checks
   feedback_cmd.go      # Note relevance feedback
   graph_cmd.go         # Knowledge graph query/path/stats/rebuild
   guard_cmd.go         # Push protection

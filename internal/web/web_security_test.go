@@ -52,6 +52,11 @@ func TestLocalhostOnly_BlocksRemoteHosts(t *testing.T) {
 		{"DNS rebinding", "attacker.example.com:4078"},
 		{"internal IP", "10.0.0.1:4078"},
 		{"cloud metadata", "169.254.169.254:4078"},
+		{"localhost substring", "localhost.evil.com:4078"},
+		{"127 substring", "127.0.0.1.evil.com:4078"},
+		{"empty host", ""},
+		{"zero IP", "0.0.0.0:4078"},
+		{"private class B", "172.16.0.1:4078"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
