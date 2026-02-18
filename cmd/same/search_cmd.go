@@ -89,12 +89,12 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 			}
 		}
 		if !jsonOut && len(results) > 0 {
-			fmt.Printf("  %s(keyword search — install Ollama for semantic search)%s\n", cli.Dim, cli.Reset)
+			fmt.Printf("  %s(keyword search — configure embeddings for semantic search: ollama/openai/openai-compatible)%s\n", cli.Dim, cli.Reset)
 		}
 	} else {
 		client, err := newEmbedProvider()
 		if err != nil {
-			// Ollama went down — try FTS5 fallback, then LIKE-based
+			// Embedding provider unavailable — try FTS5 fallback, then LIKE-based
 			if db.FTSAvailable() {
 				results, _ = db.FTS5Search(query, store.SearchOptions{TopK: topK, Domain: domain})
 			}
@@ -116,10 +116,10 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 				}
 			}
 			if results == nil {
-				return fmt.Errorf("can't connect to embedding provider — is Ollama running? (%w)", err)
+				return fmt.Errorf("can't connect to embedding provider (ollama/openai/openai-compatible): %w", err)
 			}
 			if !jsonOut {
-				fmt.Printf("  %s(keyword fallback — Ollama not available)%s\n", cli.Dim, cli.Reset)
+				fmt.Printf("  %s(keyword fallback — embedding provider unavailable)%s\n", cli.Dim, cli.Reset)
 			}
 		} else {
 			if mismatchErr := db.CheckEmbeddingMeta(client.Name(), client.Model(), client.Dimensions()); mismatchErr != nil {
@@ -261,7 +261,7 @@ func runFederatedSearch(query string, topK int, domain string, jsonOut bool, ver
 	}
 
 	if queryVec == nil {
-		fmt.Printf("  %s(keyword search — install Ollama for semantic search)%s\n", cli.Dim, cli.Reset)
+		fmt.Printf("  %s(keyword search — configure embeddings for semantic search: ollama/openai/openai-compatible)%s\n", cli.Dim, cli.Reset)
 	}
 
 	for i, r := range results {

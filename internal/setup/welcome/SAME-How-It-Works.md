@@ -17,15 +17,15 @@ Every AI session starts from zero. You explain your project, your preferences, y
 SAME indexes your markdown notes locally and automatically surfaces relevant context when you chat with your AI. No manual copy-pasting. No token waste.
 
 ```
-Your Notes  →  Ollama  →  SQLite  →  AI Remembers
-   (.md)       (embed)    (search)    (hooks/MCP)
+Your Notes  →  Embeddings  →  SQLite  →  AI Remembers
+   (.md)      (local/cloud)   (search)    (hooks/MCP)
 ```
 
 ## What Gets Surfaced
 
 When you send a prompt, SAME:
 
-1. Embeds your prompt using Ollama (locally)
+1. Embeds your prompt using your configured provider (local or cloud)
 2. Searches for semantically similar note chunks
 3. Ranks by relevance + recency + confidence
 4. Injects the top matches into your conversation
@@ -75,9 +75,9 @@ A vault with 100 notes costs the same per-query as one with 10,000 notes. More n
 
 ## Privacy
 
-- All processing happens locally via Ollama
-- Your notes never leave your machine
-- The only external calls are to your AI provider (Anthropic, OpenAI, etc.) as part of your normal conversation
+- Notes and local database stay on your machine
+- Local embedding providers keep semantic indexing fully local
+- Cloud embedding/chat providers send requests only to the providers you configure
 
 ## Commands
 

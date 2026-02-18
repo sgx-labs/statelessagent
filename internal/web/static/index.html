@@ -811,7 +811,7 @@ body {
       <div class="stat-card" title="Markdown files indexed in your vault"><div class="stat-value" id="stat-notes">-</div><div class="stat-label">Notes</div></div>
       <div class="stat-card" title="Notes split into sections for embedding and search"><div class="stat-value" id="stat-chunks">-</div><div class="stat-label">Chunks</div></div>
       <div class="stat-card" title="SQLite database size on disk"><div class="stat-value" id="stat-dbsize">-</div><div class="stat-label">DB Size</div></div>
-      <div class="stat-card" title="Semantic: finds notes by meaning via Ollama embeddings. Keyword: matches exact terms."><div class="stat-value" id="stat-search">-</div><div class="stat-label">Search Mode</div></div>
+      <div class="stat-card" title="Semantic: finds notes by meaning via embeddings. Keyword: matches exact terms."><div class="stat-value" id="stat-search">-</div><div class="stat-label">Search Mode</div></div>
     </div>
 
     <div id="insights-section" style="display:none">
@@ -1579,7 +1579,7 @@ body {
     // Search mode
     if (status.search_mode === 'keyword') {
       insights.push(buildInsight('tip',
-        '<strong>Running in keyword mode.</strong> Install <a href="https://ollama.com" target="_blank" rel="noopener">Ollama</a> for semantic search — it finds conceptually related notes, not just keyword matches.',
+        '<strong>Running in keyword mode.</strong> Configure an embedding provider for semantic search (Ollama, OpenAI, or OpenAI-compatible) to find conceptually related notes.',
         'same doctor'));
     } else {
       insights.push(buildInsight('good',
@@ -1669,7 +1669,7 @@ body {
     activeSearchIndex = -1;
     lastSearchTerms = extractSearchTerms(query);
     if (!query.trim()) {
-      setEmpty(resultsEl, 'Type to search your vault', 'Supports semantic search when Ollama is running');
+      setEmpty(resultsEl, 'Type to search your vault', 'Supports semantic search when an embedding provider is configured');
       return;
     }
     setLoading(resultsEl, 'cards');

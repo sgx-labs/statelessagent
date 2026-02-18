@@ -9,7 +9,7 @@ content_type: hub
 ## Daily Commands
 
 ```bash
-same status          # What's indexed, is Ollama running?
+same status          # What's indexed, provider/runtime health
 same doctor          # Health check with fix suggestions
 same log             # Recent SAME activity
 ```
@@ -61,9 +61,11 @@ same --vault work status           # Use specific vault
 
 ## Troubleshooting
 
-### "Ollama not running"
+### "Semantic search unavailable"
 
-Look for the llama icon in your menu bar. If missing, open the Ollama app.
+1. Run `same doctor` for provider diagnostics
+2. Configure embeddings (`SAME_EMBED_PROVIDER=ollama|openai|openai-compatible`)
+3. Run `same reindex --force`
 
 ### "No results found"
 
