@@ -174,7 +174,9 @@ func acquireInitLock() (func(), error) {
 			if info, statErr := os.Stat(lockPath); statErr == nil {
 				if time.Since(info.ModTime()) > 30*time.Minute {
 					// Stale lock — remove and retry
-					os.Remove(lockPath)
+					if rmErr := os.Remove(lockPath); rmErr != nil {
+						return nil, fmt.Errorf("another 'same init' is already running (lockfile: %s)", lockPath)
+					}
 					f, err = os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 					if err != nil {
 						return nil, fmt.Errorf("another 'same init' is already running (lockfile: %s)", lockPath)
@@ -190,8 +192,15 @@ func acquireInitLock() (func(), error) {
 	}
 
 	// Write PID for debugging
-	fmt.Fprintf(f, "%d\n", os.Getpid())
-	f.Close()
+	if _, err := fmt.Fprintf(f, "%d\n", os.Getpid()); err != nil {
+		_ = f.Close()
+		_ = os.Remove(lockPath)
+		return func() {}, nil
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(lockPath)
+		return func() {}, nil
+	}
 
 	cleanup := func() {
 		os.Remove(lockPath)

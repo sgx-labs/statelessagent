@@ -409,16 +409,26 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
 
 	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
+		_ = in.Close()
 		return err
 	}
-	defer out.Close()
 
-	_, err = io.Copy(out, in)
-	return err
+	_, copyErr := io.Copy(out, in)
+	outCloseErr := out.Close()
+	inCloseErr := in.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	if outCloseErr != nil {
+		return outCloseErr
+	}
+	if inCloseErr != nil {
+		return inCloseErr
+	}
+	return nil
 }
 
 // compareSemver compares two semver strings (without "v" prefix).

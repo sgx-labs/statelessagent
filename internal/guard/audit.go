@@ -43,8 +43,12 @@ func AppendAudit(vaultPath string, entry AuditEntry) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-
-	_, err = f.Write(data)
-	return err
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return nil
 }

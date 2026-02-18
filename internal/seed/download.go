@@ -165,9 +165,19 @@ func extractFile(r io.Reader, destPath string, size int64) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 
 	// SECURITY: limit read to declared size + 1 to detect overflow
-	_, err = io.Copy(f, io.LimitReader(r, size+1))
-	return err
+	n, err := io.Copy(f, io.LimitReader(r, size+1))
+	if err != nil {
+		_ = f.Close()
+		return err
+	}
+	if n > size {
+		_ = f.Close()
+		return fmt.Errorf("entry exceeds declared size")
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return nil
 }

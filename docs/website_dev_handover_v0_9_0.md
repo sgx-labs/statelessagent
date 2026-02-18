@@ -22,6 +22,7 @@
 - seed manifest cache now enforces the same validation as fresh manifest downloads
 - `same seed install --force` now refuses dangerous destination paths (root/home/seed-root parent)
 - seed extraction now normalizes manifest `./path` entries and fails loudly on directory-create errors
+- seed extraction now enforces declared entry sizes (rejects oversized payloads) and surfaces write/close failures explicitly
 - `SafeVaultSubpath` rejects absolute inputs and enforces vault-root containment
 - MCP write-path validation now rejects hidden/dot segments anywhere in the path (not only root-level dot paths)
 - web API note/related/graph path validation now uses one shared guard with traversal + hidden-segment + drive-prefix rejection

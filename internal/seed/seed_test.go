@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -430,6 +431,14 @@ func TestManifestCachePath(t *testing.T) {
 	}
 	if !filepath.IsAbs(path) {
 		t.Error("expected absolute cache path")
+	}
+}
+
+func TestExtractFile_RejectsDeclaredSizeOverflow(t *testing.T) {
+	dest := filepath.Join(t.TempDir(), "overflow.md")
+	err := extractFile(strings.NewReader("ABCDE"), dest, 4)
+	if err == nil {
+		t.Fatal("expected extractFile to reject payload larger than declared size")
 	}
 }
 
