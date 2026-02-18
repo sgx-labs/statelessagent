@@ -424,6 +424,10 @@ func detectChatStatus() runtimeStatus {
 		requested = "auto"
 	}
 	st := runtimeStatus{Provider: requested}
+	if requested == "none" {
+		st.Status = "disabled"
+		return st
+	}
 
 	client, err := llm.NewClient()
 	if err != nil {

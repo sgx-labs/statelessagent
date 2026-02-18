@@ -77,7 +77,7 @@ func runReindex(force bool, verbose bool) error {
 			strings.Contains(errMsg, `provider is "none"`) {
 			// Embedding unavailable/disabled — offer lite mode
 			fmt.Fprintf(os.Stderr, "  Embedding backend unavailable or disabled — indexing with keyword search only.\n")
-			fmt.Fprintf(os.Stderr, "  Start Ollama (or switch embedding provider) and run 'same reindex' again for semantic search.\n\n")
+			fmt.Fprintf(os.Stderr, "  Configure an embedding provider (ollama/openai/openai-compatible) and run 'same reindex' again for semantic search.\n\n")
 			stats, err = indexer.ReindexLite(db, force, progress)
 			if err != nil {
 				return err

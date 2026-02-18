@@ -73,6 +73,9 @@ func TestDetectChatStatusDisabled(t *testing.T) {
 	if st.Provider != "none" {
 		t.Fatalf("provider = %q, want none", st.Provider)
 	}
+	if st.Error != "" {
+		t.Fatalf("error = %q, want empty", st.Error)
+	}
 }
 
 func TestDetectChatStatusMissingOpenAIKey(t *testing.T) {
