@@ -257,22 +257,25 @@ Use `same init --mcp-only` to skip Claude Code hooks and just register the MCP s
 
 ## SAME vs. Alternatives
 
-| | SAME | mem0 | Letta | Basic Memory | doobidoo |
-|---|:---:|:---:|:---:|:---:|:---:|
-| **Setup** | 1 command | pip + config | Docker + PG | pip + config | pip + ChromaDB |
-| **Runtime deps** | None | Python + LLM API | Docker + PG + LLM | Python | Python + ChromaDB |
-| **Offline capable** | Full (Lite mode) | No | No | Partial | Yes |
-| **Cloud required** | No | Default yes | Yes | No | No |
-| **Telemetry** | None | Default ON | Unknown | None | None |
-| **MCP tools** | 12 | 4-6 | 0 (REST) | 7+ | 24 |
-| **Hook integration** | Yes (Claude Code) | No | No | No | No |
-| **Session continuity** | Handoffs + pins + recovery | Session-scoped | Core feature | No | No |
-| **Published benchmarks** | P=0.995, MRR=0.949 | Claims "26% better" | None | None | None |
-| **Binary size** | ~10MB | ~100MB+ (Python) | ~500MB+ (Docker) | ~50MB+ | ~80MB+ |
-| **Language** | Go | Python | Python | Python | Python |
-| **License** | BSL 1.1 [1] | Apache 2.0 | Apache 2.0 | MIT | MIT |
+| | SAME | mem0 | Letta |
+|---|:---:|:---:|:---:|
+| **Setup** | 1 command | pip + config | pip or Docker |
+| **Runtime deps** | None | Python + vector DB + LLM API | Python + SQLAlchemy (+ PG for production) |
+| **Offline capable** | Full (Lite mode) | Possible but not default | Yes (with local models) |
+| **Cloud required** | No | Default yes (OpenAI) | No |
+| **Telemetry** | None | Default ON (PostHog) | Yes (basic usage) |
+| **MCP tools** | 12 | 9 | Client only (connects to external MCP) |
+| **Hook integration** | Yes (Claude Code) | No | No |
+| **Knowledge graph** | Yes (built-in, SQLite) | Yes (requires Neo4j/Memgraph) | No |
+| **Session continuity** | Handoffs + pins + recovery | Session/user memory layers | Core feature (stateful agents) |
+| **Published benchmarks** | P=0.995, MRR=0.949 | None published | None published |
+| **Runs on Pi / edge** | Yes (~10MB binary) | No (heavy Python deps) | No (heavy Python deps) |
+| **Language** | Go | Python | Python |
+| **License** | BSL 1.1 [1] | Apache 2.0 | Apache 2.0 |
 
 [1] BSL 1.1: Free for personal, educational, hobby, research, and evaluation use. Converts to Apache 2.0 on 2030-02-02.
+
+*Table reflects open-source versions as of February 2026. Verify current state before citing.*
 
 ---
 
@@ -564,9 +567,7 @@ SAME's retrieval is tuned against 105 ground-truth test cases — real queries p
 | MRR | 0.949 | Most relevant note is usually first |
 | BAD cases | 0 | Zero irrelevant top results |
 
-Tuning constants: `maxDistance=16.3`, `minComposite=0.70`, `gapCap=0.65`. Shared between hooks and MCP via `ranking.go`.
-
-All evaluation uses synthetic vault data with known relevance judgments. No user data is used.
+Ranking pipeline is shared between hooks and MCP to ensure consistent quality across all retrieval paths. All evaluation uses synthetic vault data with known relevance judgments. No user data is used.
 
 </details>
 

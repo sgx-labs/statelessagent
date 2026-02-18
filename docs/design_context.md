@@ -165,16 +165,8 @@ These decisions have been made with rationale. The development instance should t
 **Key rule:** Everything critical flows through Phase 1. Phases 4-5 are value-add, not dependencies.
 
 ### Context Surfacing v2: Gate Chain (Feb 4)
-**Decision:** Reversed the decision to kill UserPromptSubmit entirely. Instead, keep context surfacing but add a 6-gate chain that suppresses injection on ~80% of prompts.
-**Why:** Zero injection loses the ambient awareness that makes SAME feel alive. The gate chain preserves injection for high-value moments only.
-
-**Gate chain (evaluated in order, first match skips):**
-1. **minChars** — skip prompts < 20 chars
-2. **slashCmd** — skip prompts starting with `/`
-3. **conversational** — skip social phrases ("thanks", "ok", "sounds good")
-4. **lowSignal** — skip prompts with no specific terms
-5. **mode detection** — skip Executing and Socializing modes; allow Exploring, Deepening, Reflecting
-6. **topicChange** — Jaccard similarity on extracted terms; skip if same topic (threshold 0.35)
+**Decision:** Reversed the decision to kill UserPromptSubmit entirely. Instead, keep context surfacing but add a multi-gate chain that suppresses injection on ~80% of prompts.
+**Why:** Zero injection loses the ambient awareness that makes SAME feel alive. The gate chain preserves injection for high-value moments only — filtering out short prompts, commands, social chatter, repeat topics, and low-signal queries.
 
 ### RLM Reranking Layer (Feb 2, deferred)
 **Decision:** Do not add a reranking language model layer.
@@ -195,58 +187,19 @@ These decisions have been made with rationale. The development instance should t
 
 ## 4. Eval Tuning Rationale
 
-The search quality constants aren't arbitrary. They were tuned across 105 ground-truth test cases in a multi-hour optimization sprint. Here's why each key constant is set where it is.
+The search quality constants were tuned across 105 ground-truth test cases spanning factual, negative, cross-topic, recency, and decision queries.
 
-### Final metrics
+### Results
 ```
 Precision:  0.995
 Coverage:   0.905
+MRR:        0.949
 BAD cases:  0
-MISS cases: 0
-Waste:      0
-Cases:      105 (factual 61, negative 22, cross_topic 12, recency 7, decision 3)
 ```
 
-### MCP search metrics (after ranking.go)
-```
-MRR:        0.949 (up from 0.668)
-BAD cases:  0 (down from 20)
-Recall@10:  0.918
-```
+The ranking pipeline combines semantic distance, composite scoring, title overlap, content-type priority, gap-based trimming, and near-dedup. Constants and algorithms are in `internal/store/ranking.go` — shared between hooks and MCP to ensure consistent quality across all retrieval paths.
 
-### Key tuning constants and why
-
-| Constant | Value | Rationale |
-|---|---|---|
-| `maxDistance` | 16.3 | L2 distance threshold. Relaxed from 16.0→16.2→16.3 to avoid dropping relevant results at the margin. |
-| `minComposite` | 0.70 | Composite score floor. Balances false negatives vs. noise. |
-| `minSemanticFloor` | 0.25 | Absolute minimum — skip anything below this regardless of other signals. |
-| `highTierOverlap` | 0.199 | Floating-point-safe threshold for "strong title match." Set to 0.199 instead of 0.20 because IEEE 754 causes `3/5 * 3/9 = 0.19999...` which fails `>= 0.20`. |
-| `minTitleOverlap` | 0.10 | Minimum title relevance to enter the positive sorting tier. |
-| `maxResults` | 3 (standard), 2 (ambiguous) | When top candidate's title overlap < 0.199, reduce to 2. Ambiguous queries produce noise in the 3rd slot. |
-| `gapCap` | 0.65 | Trims results below 65% of the best match's overlap. **Biggest single precision gain** (+0.087). |
-| `maxTokenBudget` | 800 | Per-injection token limit. Balances context richness vs. waste. |
-| `topicChangeThreshold` | 0.35 | Jaccard similarity for gate chain topic detection. Below this = new topic, trigger search. |
-
-### Key algorithmic decisions
-
-1. **Three-tier sort**: High overlap (>=0.20) → positive overlap (>0) → zero overlap. Within tiers: priority content types first, then composite score. Prevents zero-overlap priority files from outranking title-relevant results.
-
-2. **Gap cap at 0.65**: The biggest single precision improvement. Trims results that are less than 65% as relevant as the best match. Stopped support files from displacing actually-relevant results.
-
-3. **Mode 5 positive-candidate guard**: Content rescue boost (artificial overlap=0.25) only fires when NO existing candidate has any title relevance. When even weak title overlap exists, content-density heuristics are suppressed so gap cap and zero-overlap trim can work properly.
-
-4. **ContentBoosted transparency**: The maxResults-2 rule sees through artificial overlap from content rescue. ContentBoosted overlap is treated as 0 for the ambiguity check.
-
-5. **Zero-overlap trim**: After maxResults truncation, when the top result has weak but positive title relevance, trailing zero-overlap results are removed. These are vector-search artifacts that are semantically similar but not title-relevant.
-
-6. **Near-dedup**: Collapses versioned copies in the same directory (e.g., "Guide.md" and "Guide v1.md"). Uses full-path overlap with query terms to keep the version-specific file when the user asks for a version.
-
-7. **Recency title search**: Added `KeywordSearchTitleMatch` to recency hybrid search path. Uses minMatches=2 and relaxed overlap threshold (0.05 vs standard 0.10) to handle date-diluted title overlap.
-
-8. **Mode 2 filter: max(titleOnly, fullOverlap)**: Path components can DILUTE wordCoverage by adding non-matching terms to the denominator. Using max prevents false rejections while still requiring minimum signal.
-
-9. **Shared ranking module (ranking.go)**: MCP `HybridSearch` now uses the same title overlap scoring, three-tier sort, near-dedup, and raw output filtering as the hook. MRR nearly doubled from 0.668 to 0.949.
+All evaluation uses synthetic vault data with known relevance judgments. No user data is used.
 
 ---
 
