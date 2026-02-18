@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -49,6 +51,25 @@ func TestFetchSHA256Sums_RejectsMalformed(t *testing.T) {
 	if _, err := fetchSHA256Sums(client, "https://example.com/sha256sums.txt"); err == nil {
 		t.Fatal("expected parse error for malformed checksum file")
 	}
+}
+
+func TestRemoveTempFile_RemovesExistingFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "same-update.tmp")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	removeTempFile(path)
+
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected file to be removed, stat err=%v", err)
+	}
+}
+
+func TestRemoveTempFile_IgnoresMissingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.tmp")
+	removeTempFile(path)
 }
 
 type rtFunc func(req *http.Request) (*http.Response, error)
