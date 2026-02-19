@@ -90,6 +90,10 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 		}
 		if !jsonOut && len(results) > 0 {
 			fmt.Printf("  %s(keyword search — configure embeddings for semantic search: ollama/openai/openai-compatible)%s\n", cli.Dim, cli.Reset)
+			if _, probeErr := newEmbedProvider(); probeErr == nil {
+				fmt.Printf("  %sTip: Embedding provider detected! Run %ssame reindex%s to upgrade to semantic search.%s\n",
+					cli.Dim, cli.Bold, cli.Reset+cli.Dim, cli.Reset)
+			}
 		}
 	} else {
 		client, err := newEmbedProvider()
@@ -141,15 +145,26 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 		}
 	}
 
-	if jsonOut {
-		data, _ := json.MarshalIndent(results, "", "  ")
-		fmt.Println(string(data))
+	if len(results) == 0 {
+		if jsonOut {
+			fmt.Println("[]")
+			return nil
+		}
+		noteCount, _ := db.NoteCount()
+		if noteCount < 5 {
+			fmt.Printf("\n  No results found. Your vault has only %d notes.\n", noteCount)
+			fmt.Printf("  Add more markdown files and run %ssame reindex%s, or try %ssame seed list%s for starter content.\n\n",
+				cli.Bold, cli.Reset, cli.Bold, cli.Reset)
+		} else {
+			fmt.Printf("\n  No results found. Try different terms, or %ssame search --all%s to search all vaults.\n\n",
+				cli.Bold, cli.Reset)
+		}
 		return nil
 	}
 
-	if len(results) == 0 {
-		fmt.Println("\n  No results found.")
-		fmt.Printf("  %sTry a different query, or use --all to search across all vaults.%s\n\n", cli.Dim, cli.Reset)
+	if jsonOut {
+		data, _ := json.MarshalIndent(results, "", "  ")
+		fmt.Println(string(data))
 		return nil
 	}
 

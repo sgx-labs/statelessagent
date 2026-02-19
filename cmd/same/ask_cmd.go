@@ -142,7 +142,10 @@ func runAsk(question, model string, topK int) error {
 					"Start Ollama or set SAME_CHAT_PROVIDER=openai/openai-compatible, then retry 'same ask'. (Keyword search still works with 'same search'.)",
 				)
 			}
-			return fmt.Errorf("can't list chat models: %w", err)
+			return userError(
+				fmt.Sprintf("Can't list models from %s provider", chat.Provider()),
+				"Check that your provider has at least one chat model installed. For Ollama: ollama pull llama3.2",
+			)
 		}
 		if model == "" {
 			return userError(

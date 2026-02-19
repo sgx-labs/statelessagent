@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sgx-labs/statelessagent/internal/cli"
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/web"
 )
@@ -58,6 +59,8 @@ Examples:
 			embedClient, _ := newEmbedProvider()
 
 			addr := fmt.Sprintf("127.0.0.1:%d", port)
+			fmt.Printf("\n  Dashboard: %shttp://%s%s\n", cli.Bold, addr, cli.Reset)
+			fmt.Printf("  Press Ctrl+C to stop\n\n")
 
 			if openFlag {
 				go func() {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -60,6 +61,15 @@ func graphStatsCmd() *cobra.Command {
 			fmt.Printf("  Edges: %d\n", stats.TotalEdges)
 			if stats.TotalNodes > 0 {
 				fmt.Printf("  Avg Degree: %.2f\n", stats.AvgDegree)
+			}
+			graphLLM := os.Getenv("SAME_GRAPH_LLM")
+			switch graphLLM {
+			case "on":
+				fmt.Printf("  Extraction: LLM-enhanced\n")
+			case "local-only":
+				fmt.Printf("  Extraction: LLM (local only)\n")
+			default:
+				fmt.Printf("  Extraction: regex-only (set SAME_GRAPH_LLM=on for richer results)\n")
 			}
 			fmt.Println("\nNodes by Type:")
 			for t, c := range stats.NodesByType {

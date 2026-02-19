@@ -374,7 +374,9 @@ func runDoctor(jsonOut bool) error {
 				if len(raw) == 0 {
 					return "", fmt.Errorf("no results")
 				}
-				return "", nil
+				noteCount, _ := db.NoteCount()
+				mode := "semantic (hybrid)"
+				return fmt.Sprintf("%s (%s notes)", mode, cli.FormatNumber(noteCount)), nil
 			})
 		} else {
 			check("Finding relevant notes", "try 'same search <query>' to test", func() (string, error) {
@@ -386,6 +388,17 @@ func runDoctor(jsonOut bool) error {
 				noteCount, _ := db.NoteCount()
 				if noteCount == 0 {
 					return "", fmt.Errorf("no notes indexed")
+				}
+				// Check for semantic search capability
+				if db.HasVectors() {
+					embedClient, embedErr := newEmbedProvider()
+					if embedErr == nil {
+						if _, probeErr := embedClient.GetQueryEmbedding("test"); probeErr == nil {
+							mode := "semantic (hybrid)"
+							return fmt.Sprintf("%s (%s notes)", mode, cli.FormatNumber(noteCount)), nil
+						}
+					}
+					// Embedding provider down — fall through to keyword check
 				}
 				// Actually test keyword search works (FTS5 or LIKE-based)
 				mode := "keyword"
