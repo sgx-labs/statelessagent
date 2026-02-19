@@ -201,9 +201,10 @@ func TestMethodNotAllowed(t *testing.T) {
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	handler := methodGET(mux)
+	handler := localhostOnly(securityHeaders(methodGET(mux)))
 
-	req := httptest.NewRequest(http.MethodPost, "/api/status", nil)
+	req := httptest.NewRequest(http.MethodPost, "http://localhost:4078/api/status", nil)
+	req.Host = "localhost:4078"
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
