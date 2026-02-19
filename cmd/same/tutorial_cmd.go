@@ -229,6 +229,9 @@ func runTutorial() error {
 	fmt.Printf("    %s✓%s Traverse relationship paths in the knowledge graph\n", cli.Green, cli.Reset)
 	fmt.Printf("\n  Ready to use SAME for real:\n")
 	fmt.Printf("    %s$%s cd ~/your-project && same init\n\n", cli.Dim, cli.Reset)
+	fmt.Printf("  Each project gets its own vault and database.\n")
+	fmt.Printf("  Run %ssame init%s in any directory to add another.\n", cli.Bold, cli.Reset)
+	fmt.Printf("  Use %ssame search --all%s to search across all vaults.\n\n", cli.Bold, cli.Reset)
 	return nil
 }
 

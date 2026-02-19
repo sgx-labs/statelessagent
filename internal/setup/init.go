@@ -469,12 +469,20 @@ func RunInit(opts InitOptions) error {
 		fmt.Printf("  %sNew to SAME?%s Run %ssame tutorial%s for a guided walkthrough.\n",
 			cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
 		fmt.Println()
+		fmt.Printf("  %sMore projects?%s Run %ssame init%s in any directory.\n",
+			cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
+		fmt.Printf("  Each project gets its own isolated vault and database.\n")
+		fmt.Println()
 		showSeedIntro(opts)
 	} else {
 		offerSeedInstall(opts)
 		fmt.Println()
 		fmt.Printf("  %sNew to SAME?%s Run %ssame tutorial%s for a guided walkthrough.\n",
 			cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
+		fmt.Println()
+		fmt.Printf("  %sMore projects?%s Run %ssame init%s in any directory.\n",
+			cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
+		fmt.Printf("  Each project gets its own isolated vault and database.\n")
 	}
 	fmt.Println()
 	fmt.Printf("  Run %ssame status%s anytime to check on things.\n", cli.Bold, cli.Reset)
