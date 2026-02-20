@@ -1,6 +1,6 @@
 #!/bin/bash
 # SAME installer — friendly edition for humans
-# Usage: curl -fsSL statelessagent.com/install.sh | bash
+# Usage: curl -fsSL https://statelessagent.com/install.sh | bash
 
 set -euo pipefail
 
@@ -242,10 +242,12 @@ if [ "$SKIP_DOWNLOAD" = false ]; then
     CHECKSUM_FILE=$(mktemp /tmp/same-checksums-XXXXXX)
 
     if curl -fsSL "$URL" -o "$TEMP_FILE" 2>/dev/null; then
-      verified=true
+      verified=false
       if curl -fsSL "$CHECKSUM_URL" -o "$CHECKSUM_FILE" 2>/dev/null; then
         EXPECTED=$(grep "$BINARY_NAME" "$CHECKSUM_FILE" | awk '{print $1}' | head -1 || true)
-        if [ -n "$EXPECTED" ]; then
+        if [ -z "$EXPECTED" ]; then
+          echo -e "  ${RED}✗${RESET} Checksum entry missing for $BINARY_NAME."
+        else
           if command -v shasum >/dev/null 2>&1; then
             ACTUAL=$(shasum -a 256 "$TEMP_FILE" | awk '{print $1}')
           elif command -v sha256sum >/dev/null 2>&1; then
@@ -254,13 +256,15 @@ if [ "$SKIP_DOWNLOAD" = false ]; then
             ACTUAL=""
           fi
           if [ -z "$ACTUAL" ]; then
-            echo -e "  ${YELLOW}!${RESET} Could not verify checksum (no SHA256 tool found)."
-            verified=false
+            echo -e "  ${RED}✗${RESET} Could not verify checksum (no SHA256 tool found)."
           elif [ "$ACTUAL" != "$EXPECTED" ]; then
             echo -e "  ${RED}✗${RESET} Checksum mismatch! Expected: $EXPECTED Got: $ACTUAL"
-            verified=false
+          else
+            verified=true
           fi
         fi
+      else
+        echo -e "  ${RED}✗${RESET} Could not download checksum file."
       fi
 
       if [ "$verified" = true ]; then
@@ -428,24 +432,11 @@ echo "[5/5] Checking dependencies..."
 echo ""
 
 # ── Homebrew (macOS only) ──────────────────────────────────
-# Homebrew is the easiest way to install Ollama and Node on macOS.
-# If missing, offer to install it first so the dep checks below can use it.
+# For security, do not execute remote install scripts automatically.
 if [ "$OS" = "Darwin" ] && ! command -v brew >/dev/null 2>&1; then
-  if confirm_install "  Homebrew not found. Install it? (makes installing deps easier)" "  Installing Homebrew..."; then
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/null
-    # Homebrew on Apple Silicon installs to /opt/homebrew, add to PATH for this session
-    if [ -f /opt/homebrew/bin/brew ]; then
-      eval "$(/opt/homebrew/bin/brew shellenv)"
-    elif [ -f /usr/local/bin/brew ]; then
-      eval "$(/usr/local/bin/brew shellenv)"
-    fi
-    if command -v brew >/dev/null 2>&1; then
-      echo -e "  ${GREEN}✓${RESET} Homebrew installed"
-    else
-      echo -e "  ${YELLOW}!${RESET} Homebrew install may need a terminal restart"
-    fi
-    echo ""
-  fi
+  echo -e "  ${YELLOW}!${RESET} Homebrew not found."
+  echo "    Install manually (optional): https://brew.sh"
+  echo ""
 fi
 
 MISSING_OLLAMA=false
@@ -464,11 +455,8 @@ else
       fi
     fi
   elif [ "$OS" = "Linux" ]; then
-    if confirm_install "  Install Ollama?" "  Installing Ollama..."; then
-      if curl -fsSL https://ollama.com/install.sh | sh 2>/dev/null; then
-        INSTALLED_OLLAMA=true
-      fi
-    fi
+    echo "  Automatic Ollama install is disabled for security."
+    echo "    Install manually from: https://ollama.com"
   fi
 
   if [ "$INSTALLED_OLLAMA" = true ] && command -v ollama >/dev/null 2>&1; then
