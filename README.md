@@ -8,16 +8,16 @@
 [![MCP Tools](https://img.shields.io/badge/MCP_Tools-12-8A2BE2.svg)](#mcp-tools)
 [![Discord](https://img.shields.io/discord/1468523556076785757?color=5865F2&label=Discord&logo=discord&logoColor=white)](https://discord.gg/9KfTkcGs7g)
 
-> **Your AI forgets everything between sessions. Not anymore.**
+> **Persistent project memory for AI coding workflows.**
 
-Every time you start a new session with Claude Code, Cursor, or any AI coding tool, your agent starts from zero. Decisions you made yesterday? Gone. Context from last week? Gone. That architectural choice you spent 30 minutes discussing? You'll explain it again.
-
-SAME gives your AI persistent memory from your existing markdown notes (any folder of `.md` files — no Obsidian required). No cloud. No API keys. One binary.
+SAME is a local-first memory layer for solo developers, researchers, creatives, and small teams using Claude Code, Cursor, Windsurf, or any MCP client.
+It indexes your markdown notes, surfaces relevant context in new sessions, and records decisions + handoffs so work continues across restarts.
+No cloud lock-in. No telemetry. One binary.
 
 ## See it in 60 seconds
 
 ```bash
-curl -fsSL statelessagent.com/install.sh | bash
+curl -fsSL https://statelessagent.com/install.sh | bash
 same demo
 ```
 
@@ -29,20 +29,25 @@ same demo
 
 ```bash
 # 1. Install (pick one)
-curl -fsSL statelessagent.com/install.sh | bash   # direct binary
+curl -fsSL https://statelessagent.com/install.sh | bash   # direct binary
 npm install -g @sgx-labs/same                      # or via npm
 
 # 2. Point SAME at your project
 cd ~/my-project && same init
 
-# 3. Ask your notes a question
+# 3. Verify retrieval
+same search "authentication decision"
+
+# 4. Optional: ask with citations (requires chat model/provider)
 same ask "what did we decide about authentication?"
 
-# 4. Your AI now remembers (hooks + MCP tools active)
+# 5. Your AI now remembers (hooks + MCP tools active)
 # Start Claude Code, Cursor, or any MCP client — context surfaces automatically
 ```
 
 That's it. Your AI now has memory.
+
+Release notes: [`CHANGELOG.md`](CHANGELOG.md)
 
 ---
 
@@ -151,6 +156,7 @@ Your markdown notes are embedded with your configured provider (local or cloud) 
 | Session handoffs | Auto-generated continuity notes | No |
 | Session recovery | Crash-safe — next session picks up even if terminal closed | No |
 | Decision extraction | Architectural choices remembered across sessions | No |
+| Claude Code hooks (6) | SessionStart/UserPromptSubmit/Stop automation for context, decisions, and handoffs | No |
 | Pinned notes | Critical context always included | No |
 | File claims (`same claim`) | Advisory read/write ownership for multi-agent coordination | No |
 | Knowledge graph (`same graph`) | Traverse note/file/agent/decision relationships | No* |
@@ -222,11 +228,11 @@ same seed install claude-code-power-user
 
 | Seed | Notes | What you get |
 |------|:-----:|-------------|
-| `claude-code-power-user` | 52 | Master-level Claude Code patterns, workflows, and tricks |
-| `ai-agent-architecture` | 58 | Agent design patterns, orchestration, memory strategies |
-| `personal-productivity-os` | 118 | GTD, time blocking, habit systems, review frameworks |
+| `claude-code-power-user` | 52 | Claude Code workflows, review loops, and operational patterns |
+| `ai-agent-architecture` | 58 | Agent design patterns, orchestration, and memory strategies |
+| `personal-productivity-os` | 118 | GTD, time blocking, habit systems, and review frameworks |
 
-10 seeds available — 600+ notes of expert knowledge. Browse with `same seed list`.
+Seed catalog updates independently from SAME releases. Run `same seed list` for current availability and note counts.
 
 [Browse all seeds](https://github.com/sgx-labs/seed-vaults)
 
@@ -281,22 +287,22 @@ Use `same init --mcp-only` to skip Claude Code hooks and just register the MCP s
 
 ## SAME vs. Alternatives
 
-| | SAME | mem0 | Letta |
-|---|:---:|:---:|:---:|
-| **Setup** | 1 command | pip + config | pip or Docker |
-| **Runtime deps** | None | Python + vector DB + LLM API | Python + SQLAlchemy (+ PG for production) |
-| **Offline capable** | Full (Lite mode) | Possible but not default | Yes (with local models) |
-| **Cloud required** | No | Default yes (OpenAI) | No |
-| **Telemetry** | None | Default ON (PostHog) | Yes (basic usage) |
-| **MCP tools** | 12 | 9 | Client only (connects to external MCP) |
-| **Hook integration** | Yes (Claude Code) | No | No |
-| **Knowledge graph** | Yes (built-in, SQLite) | Yes (requires Neo4j/Memgraph) | No |
-| **Web dashboard** | Yes (local) | Cloud only (managed) | Dashboard (self-hosted) |
-| **Session continuity** | Handoffs + pins + recovery | Session/user memory layers | Core feature (stateful agents) |
-| **Published benchmarks** | P=0.995, MRR=0.949 | None published | None published |
-| **Runs on Pi / edge** | Yes (~10MB binary) | No (heavy Python deps) | No (heavy Python deps) |
-| **Language** | Go | Python | Python |
-| **License** | BSL 1.1 [1] | Apache 2.0 | Apache 2.0 |
+| | SAME | mem0 | Letta | CLAUDE.md |
+|---|:---:|:---:|:---:|:---:|
+| **Setup** | 1 command | pip + config | pip or Docker | create/edit file |
+| **Runtime deps** | None | Python + vector DB + LLM API | Python + SQLAlchemy (+ PG for production) | None |
+| **Offline capable** | Full (Lite mode) | Possible but not default | Yes (with local models) | Yes |
+| **Cloud required** | No | Default yes (OpenAI) | No | No |
+| **Telemetry** | None | Default ON (PostHog) | Yes (basic usage) | None |
+| **MCP tools** | 12 | 9 | Client only (connects to external MCP) | No |
+| **Hook integration** | Yes (Claude Code) | No | No | No |
+| **Knowledge graph** | Yes (built-in, SQLite) | Yes (requires Neo4j/Memgraph) | No | No |
+| **Web dashboard** | Yes (local) | Cloud only (managed) | Dashboard (self-hosted) | No |
+| **Session continuity** | Handoffs + pins + recovery | Session/user memory layers | Core feature (stateful agents) | Manual edits only |
+| **Published benchmarks** | P=0.995, MRR=0.949 | None published | None published | None |
+| **Runs on Pi / edge** | Yes (~10MB binary) | No (heavy Python deps) | No (heavy Python deps) | Yes |
+| **Language** | Go | Python | Python | Markdown |
+| **License** | BSL 1.1 [1] | Apache 2.0 | Apache 2.0 | N/A |
 
 [1] BSL 1.1: Free for personal, educational, hobby, research, and evaluation use. Converts to Apache 2.0 on 2030-02-02.
 
@@ -323,14 +329,18 @@ Privacy is structural — filesystem-level, not policy-based. `same init` create
 ## Install
 
 ```bash
-# macOS / Linux
-curl -fsSL statelessagent.com/install.sh | bash
+# macOS / Linux (curl installer)
+curl -fsSL https://statelessagent.com/install.sh | bash
 
-# Or via npm (any platform — downloads prebuilt binary)
+# npm (all platforms; downloads prebuilt binary)
 npm install -g @sgx-labs/same
 
-# Windows (PowerShell)
-irm statelessagent.com/install.ps1 | iex
+# Docker (local image build)
+git clone --depth 1 https://github.com/sgx-labs/statelessagent.git
+cd statelessagent && docker build -t same .
+
+# Windows PowerShell
+irm https://statelessagent.com/install.ps1 | iex
 ```
 
 If blocked by execution policy, run first: `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser`
