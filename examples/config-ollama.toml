@@ -1,0 +1,15 @@
+# SAME configuration for Ollama (local, default)
+# Copy to ~/.config/same/config.toml or <vault>/.same/config.toml
+
+[embedding]
+provider = "ollama"
+model = "nomic-embed-text"
+# url = "http://localhost:11434"   # default, change if Ollama runs elsewhere
+
+[search]
+top_k = 5
+# threshold = 0.7   # minimum relevance score (0.0-1.0)
+
+[vault]
+# skip_dirs = ["node_modules", ".git", "vendor"]
+# skip_files = ["*.lock", "*.min.js"]

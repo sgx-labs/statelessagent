@@ -1,0 +1,13 @@
+# SAME configuration for OpenAI-compatible servers
+# Works with: LM Studio, vLLM, llama.cpp, OpenRouter
+
+[embedding]
+provider = "openai-compatible"
+base_url = "http://localhost:1234/v1"     # LM Studio default
+model = "nomic-embed-text-v1.5"
+# api_key = ""   # optional, depends on server
+
+# For OpenRouter:
+# base_url = "https://openrouter.ai/api/v1"
+# model = "nomic-ai/nomic-embed-text-v1.5"
+# api_key from OPENAI_API_KEY env var

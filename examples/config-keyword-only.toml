@@ -1,0 +1,8 @@
+# SAME configuration for keyword-only mode (no LLM needed)
+# Uses SQLite FTS5 for search — works fully offline
+
+[embedding]
+provider = "none"
+
+[search]
+top_k = 10   # keyword search benefits from more results

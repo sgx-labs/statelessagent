@@ -1,0 +1,9 @@
+# SAME configuration for OpenAI embeddings
+# Requires OPENAI_API_KEY environment variable
+
+[embedding]
+provider = "openai"
+model = "text-embedding-3-small"
+
+[search]
+top_k = 5

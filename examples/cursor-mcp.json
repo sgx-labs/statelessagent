@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "same": {
+      "command": "npx",
+      "args": ["-y", "@sgx-labs/same", "mcp", "--vault", "/path/to/your/notes"]
+    }
+  }
+}
