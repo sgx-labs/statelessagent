@@ -59,12 +59,11 @@ func TestSeedCmd_ListNoNetwork(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	// Force remote fetch failure quickly while allowing stale cache fallback.
-	t.Setenv("HTTP_PROXY", "http://127.0.0.1:1")
-	t.Setenv("HTTPS_PROXY", "http://127.0.0.1:1")
-	t.Setenv("ALL_PROXY", "http://127.0.0.1:1")
-
-	writeSeedManifestCache(t, home, time.Now().Add(-2*time.Hour), []seed.Seed{testSeedEntry()})
+	// Use a fresh cache (within TTL) so FetchManifest returns from cache
+	// without hitting the network. Go's http.ProxyFromEnvironment caches
+	// proxy settings via sync.Once, so env-based proxy blocking is unreliable
+	// when other tests have already made HTTP calls in the same process.
+	writeSeedManifestCache(t, home, time.Now(), []seed.Seed{testSeedEntry()})
 
 	cmd := seedListCmd()
 	cmd.SetArgs([]string{"--json"})
