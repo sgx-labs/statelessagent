@@ -226,13 +226,17 @@ Pre-built knowledge vaults that give your AI expert-level context in one command
 same seed install claude-code-power-user
 ```
 
+**10 seeds available**, including:
+
 | Seed | Notes | What you get |
 |------|:-----:|-------------|
 | `claude-code-power-user` | 52 | Claude Code workflows, review loops, and operational patterns |
 | `ai-agent-architecture` | 58 | Agent design patterns, orchestration, and memory strategies |
 | `personal-productivity-os` | 118 | GTD, time blocking, habit systems, and review frameworks |
 
-Seed catalog updates independently from SAME releases. Run `same seed list` for current availability and note counts.
+Plus: `security-audit-framework`, `devops-runbooks`, `indie-hacker-playbook`, `open-source-launch-kit`, `freelancer-business-kit`, `home-chef-essentials`, `fitness-and-wellness`.
+
+Run `same seed list` for full details. Catalog updates independently from SAME releases.
 
 [Browse all seeds](https://github.com/sgx-labs/seed-vaults)
 
