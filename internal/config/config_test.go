@@ -1,6 +1,7 @@
 package config
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -277,11 +278,37 @@ func TestLoadConfig_NegativeMaxResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if cfg.Memory.MaxResults != -1 {
-		t.Fatalf("expected raw config value -1, got %d", cfg.Memory.MaxResults)
+	if cfg.Memory.MaxResults != 1 {
+		t.Fatalf("expected max_results to clamp to 1, got %d", cfg.Memory.MaxResults)
 	}
-	if got := MemoryMaxResults(); got != 4 {
-		t.Fatalf("expected accessor fallback 4 for invalid value, got %d", got)
+	if got := MemoryMaxResults(); got != 1 {
+		t.Fatalf("expected accessor to return clamped value 1, got %d", got)
+	}
+}
+
+func TestLoadConfig_MaxResultsClampedToUpperBound(t *testing.T) {
+	vault := t.TempDir()
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+
+	t.Setenv("VAULT_PATH", vault)
+
+	configPath := filepath.Join(vault, ".same", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	content := []byte("[memory]\nmax_results = 999\n")
+	if err := os.WriteFile(configPath, content, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Memory.MaxResults != 100 {
+		t.Fatalf("expected max_results to clamp to 100, got %d", cfg.Memory.MaxResults)
 	}
 }
 
@@ -306,11 +333,37 @@ func TestLoadConfig_InvalidCompositeThreshold(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if cfg.Memory.CompositeThreshold != 1.5 {
-		t.Fatalf("expected raw composite_threshold 1.5, got %v", cfg.Memory.CompositeThreshold)
+	if cfg.Memory.CompositeThreshold != 1.0 {
+		t.Fatalf("expected composite_threshold to clamp to 1.0, got %v", cfg.Memory.CompositeThreshold)
 	}
 	if got := MemoryDistanceThreshold(); got != 16.2 {
 		t.Fatalf("expected distance fallback 16.2 for invalid value, got %v", got)
+	}
+}
+
+func TestLoadConfig_CompositeThresholdClampedLowerBound(t *testing.T) {
+	vault := t.TempDir()
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+
+	t.Setenv("VAULT_PATH", vault)
+
+	configPath := filepath.Join(vault, ".same", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	content := []byte("[memory]\ncomposite_threshold = -0.4\n")
+	if err := os.WriteFile(configPath, content, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Memory.CompositeThreshold != 0.0 {
+		t.Fatalf("expected composite_threshold to clamp to 0.0, got %v", cfg.Memory.CompositeThreshold)
 	}
 }
 
@@ -336,7 +389,23 @@ func TestLoadConfig_MissingBaseURL_OpenAICompatible(t *testing.T) {
 		t.Fatalf("write config: %v", err)
 	}
 
+	oldStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stderr = w
+
 	cfg, err := LoadConfig()
+
+	_ = w.Close()
+	os.Stderr = oldStderr
+
+	var warnBuf strings.Builder
+	if _, copyErr := io.Copy(&warnBuf, r); copyErr != nil {
+		t.Fatalf("io.Copy stderr: %v", copyErr)
+	}
+
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
@@ -346,6 +415,9 @@ func TestLoadConfig_MissingBaseURL_OpenAICompatible(t *testing.T) {
 	ec := EmbeddingProviderConfig()
 	if ec.BaseURL != "" {
 		t.Fatalf("expected empty base URL, got %q", ec.BaseURL)
+	}
+	if !strings.Contains(warnBuf.String(), "openai-compatible provider requires base_url") {
+		t.Fatalf("expected base_url warning, got: %q", warnBuf.String())
 	}
 }
 

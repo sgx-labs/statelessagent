@@ -290,6 +290,22 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
+	// Validate and clamp config values to safe bounds.
+	if cfg.Memory.MaxResults < 1 {
+		cfg.Memory.MaxResults = 1
+	} else if cfg.Memory.MaxResults > 100 {
+		cfg.Memory.MaxResults = 100
+	}
+	if cfg.Memory.CompositeThreshold < 0.0 {
+		cfg.Memory.CompositeThreshold = 0.0
+	} else if cfg.Memory.CompositeThreshold > 1.0 {
+		cfg.Memory.CompositeThreshold = 1.0
+	}
+	if strings.EqualFold(strings.TrimSpace(cfg.Embedding.Provider), "openai-compatible") &&
+		strings.TrimSpace(cfg.Embedding.BaseURL) == "" {
+		fmt.Fprintln(os.Stderr, "same: warning: openai-compatible provider requires base_url (set embedding.base_url or SAME_EMBED_BASE_URL)")
+	}
+
 	// Apply TOML skip_dirs to the global SkipDirs map.
 	// Previously parsed but never applied — this fixes the bug.
 	if len(cfg.Vault.SkipDirs) > 0 {
