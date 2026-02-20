@@ -61,7 +61,9 @@
 - **Markdown cross-note linking** — `.md` references now map to note nodes, enabling direct note-to-note traversal (for example, `notes/a.md -> notes/b.md`)
 - **Graph reference-path normalization** — extraction now rejects absolute/external-style path references (for example, `Users/...`, `/...`, `.windsurf/worktrees`) to reduce noisy out-of-vault graph nodes
 - **Precheck scope clarity** — `make precheck` now labels its blocklist scan as repo-scope release hygiene and explicitly notes what it does not cover (user vaults, full history, forks, mirrors); `make precheck-full` adds an all-tracked-files blocklist sweep
-- **Lint cleanup pass** — resolved unchecked error returns, dead code, formatting/import drift, and minor misspellings flagged by golangci-lint across CLI/internal packages
+- **Config validation hardening** — `top_k` is clamped to [1, 100], `threshold` is clamped to [0.0, 1.0], and `openai-compatible` now warns when `base_url` is missing
+- **Lint fixes** — resolved unused variables, import ordering, misspellings, and unchecked error returns flagged by golangci-lint across CLI/internal packages
+- **Flaky seed cache test isolation** — fixed `TestSeedCmd_ListNoNetwork` to avoid cross-test proxy environment caching issues
 
 ### Documentation
 
@@ -70,6 +72,10 @@
 - **README: shell completion setup** — added bash, zsh, and fish completion instructions
 - **README: CLI reference updates** — added `same web` and `same completion` entries
 - **README: comparison table update** — added a web dashboard row to SAME vs. alternatives
+
+### Tests
+
+- **CLI test coverage expansion** — added command-level tests for `search`, `doctor`, `index`, `completion`, `web`, `pin`, `feedback`, `log`, `model`, `seed`, `repair`, `display`, `hooks`, and `mcp`
 
 ### Privacy
 
