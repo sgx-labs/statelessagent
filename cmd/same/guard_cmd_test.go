@@ -106,7 +106,10 @@ func TestRunGuardPushInstallWritesTicketPathWithSlash(t *testing.T) {
 	if !strings.Contains(hook, `REMOTE_URL=$(git remote get-url origin 2>/dev/null)`) {
 		t.Fatalf("hook missing remote url detection:\n%s", hook)
 	}
-	if !strings.Contains(hook, `SAFE_REPO=$(printf "%s" "$REMOTE_URL" | tr -c 'A-Za-z0-9_.-' '_' | sed 's/^[._-]*//; s/[._-]*$//')`) {
+	if !strings.Contains(hook, `NORMALIZED_URL=$(printf "%s" "$REMOTE_URL" | sed 's/\.git$//')`) {
+		t.Fatalf("hook missing .git suffix stripping:\n%s", hook)
+	}
+	if !strings.Contains(hook, `SAFE_REPO=$(printf "%s" "$NORMALIZED_URL" | tr -c 'A-Za-z0-9_.-' '_' | sed 's/^[._-]*//; s/[._-]*$//')`) {
 		t.Fatalf("hook missing repo sanitization:\n%s", hook)
 	}
 	if !strings.Contains(hook, `TICKET="${TMPBASE}/push-ticket-$SAFE_REPO"`) {
