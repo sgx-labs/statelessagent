@@ -854,7 +854,9 @@ fi
 REPO=$(basename "$REMOTE_URL" .git 2>/dev/null)
 [ -z "$REPO" ] && REPO="$REMOTE_URL"
 
-SAFE_REPO=$(printf "%s" "$REMOTE_URL" | tr -c 'A-Za-z0-9_.-' '_' | sed 's/^[._-]*//; s/[._-]*$//')
+# Strip .git suffix to match push-allow ticket naming
+NORMALIZED_URL=$(printf "%s" "$REMOTE_URL" | sed 's/\.git$//')
+SAFE_REPO=$(printf "%s" "$NORMALIZED_URL" | tr -c 'A-Za-z0-9_.-' '_' | sed 's/^[._-]*//; s/[._-]*$//')
 if [ -z "$SAFE_REPO" ]; then
     SAFE_REPO=$(printf "%s" "$REPO" | tr -c 'A-Za-z0-9_.-' '_' | sed 's/^[._-]*//; s/[._-]*$//')
 fi
