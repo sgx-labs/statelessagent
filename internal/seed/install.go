@@ -105,11 +105,18 @@ func Install(opts InstallOptions) (*InstallResult, error) {
 	// 5. Check if directory exists
 	if info, err := os.Stat(absDir); err == nil && info.IsDir() {
 		if !opts.Force {
-			return nil, fmt.Errorf("directory already exists: %s — use --force to overwrite", absDir)
+			return nil, fmt.Errorf("already installed at %s\n    To reinstall, run: same seed install %s --force\n    Back up your notes first if you've added any to this seed", absDir, opts.Name)
 		}
-		// Remove existing to start fresh
-		if err := os.RemoveAll(absDir); err != nil {
-			return nil, fmt.Errorf("remove existing directory: %w", err)
+		// Back up to .bak before removing
+		bakDir := absDir + ".bak"
+		_ = os.RemoveAll(bakDir) // remove stale backup
+		if err := os.Rename(absDir, bakDir); err != nil {
+			// Rename failed, fall back to remove
+			if err := os.RemoveAll(absDir); err != nil {
+				return nil, fmt.Errorf("remove existing directory: %w", err)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "  Backed up existing to %s\n", filepath.Base(bakDir))
 		}
 	}
 

@@ -23,7 +23,7 @@ COPY --from=builder /src/build/same /usr/local/bin/same
 
 # Default vault mount point
 VOLUME ["/vault"]
-ENV SAME_VAULT_PATH=/vault
+ENV VAULT_PATH=/vault
 
 ENTRYPOINT ["same"]
 CMD ["status"]

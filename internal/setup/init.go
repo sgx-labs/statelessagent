@@ -673,8 +673,11 @@ func offerSeedInstall(opts InitOptions) bool {
 
 		result, err := seed.Install(installOpts)
 		if err != nil {
-			fmt.Printf("  %s!%s Install failed: %v\n", cli.Yellow, cli.Reset, err)
-			fmt.Printf("  %sYou can try again with: same seed install %s%s\n\n", cli.Dim, chosen.Name, cli.Reset)
+			if strings.Contains(err.Error(), "already installed") {
+				fmt.Printf("  %s✓%s %v\n\n", cli.Green, cli.Reset, err)
+			} else {
+				fmt.Printf("  %s!%s %v\n\n", cli.Yellow, cli.Reset, err)
+			}
 			continue
 		}
 
@@ -803,8 +806,11 @@ func showSeedIntro(opts InitOptions) {
 
 		result, err := seed.Install(installOpts)
 		if err != nil {
-			fmt.Printf("  %s!%s Install failed: %v\n", cli.Yellow, cli.Reset, err)
-			fmt.Printf("  %sYou can try again with: same seed install %s%s\n\n", cli.Dim, chosen.Name, cli.Reset)
+			if strings.Contains(err.Error(), "already installed") {
+				fmt.Printf("  %s✓%s %v\n\n", cli.Green, cli.Reset, err)
+			} else {
+				fmt.Printf("  %s!%s %v\n\n", cli.Yellow, cli.Reset, err)
+			}
 			continue
 		}
 

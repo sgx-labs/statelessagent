@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -88,6 +89,13 @@ func seedInstallCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
+			// Allow selecting by number (e.g. "same seed install 1")
+			if n, err := strconv.Atoi(name); err == nil && n >= 1 {
+				if m, mErr := seed.FetchManifest(false); mErr == nil && n <= len(m.Seeds) {
+					name = m.Seeds[n-1].Name
+				}
+			}
+
 			fmt.Println()
 			fmt.Printf("  %sSeed Install:%s %s\n\n", cli.Bold, cli.Reset, name)
 
@@ -127,6 +135,10 @@ func seedInstallCmd() *cobra.Command {
 				if strings.Contains(errMsg, "requires SAME") {
 					return userError(errMsg, "Run 'same update' to get the latest version")
 				}
+				if strings.Contains(errMsg, "already installed") {
+					fmt.Printf("  %s✓%s %s\n", cli.Green, cli.Reset, errMsg)
+					return nil
+				}
 				return fmt.Errorf("install failed: %w", err)
 			}
 
@@ -153,15 +165,24 @@ func seedInfoCmd() *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: seedNameCompleter,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			// Allow selecting by number (e.g. "same seed info 1")
+			if n, err := strconv.Atoi(name); err == nil && n >= 1 {
+				if m, mErr := seed.FetchManifest(false); mErr == nil && n <= len(m.Seeds) {
+					name = m.Seeds[n-1].Name
+				}
+			}
+
 			manifest, err := seed.FetchManifest(false)
 			if err != nil {
 				return userError("Could not fetch seed list", "Check your internet connection")
 			}
 
-			s := seed.FindSeed(manifest, args[0])
+			s := seed.FindSeed(manifest, name)
 			if s == nil {
 				return userError(
-					fmt.Sprintf("Seed %q not found", args[0]),
+					fmt.Sprintf("Seed %q not found", name),
 					"Run 'same seed list' to see available seeds",
 				)
 			}

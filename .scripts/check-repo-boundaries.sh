@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Enforce repository boundaries for consumer-facing releases.
-# This repo contains SAME product code only.
-# Seed content and internal planning artifacts must stay out of git history.
+# Enforce repository boundaries.
+# Product code only — no vault content or local artifacts in git history.
 
 set -euo pipefail
 
@@ -14,8 +13,7 @@ FORBIDDEN_REGEXES=(
   '^research/'
   '^sessions/'
   '^ralph/'
-  '^awesome-mcp-servers(/|$)'
-  '^awesome-mcp-servers-1(/|$)'
+  '^awesome-mcp-servers'
   '^seed-vaults(/|$)'
   '^seeds(/|$)'
   '^seed-content(/|$)'
@@ -35,7 +33,6 @@ FORBIDDEN_REGEXES=(
 OFFENDERS=()
 while IFS= read -r f; do
   [ -z "$f" ] && continue
-  # Treat deleted paths as already-remediated during local cleanup work.
   [ -e "$REPO_ROOT/$f" ] || continue
   for re in "${FORBIDDEN_REGEXES[@]}"; do
     if [[ "$f" =~ $re ]]; then
@@ -46,14 +43,11 @@ while IFS= read -r f; do
 done < <(git -C "$REPO_ROOT" ls-files)
 
 if [ "${#OFFENDERS[@]}" -gt 0 ]; then
-  echo "Repository boundary violation: forbidden tracked paths found:"
+  echo "Boundary violation: forbidden tracked paths found:"
   for f in "${OFFENDERS[@]}"; do
     echo "  - $f"
   done
-  echo ""
-  echo "Keep seed content in https://github.com/sgx-labs/seed-vaults"
-  echo "Keep internal research/handoffs out of this repo."
   exit 1
 fi
 
-echo "Repo boundaries OK (no forbidden tracked paths)."
+echo "Repo boundaries OK."

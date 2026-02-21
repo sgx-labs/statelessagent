@@ -26,7 +26,7 @@ data/
 .env
 .env.*
 
-# PII blocklist (contains personal/client identifiers — NEVER track)
+# Sensitive patterns
 .scripts/.blocklist
 
 # OS
@@ -40,74 +40,53 @@ Thumbs.db
 *.swo
 *~
 
-# Local coding-assistant artifacts
+# Local tooling
 .kilocode/
 .kilocodemodes
 
-# SAME data directory (created inside vaults)
+# SAME data directory
 .same/
 
-# Claude Code local config (contains machine-specific paths)
+# Claude Code local config
 .claude/
 .mcp.json
 
-# Eval data (contains vault-specific paths and prompts)
-# The eval framework code (internal/eval/) is tracked,
-# but user-specific test data stays local.
+# Eval data
 /eval/
 .vercel
 .env*.local
 
-# Private website content (investor-facing pages stay private)
-website/brief/index.html
-website/brief/investors/
+# Website drafts
+website/brief/
 website/sgx-labs/
 website/playbook/
 
-# Local research & strategy notes (never commit — may contain competitive intel, PII)
+# Local notes and drafts
 .research/
 research/
 sessions/
-
-# Development knowledge base (bugs, fixes, checklists — may reference internal details)
 .devlog/
-docs/eval-methodology.md
-docs/security-research.md
-docs/strategy-and-vision.md
+decisions.md
+IMPLEMENTATION_PLAN.md
 
-# v0.9.0 research docs (internal planning, competitive analysis, not for public repo)
-docs/v090-knowledge-graph-spec.md
-docs/v090-implementation-guide.md
-docs/mcp-graph-tools-spec.md
-docs/ai-memory-landscape-analysis.md
-docs/competitive-landscape-analysis.md
-docs/breakthrough-features-2026.md
-docs/product-hunt-launch-strategy-2026.md
-docs/tomorrow-morning-checklist.md
-docs/website_dev_handover_v0_9_0.md
+# Unpublished docs
+docs/website_dev_handover_*.md
 
-# NPM wrapper (downloaded binaries)
+# NPM wrapper
 npm/bin/same-binary
 npm/bin/same-binary.exe
 npm/node_modules/
 
-# Ralph Loop (local dev tooling, contains machine-specific paths)
+# Local directories
 ralph/
-IMPLEMENTATION_PLAN.md
 
-# Session handoffs and local decisions (may contain PII, org names, strategy)
-sessions/
-decisions.md
-
-# MCP registry tokens (from mcp-publisher login)
+# Registry tokens
 .mcpregistry_*
 
-# Forked repos (local clones for PRs)
-awesome-mcp-servers/
-awesome-mcp-servers-1/
+# External repos
+awesome-mcp-servers*/
 
-# Seed-content boundary: product code lives here, seed vault content lives in
-# https://github.com/sgx-labs/seed-vaults
+# Seed vault content (separate repo)
 seed-vaults/
 seeds/
 seed-content/
