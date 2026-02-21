@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -359,6 +360,163 @@ func TestExtractFromNote_IgnoresExternalFileURLReferences(t *testing.T) {
 	}
 }
 
+func TestExtractFromNote_IgnoresExternalHTTPDomainReferences(t *testing.T) {
+	db := setupTestDB(t)
+	ext := NewExtractor(db)
+
+	content := `
+See github.com/mark3labs/mcp-filesystem-server/blob/main/smithery.yaml
+https://ollama.com/install.sh
+raw.githubusercontent.com/org/repo/main/install.sh
+statelessagent.com/install.sh
+static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json
+Also see internal/graph/extraction.go.
+`
+
+	if err := ext.ExtractFromNote(302, "notes/current.md", content, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// External domains should never be modeled as local file/note nodes.
+	var externalCount int
+	if err := db.conn.QueryRow(`
+		SELECT COUNT(*)
+		FROM graph_nodes
+		WHERE type IN ('file', 'note')
+		  AND (
+			name LIKE 'http%'
+			OR name LIKE '%.com/%'
+			OR name LIKE '%.io/%'
+			OR name LIKE '%.org/%'
+			OR name LIKE '%.ai/%'
+		  )
+	`).Scan(&externalCount); err != nil {
+		t.Fatalf("count external domain nodes: %v", err)
+	}
+	if externalCount != 0 {
+		t.Fatalf("expected 0 external domain nodes, got %d", externalCount)
+	}
+
+	if _, err := db.FindNode(NodeFile, "internal/graph/extraction.go"); err != nil {
+		t.Fatalf("expected local file node to be retained: %v", err)
+	}
+}
+
+func TestExtractFromNote_IgnoresPlaceholderTemplateAndMalformedPaths(t *testing.T) {
+	db := setupTestDB(t)
+	ext := NewExtractor(db)
+
+	content := `
+VAULT_PATH/.same/config.toml
+internal/pkg/foo.go
+vault/path/to/note.md
+sessions/YYYY-MM-DD-auto-handoff.md
+sessions/YYYY-MM-DD-rich-handoff.md
+test_vault/notes/a.md
+test_vault/notes/b.md
+test_vault/notes/c.md
+_PRIVATE/api-keys.md
+_PRIVATE/secret.md
+README.md/llms-install.md
+internal/graph/extraction.go
+notes/real.md
+`
+
+	if err := ext.ExtractFromNote(303, "notes/current.md", content, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	rejected := []struct {
+		typ  string
+		name string
+	}{
+		{NodeFile, "VAULT_PATH/.same/config.toml"},
+		{NodeFile, "internal/pkg/foo.go"},
+		{NodeNote, "vault/path/to/note.md"},
+		{NodeNote, "sessions/YYYY-MM-DD-auto-handoff.md"},
+		{NodeNote, "sessions/YYYY-MM-DD-rich-handoff.md"},
+		{NodeNote, "test_vault/notes/a.md"},
+		{NodeNote, "test_vault/notes/b.md"},
+		{NodeNote, "test_vault/notes/c.md"},
+		{NodeNote, "_PRIVATE/api-keys.md"},
+		{NodeNote, "_PRIVATE/secret.md"},
+		{NodeNote, "README.md/llms-install.md"},
+	}
+
+	for _, r := range rejected {
+		if _, err := db.FindNode(r.typ, r.name); !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("expected %s node %q to be rejected, got err=%v", r.typ, r.name, err)
+		}
+	}
+
+	if _, err := db.FindNode(NodeFile, "internal/graph/extraction.go"); err != nil {
+		t.Fatalf("expected valid local file node to be retained: %v", err)
+	}
+	if _, err := db.FindNode(NodeNote, "notes/real.md"); err != nil {
+		t.Fatalf("expected valid local note node to be retained: %v", err)
+	}
+}
+
+func TestExtractFromNote_DecisionsSkipFencedCodeAndLowQualityFragments(t *testing.T) {
+	db := setupTestDB(t)
+	ext := NewExtractor(db)
+
+	content := `
+We decided: use SQLite." > test_vault/notes/b.md && echo "# Note C\n\n..."
+Example docs: "We chose to ...".
+Decision: whether SAME injected or skipped, the conversation mode detected, and log fields were emitted.
+
+` + "```bash" + `
+Decision: use Redis for caching.
+echo "We chose to shell out for everything"
+` + "```" + `
+
+We chose to keep regex extraction as the default fallback.
+Decision: adopt deterministic chunking for indexing.
+`
+
+	if err := ext.ExtractFromNote(303, "notes/current.md", content, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := db.conn.Query(`SELECT name FROM graph_nodes WHERE type = ?`, NodeDecision)
+	if err != nil {
+		t.Fatalf("query decision nodes: %v", err)
+	}
+	defer rows.Close()
+
+	got := make(map[string]bool)
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatalf("scan decision node: %v", err)
+		}
+		got[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate decision rows: %v", err)
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("expected exactly 2 high-quality decision nodes, got %d (%v)", len(got), got)
+	}
+	if !got["keep regex extraction as the default fallback"] {
+		t.Fatalf("expected clean decision from prose extraction, got %v", got)
+	}
+	if !got["adopt deterministic chunking for indexing"] {
+		t.Fatalf("expected clean decision from decision label extraction, got %v", got)
+	}
+	if got["use Redis for caching"] {
+		t.Fatalf("expected fenced code decision to be ignored, got %v", got)
+	}
+	for name := range got {
+		lower := strings.ToLower(name)
+		if strings.Contains(lower, "conversation mode detected") || strings.Contains(lower, "injected or skipped") {
+			t.Fatalf("expected descriptive/non-decision text to be rejected, got %q", name)
+		}
+	}
+}
+
 func TestNormalizeGraphReferencePath(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -372,6 +530,15 @@ func TestNormalizeGraphReferencePath(t *testing.T) {
 		{name: "escape parent rejected", notePath: "notes/current.md", input: "../../outside.md", ok: false},
 		{name: "absolute rejected", notePath: "notes/current.md", input: "/Users/dev/file.go", ok: false},
 		{name: "users prefix rejected", notePath: "notes/current.md", input: "Users/dev/file.go", ok: false},
+		{name: "http url rejected", notePath: "notes/current.md", input: "https://ollama.com/install.sh", ok: false},
+		{name: "domain path rejected", notePath: "notes/current.md", input: "github.com/org/repo/file.go", ok: false},
+		{name: "placeholder vault path rejected", notePath: "notes/current.md", input: "VAULT_PATH/.same/config.toml", ok: false},
+		{name: "placeholder date rejected", notePath: "notes/current.md", input: "sessions/YYYY-MM-DD-auto-handoff.md", ok: false},
+		{name: "private path rejected", notePath: "notes/current.md", input: "_PRIVATE/secret.md", ok: false},
+		{name: "test vault path rejected", notePath: "notes/current.md", input: "test_vault/notes/a.md", ok: false},
+		{name: "path to placeholder rejected", notePath: "notes/current.md", input: "vault/path/to/note.md", ok: false},
+		{name: "foo placeholder rejected", notePath: "notes/current.md", input: "internal/pkg/foo.go", ok: false},
+		{name: "file as directory rejected", notePath: "notes/current.md", input: "README.md/llms-install.md", ok: false},
 		{name: "normal repo path", notePath: "notes/current.md", input: "internal/store/db.go", want: "internal/store/db.go", ok: true},
 	}
 

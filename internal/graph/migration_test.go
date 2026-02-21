@@ -79,7 +79,7 @@ func TestRebuildFromIndexedNotes_RecreatesRelationships(t *testing.T) {
 	if _, err := gdb.FindNode(NodeAgent, "woody"); err != nil {
 		t.Fatalf("expected agent node woody: %v", err)
 	}
-	if _, err := gdb.FindNode(NodeDecision, "use queue workers. See notes/queue.md and internal/store/db.go."); err != nil {
+	if _, err := gdb.FindNode(NodeDecision, "use queue workers. See notes/queue.md and internal/store/db.go"); err != nil {
 		t.Fatalf("expected decision node: %v", err)
 	}
 	if _, err := gdb.FindNode(NodeFile, "internal/store/db.go"); err != nil {

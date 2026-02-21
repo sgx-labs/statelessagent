@@ -18,6 +18,12 @@ var (
 	// Decision patterns
 	reDecision1 = regexp.MustCompile(`(?i)(?:decided|decision|chose|chosen):\s*(.+)`)
 	reDecision2 = regexp.MustCompile(`(?i)we (?:decided|chose) to\s+(.+?)(?:\.|$)`)
+
+	// URL-like external references that should never become local file/note nodes.
+	reDomainLikePrefix = regexp.MustCompile(`^[a-z0-9.-]+\.(?:com|io|org|ai)(?::\d+)?(?:/|$)`)
+
+	// Placeholder/template tokens that should not become graph paths.
+	rePlaceholderToken = regexp.MustCompile(`(^|[^a-z0-9])(vault_path|yyyy|mm|dd)([^a-z0-9]|$)`)
 )
 
 type Extractor struct {
@@ -133,6 +139,9 @@ func normalizeGraphReferencePath(notePath, candidate string) (string, bool) {
 	if candidate == "" {
 		return "", false
 	}
+	if isLikelyURLReference(candidate) {
+		return "", false
+	}
 
 	// Reject absolute/home-style paths.
 	if strings.HasPrefix(candidate, "/") || strings.HasPrefix(candidate, "~/") || strings.HasPrefix(candidate, "//") {
@@ -156,11 +165,81 @@ func normalizeGraphReferencePath(notePath, candidate string) (string, bool) {
 	if clean == ".." || strings.HasPrefix(clean, "../") {
 		return "", false
 	}
+	if hasFileComponentBeforeLeaf(clean) {
+		return "", false
+	}
+	if isPlaceholderTemplatePath(clean) {
+		return "", false
+	}
+	if isLikelyURLReference(clean) {
+		return "", false
+	}
 	if isLikelyExternalReference(clean) {
 		return "", false
 	}
 
 	return strings.TrimPrefix(clean, "./"), true
+}
+
+func hasFileComponentBeforeLeaf(ref string) bool {
+	parts := strings.Split(ref, "/")
+	if len(parts) < 2 {
+		return false
+	}
+	for _, part := range parts[:len(parts)-1] {
+		if looksLikeFileComponent(part) {
+			return true
+		}
+	}
+	return false
+}
+
+func looksLikeFileComponent(part string) bool {
+	lower := strings.ToLower(strings.TrimSpace(part))
+	if lower == "" {
+		return false
+	}
+	for _, ext := range []string{".go", ".md", ".yaml", ".yml", ".toml", ".json", ".sql", ".sh"} {
+		if strings.HasSuffix(lower, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+func isPlaceholderTemplatePath(ref string) bool {
+	lower := strings.ToLower(strings.TrimSpace(ref))
+	if lower == "" {
+		return false
+	}
+
+	if strings.HasPrefix(lower, "_private/") || strings.Contains(lower, "/_private/") {
+		return true
+	}
+	if strings.HasPrefix(lower, "test_vault/") || strings.Contains(lower, "/test_vault/") {
+		return true
+	}
+	if strings.Contains(lower, "path/to/") {
+		return true
+	}
+	if strings.Contains(lower, "yyyy-mm-dd") {
+		return true
+	}
+	if strings.Contains(lower, "/foo.go") || lower == "foo.go" {
+		return true
+	}
+	return rePlaceholderToken.MatchString(lower)
+}
+
+func isLikelyURLReference(ref string) bool {
+	lower := strings.ToLower(strings.TrimSpace(ref))
+	if lower == "" {
+		return false
+	}
+	if strings.Contains(lower, "://") || strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		return true
+	}
+	return reDomainLikePrefix.MatchString(lower)
 }
 
 func isLikelyExternalReference(ref string) bool {
@@ -203,19 +282,31 @@ func (e *Extractor) linkAgent(nID int64, agent string) error {
 }
 
 func (e *Extractor) extractDecisionsRegex(nID int64, content string) error {
+	content = stripFencedCodeBlocks(content)
+
 	var decisions []string
 	for _, match := range reDecision1.FindAllStringSubmatch(content, -1) {
 		if len(match) > 1 {
-			decisions = append(decisions, strings.TrimSpace(match[1]))
+			if dText, ok := normalizeDecisionText(match[0], match[1]); ok {
+				decisions = append(decisions, dText)
+			}
 		}
 	}
 	for _, match := range reDecision2.FindAllStringSubmatch(content, -1) {
 		if len(match) > 1 {
-			decisions = append(decisions, strings.TrimSpace(match[1]))
+			if dText, ok := normalizeDecisionText(match[0], match[1]); ok {
+				decisions = append(decisions, dText)
+			}
 		}
 	}
 
+	seen := make(map[string]struct{}, len(decisions))
 	for _, dText := range decisions {
+		if _, ok := seen[dText]; ok {
+			continue
+		}
+		seen[dText] = struct{}{}
+
 		if len(dText) > 200 {
 			dText = dText[:200] + "..."
 		}
@@ -239,6 +330,106 @@ func (e *Extractor) extractDecisionsRegex(nID int64, content string) error {
 		}
 	}
 	return nil
+}
+
+func stripFencedCodeBlocks(content string) string {
+	lines := strings.Split(content, "\n")
+	out := make([]string, 0, len(lines))
+	inFence := false
+
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
+		out = append(out, line)
+	}
+
+	return strings.Join(out, "\n")
+}
+
+func normalizeDecisionText(fullMatch, extracted string) (string, bool) {
+	dText := strings.TrimSpace(extracted)
+	dText = strings.Trim(dText, "\"'`")
+	dText = strings.TrimSpace(dText)
+	dText = strings.Trim(dText, ".,;:()[]{}")
+	dText = strings.TrimSpace(dText)
+	if len(dText) < 10 {
+		return "", false
+	}
+
+	lower := strings.ToLower(dText)
+
+	// Reject shell-command fragments.
+	if strings.Contains(dText, "&&") || strings.Contains(dText, "|") || strings.Contains(dText, ">") {
+		return "", false
+	}
+
+	// Reject regex/example fragments that should not become decisions.
+	if strings.Contains(dText, "`") || strings.Contains(lower, "...") || strings.Contains(lower, `", "`) || strings.Contains(lower, "`, `") {
+		return "", false
+	}
+	if strings.Contains(lower, "(?:") || strings.Contains(lower, `\s`) || strings.Contains(lower, `\w`) || strings.Contains(lower, `\d`) || strings.Contains(lower, "(?i)") {
+		return "", false
+	}
+	if strings.HasPrefix(lower, "whether ") {
+		return "", false
+	}
+	if strings.Contains(lower, "conversation mode detected") || strings.Contains(lower, "injected or skipped") {
+		return "", false
+	}
+	if !hasDecisionIntent(lower) && !hasDecisionVerb(strings.ToLower(fullMatch)) {
+		return "", false
+	}
+
+	return dText, true
+}
+
+func hasDecisionVerb(text string) bool {
+	for _, marker := range []string{
+		"decided",
+		"chose",
+		"chosen",
+		"going with",
+		"plan is to",
+		"shipped",
+		"picked",
+	} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasDecisionIntent(text string) bool {
+	if text == "" {
+		return false
+	}
+	for _, prefix := range []string{
+		"use ",
+		"keep ",
+		"adopt ",
+		"split ",
+		"pick ",
+		"picked ",
+		"go with ",
+		"going with ",
+		"plan is to ",
+		"ship ",
+		"shipped ",
+	} {
+		if strings.HasPrefix(text, prefix) {
+			return true
+		}
+	}
+	if strings.HasPrefix(text, "use ") && strings.Contains(text, " for ") {
+		return true
+	}
+	return false
 }
 
 func (e *Extractor) extractLLM(nID int64, content string) error {
