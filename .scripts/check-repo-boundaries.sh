@@ -12,8 +12,6 @@ FORBIDDEN_REGEXES=(
   '^\.research/'
   '^research/'
   '^sessions/'
-  '^ralph/'
-  '^awesome-mcp-servers'
   '^seed-vaults(/|$)'
   '^seeds(/|$)'
   '^seed-content(/|$)'

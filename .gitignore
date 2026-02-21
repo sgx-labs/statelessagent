@@ -40,10 +40,6 @@ Thumbs.db
 *.swo
 *~
 
-# Local tooling
-.kilocode/
-.kilocodemodes
-
 # SAME data directory
 .same/
 
@@ -57,9 +53,7 @@ Thumbs.db
 .env*.local
 
 # Website drafts
-website/brief/
-website/sgx-labs/
-website/playbook/
+website/
 
 # Local notes and drafts
 .research/
@@ -69,22 +63,13 @@ sessions/
 decisions.md
 IMPLEMENTATION_PLAN.md
 
-# Unpublished docs
-docs/website_dev_handover_*.md
-
 # NPM wrapper
 npm/bin/same-binary
 npm/bin/same-binary.exe
 npm/node_modules/
 
-# Local directories
-ralph/
-
 # Registry tokens
 .mcpregistry_*
-
-# External repos
-awesome-mcp-servers*/
 
 # Seed vault content (separate repo)
 seed-vaults/

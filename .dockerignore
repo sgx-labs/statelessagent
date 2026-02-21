@@ -4,5 +4,4 @@ build/
 research/
 sessions/
 *.db
-.kilocode/
 .same/

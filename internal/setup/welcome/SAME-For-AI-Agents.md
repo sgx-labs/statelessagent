@@ -85,7 +85,7 @@ search_notes("user authentication")
 
 **Tip:** If you find nothing, tell the user: "I searched for X but didn't find it. Want me to try different terms, or is this something we should document?"
 
-### 3. Always Acknowledge What You Used
+### 4. Always Acknowledge What You Used
 
 When surfaced context helps, tell the user:
 - "Based on your Auth System Decision note, I see you chose JWT..."
@@ -94,7 +94,7 @@ When surfaced context helps, tell the user:
 
 This builds trust and helps them know SAME is working.
 
-### 4. Create Notes That Help Future Sessions
+### 5. Create Notes That Help Future Sessions
 
 When documenting decisions or creating notes:
 
@@ -125,7 +125,7 @@ Use Redis with 5-minute TTL.
 - Use specific, searchable terms
 - Add relevant tags
 
-### 5. Know the Content Types
+### 6. Know the Content Types
 
 Use `content_type` in frontmatter to help ranking:
 - `decision` — Gets boosted, represents recorded decisions
