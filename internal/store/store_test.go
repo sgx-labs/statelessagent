@@ -442,10 +442,10 @@ func TestSchemaVersion(t *testing.T) {
 	}
 	defer db.Close()
 
-	// After migrate(), version should be 6 (through claims + agent + graph migrations).
+	// After migrate(), version should be 7 (through hook activity logging migration).
 	v := db.SchemaVersion()
-	if v != 6 {
-		t.Errorf("expected schema version 6, got %d", v)
+	if v != 7 {
+		t.Errorf("expected schema version 7, got %d", v)
 	}
 }
 

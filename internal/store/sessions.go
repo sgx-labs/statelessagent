@@ -27,8 +27,10 @@ func (db *DB) InsertSession(rec *SessionRecord) error {
 	filesJSON, _ := json.Marshal(rec.FilesChanged)
 
 	_, err := db.conn.Exec(`
-		INSERT OR IGNORE INTO session_log (session_id, started_at, ended_at, handoff_path, machine, files_changed, summary)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		INSERT OR IGNORE INTO session_log (
+			session_id, started_at, ended_at, handoff_path, machine, files_changed, summary, entry_kind
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 'session')`,
 		rec.SessionID, rec.StartedAt, rec.EndedAt, rec.HandoffPath,
 		rec.Machine, string(filesJSON), rec.Summary,
 	)
@@ -47,13 +49,14 @@ func (db *DB) GetRecentSessions(count int, machine string) ([]SessionRecord, err
 		rows, err = db.conn.Query(`
 			SELECT session_id, started_at, ended_at, handoff_path, machine, files_changed, summary
 			FROM session_log
-			WHERE LOWER(machine) = LOWER(?)
+			WHERE entry_kind = 'session' AND LOWER(machine) = LOWER(?)
 			ORDER BY started_at DESC
 			LIMIT ?`, machine, count)
 	} else {
 		rows, err = db.conn.Query(`
 			SELECT session_id, started_at, ended_at, handoff_path, machine, files_changed, summary
 			FROM session_log
+			WHERE entry_kind = 'session'
 			ORDER BY started_at DESC
 			LIMIT ?`, count)
 	}

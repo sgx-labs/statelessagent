@@ -13,24 +13,24 @@ import (
 // were actually referenced by the agent, and updates access counts accordingly.
 // This closes the learning loop: notes that get used rise in confidence,
 // notes that are surfaced but ignored gradually decay.
-func runFeedbackLoop(db *store.DB, input *HookInput) *HookOutput {
+func runFeedbackLoop(db *store.DB, input *HookInput) hookRunResult {
 	if stopHookDebounce(db, input.SessionID, "feedback-loop") {
-		return nil
+		return hookSkipped("cooldown active")
 	}
 
 	if input.TranscriptPath == "" || input.SessionID == "" {
 		writeVerboseLog("feedback-loop: no transcript path or session ID provided\n")
-		return nil
+		return hookSkipped("missing transcript path or session ID")
 	}
 	if _, err := os.Stat(input.TranscriptPath); err != nil {
 		writeVerboseLog(fmt.Sprintf("feedback-loop: transcript not found: %s\n", input.TranscriptPath))
-		return nil
+		return hookSkipped("transcript missing")
 	}
 
 	// Get assistant messages from this session
 	messages := memory.GetLastNMessages(input.TranscriptPath, 200, "assistant")
 	if len(messages) == 0 {
-		return nil
+		return hookEmpty("no assistant messages")
 	}
 
 	// Concatenate assistant output for reference detection
@@ -43,13 +43,13 @@ func runFeedbackLoop(db *store.DB, input *HookInput) *HookOutput {
 	// Check which surfaced notes were actually referenced
 	referencedCount := memory.DetectReferences(db, input.SessionID, assistantText.String())
 	if referencedCount == 0 {
-		return nil
+		return hookEmpty("no referenced notes")
 	}
 
 	// Boost access counts for referenced notes
 	records, err := db.GetUsageBySession(input.SessionID)
 	if err != nil {
-		return nil
+		return hookError("usage lookup failed")
 	}
 
 	var referencedPaths []string
@@ -67,5 +67,6 @@ func runFeedbackLoop(db *store.DB, input *HookInput) *HookOutput {
 		fmt.Fprintf(os.Stderr, "same: ✓ %d surfaced note(s) were referenced by the agent\n", referencedCount)
 	}
 
-	return nil // feedback is silent — no context injection back to the agent
+	// Feedback is intentionally silent — no context injection back to the agent.
+	return hookEmpty(fmt.Sprintf("%d surfaced note(s) referenced", referencedCount))
 }

@@ -77,38 +77,13 @@ func AutoHandoffFromTranscript(transcriptPath string, sessionID string) *Handoff
 	}
 
 	// --- Decisions: extract titles from save_decision tool calls ---
-	for _, tc := range toolCalls {
-		name := strings.ToLower(tc.Tool)
-		if name == "mcp__same__save_decision" || name == "same:save_decision" || name == "save_decision" {
-			title, _ := tc.Input["title"].(string)
-			title = strings.TrimSpace(title)
-			if title != "" {
-				data.Decisions = append(data.Decisions, title)
-			}
-		}
-	}
+	data.Decisions = extractDecisionTitles(toolCalls)
 
 	// --- Notes created: extract paths from save_note tool calls ---
-	for _, tc := range toolCalls {
-		name := strings.ToLower(tc.Tool)
-		if name == "mcp__same__save_note" || name == "same:save_note" || name == "save_note" {
-			path, _ := tc.Input["path"].(string)
-			path = strings.TrimSpace(path)
-			if path != "" {
-				data.NotesCreated = append(data.NotesCreated, path)
-			}
-		}
-	}
+	data.NotesCreated = extractSavedNotePaths(toolCalls)
 
 	// --- Files changed: filter artifacts ---
-	for _, f := range filesChanged {
-		f = strings.TrimSpace(f)
-		lower := strings.ToLower(f)
-		if f == "" || lower == "/dev/null" || lower == "nul" {
-			continue
-		}
-		data.FilesChanged = append(data.FilesChanged, f)
-	}
+	data.FilesChanged = filterMeaningfulFiles(filesChanged)
 	// Cap at 20 files, note how many were dropped
 	if len(data.FilesChanged) > 20 {
 		remaining := len(data.FilesChanged) - 20
@@ -231,7 +206,7 @@ func generateRichHandoff(data *handoffData) string {
 
 	// Decisions (only if found)
 	if len(data.Decisions) > 0 {
-		b.WriteString("## Decisions\n")
+		b.WriteString("## Decisions made\n")
 		for _, d := range data.Decisions {
 			fmt.Fprintf(&b, "- %s\n", d)
 		}
@@ -240,7 +215,7 @@ func generateRichHandoff(data *handoffData) string {
 
 	// Notes created (only if found)
 	if len(data.NotesCreated) > 0 {
-		b.WriteString("## Notes created\n")
+		b.WriteString("## Notes created/updated\n")
 		for _, n := range data.NotesCreated {
 			fmt.Fprintf(&b, "- `%s`\n", n)
 		}
@@ -362,13 +337,175 @@ func truncateAtWordBoundary(s string, maxChars int) string {
 	if len(s) <= maxChars {
 		return s
 	}
-	// Find last space before maxChars
+
 	truncated := s[:maxChars]
-	lastSpace := strings.LastIndexByte(truncated, ' ')
-	if lastSpace > maxChars/2 { // don't cut too aggressively
-		truncated = truncated[:lastSpace]
+
+	// Prefer sentence boundaries when available.
+	sentenceIdx := strings.LastIndexAny(truncated, ".!?")
+	if sentenceIdx >= maxChars/2 {
+		return strings.TrimSpace(truncated[:sentenceIdx+1])
 	}
+
+	// Otherwise use a word boundary.
+	lastSpace := strings.LastIndexAny(truncated, " \t")
+	if lastSpace > 0 {
+		return strings.TrimSpace(truncated[:lastSpace])
+	}
+
+	// Fallback for long uninterrupted tokens (for example, URLs).
 	return strings.TrimSpace(truncated)
+}
+
+func extractDecisionTitles(toolCalls []ToolCall) []string {
+	var decisions []string
+	seen := make(map[string]bool)
+	for _, tc := range toolCalls {
+		if !isSaveDecisionTool(tc.Tool) || tc.Input == nil {
+			continue
+		}
+		title, _ := tc.Input["title"].(string)
+		title = strings.TrimSpace(title)
+		if title == "" {
+			continue
+		}
+		title = truncateAtWordBoundary(title, 180)
+		key := strings.ToLower(title)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		decisions = append(decisions, title)
+	}
+	return decisions
+}
+
+func extractSavedNotePaths(toolCalls []ToolCall) []string {
+	var notes []string
+	seen := make(map[string]bool)
+	for _, tc := range toolCalls {
+		if !isSaveNoteTool(tc.Tool) || tc.Input == nil {
+			continue
+		}
+		path, _ := tc.Input["path"].(string)
+		path = normalizeNotePath(path)
+		if path == "" || !isSafeHandoffNotePath(path) {
+			continue
+		}
+		key := strings.ToLower(path)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		notes = append(notes, path)
+	}
+	return notes
+}
+
+func filterMeaningfulFiles(filesChanged []string) []string {
+	var files []string
+	seen := make(map[string]bool)
+	for _, f := range filesChanged {
+		normalized := normalizeNotePath(f)
+		if normalized == "" || !isMeaningfulFilePath(normalized) {
+			continue
+		}
+		key := strings.ToLower(normalized)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		files = append(files, normalized)
+	}
+	return files
+}
+
+func isSaveDecisionTool(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "mcp__same__save_decision", "same:save_decision", "save_decision":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSaveNoteTool(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "mcp__same__save_note", "same:save_note", "save_note":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeNotePath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	path = strings.ReplaceAll(path, "\\", "/")
+	path = strings.TrimPrefix(path, "./")
+	path = filepath.ToSlash(filepath.Clean(path))
+	if path == "." || path == ".." || strings.HasPrefix(path, "../") {
+		return ""
+	}
+	return path
+}
+
+func isSafeHandoffNotePath(path string) bool {
+	if path == "" {
+		return false
+	}
+	if filepath.IsAbs(path) {
+		return false
+	}
+	if len(path) >= 2 && ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':' {
+		return false
+	}
+
+	upper := strings.ToUpper(path)
+	if strings.HasPrefix(upper, "_PRIVATE/") || upper == "_PRIVATE" {
+		return false
+	}
+
+	parts := strings.Split(path, "/")
+	for _, part := range parts {
+		if part == "" || part == "." || part == ".." {
+			return false
+		}
+		// Match MCP safety posture: reject writes to dot-directories/files.
+		if strings.HasPrefix(part, ".") {
+			return false
+		}
+	}
+
+	_, ok := config.SafeVaultSubpath(path)
+	return ok
+}
+
+func isMeaningfulFilePath(path string) bool {
+	lower := strings.ToLower(path)
+	if lower == "/dev/null" || lower == "dev/null" || lower == "nul" {
+		return false
+	}
+	if strings.HasPrefix(lower, "tmp/") || strings.HasPrefix(lower, "temp/") || strings.HasPrefix(lower, "/tmp/") {
+		return false
+	}
+	if strings.HasPrefix(lower, ".same/") || strings.HasPrefix(lower, ".git/") {
+		return false
+	}
+
+	artifactSuffixes := []string{
+		".tmp", ".temp", ".swp", ".swo", ".ds_store", ".log", ".orig", ".bak",
+	}
+	for _, suffix := range artifactSuffixes {
+		if strings.HasSuffix(lower, suffix) {
+			return false
+		}
+	}
+	if strings.HasSuffix(path, "~") {
+		return false
+	}
+	return true
 }
 
 // --- Legacy API (kept for MCP create_handoff compatibility) ---

@@ -39,24 +39,24 @@ func stopHookDebounce(db *store.DB, sessionID, hookName string) bool {
 }
 
 // runHandoffGenerator generates a handoff note from the transcript.
-func runHandoffGenerator(db *store.DB, input *HookInput) *HookOutput {
+func runHandoffGenerator(db *store.DB, input *HookInput) hookRunResult {
 	if stopHookDebounce(db, input.SessionID, "handoff-generator") {
-		return nil
+		return hookSkipped("cooldown active")
 	}
 
 	transcriptPath := input.TranscriptPath
 	if transcriptPath == "" {
 		writeVerboseLog("handoff-generator: no transcript path provided\n")
-		return nil
+		return hookSkipped("no transcript path")
 	}
 	if _, err := os.Stat(transcriptPath); err != nil {
 		writeVerboseLog(fmt.Sprintf("handoff-generator: transcript not found: %s\n", transcriptPath))
-		return nil
+		return hookSkipped("transcript missing")
 	}
 
 	result := memory.AutoHandoffFromTranscript(transcriptPath, input.SessionID)
 	if result == nil {
-		return nil
+		return hookEmpty("insufficient transcript data")
 	}
 
 	// Only show the message on first handoff creation for this session.
@@ -64,7 +64,7 @@ func runHandoffGenerator(db *store.DB, input *HookInput) *HookOutput {
 	key := "handoff_created"
 	if _, alreadyCreated := db.SessionStateGet(input.SessionID, key); alreadyCreated {
 		writeVerboseLog(fmt.Sprintf("handoff-generator: updated %s (silent)\n", result.Path))
-		return nil
+		return hookEmpty("handoff updated")
 	}
 	_ = db.SessionStateSet(input.SessionID, key, result.Path)
 
@@ -72,10 +72,11 @@ func runHandoffGenerator(db *store.DB, input *HookInput) *HookOutput {
 		fmt.Fprintf(os.Stderr, "same: ✓ handoff saved → %s\n", result.Path)
 	}
 
-	return &HookOutput{
+	out := &HookOutput{
 		SystemMessage: fmt.Sprintf(
 			"\n<vault-handoff>\nSession handoff written to: %s\nSession ID: %s\n</vault-handoff>\n",
 			result.Path, result.SessionID,
 		),
 	}
+	return hookInjected(out, 1, 0, []string{result.Path}, "handoff saved")
 }

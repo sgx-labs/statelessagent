@@ -68,23 +68,23 @@ type scored struct {
 
 // runContextSurfacing embeds the user's prompt, searches the vault,
 // and injects relevant context.
-func runContextSurfacing(db *store.DB, input *HookInput) *HookOutput {
+func runContextSurfacing(db *store.DB, input *HookInput) hookRunResult {
 	prompt := input.Prompt
 	if len(prompt) < minPromptChars {
 		logDecision(db, input.SessionID, prompt, "", -1, "skip_short", nil)
-		return nil
+		return hookSkipped("short prompt")
 	}
 
 	// Skip slash commands
 	if strings.HasPrefix(strings.TrimSpace(prompt), "/") {
 		logDecision(db, input.SessionID, prompt, "", -1, "skip_slash", nil)
-		return nil
+		return hookSkipped("slash command")
 	}
 
 	// Skip conversational/social prompts that don't need vault context
 	if isConversational(prompt) {
 		logDecision(db, input.SessionID, prompt, "socializing", -1, "skip_conversational", nil)
-		return nil
+		return hookSkipped("conversational prompt")
 	}
 
 	// Check display mode from config, with env var override
@@ -109,7 +109,7 @@ func runContextSurfacing(db *store.DB, input *HookInput) *HookOutput {
 	// since temporal intent ("what did I work on") is the signal.
 	if !isRecency && hasLowSignal() {
 		logDecision(db, input.SessionID, prompt, "", -1, "skip_lowsignal", nil)
-		return nil
+		return hookSkipped("low-signal prompt")
 	}
 
 	// --- Decision matrix: mode × topic change ---
@@ -119,16 +119,16 @@ func runContextSurfacing(db *store.DB, input *HookInput) *HookOutput {
 		switch mode {
 		case ModeExecuting:
 			logDecision(db, input.SessionID, prompt, mode.String(), -1, "skip_executing", nil)
-			return nil
+			return hookSkipped("executing mode")
 		case ModeSocializing:
 			logDecision(db, input.SessionID, prompt, mode.String(), -1, "skip_socializing", nil)
-			return nil
+			return hookSkipped("socializing mode")
 		default:
 			// Exploring, Deepening, Reflecting: check topic change
 			if input.SessionID != "" && !isTopicChange(db, input.SessionID) {
 				jScore := topicChangeScore(db, input.SessionID)
 				logDecision(db, input.SessionID, prompt, mode.String(), jScore, "skip_sametopic", nil)
-				return nil // Same topic — context already in conversation window
+				return hookSkipped("same topic") // Context already in conversation window
 			}
 		}
 	}
@@ -151,7 +151,8 @@ func runContextSurfacing(db *store.DB, input *HookInput) *HookOutput {
 		// Check for embedding model/dimension mismatch before searching
 		if mismatchErr := db.CheckEmbeddingMeta(embedProvider.Name(), embedProvider.Model(), embedProvider.Dimensions()); mismatchErr != nil {
 			fmt.Fprintf(os.Stderr, "same: embedding model changed — run 'same reindex --force' to rebuild\n")
-			return &HookOutput{
+			result := hookError(mismatchErr.Error())
+			result.Output = &HookOutput{
 				HookSpecificOutput: &HookSpecific{
 					HookEventName: "UserPromptSubmit",
 					AdditionalContext: fmt.Sprintf(`<same-diagnostic>
@@ -161,6 +162,7 @@ Suggested actions for the user:
 </same-diagnostic>`, mismatchErr),
 				},
 			}
+			return result
 		}
 
 		queryVec, embedErr := embedProvider.GetQueryEmbedding(prompt)
@@ -191,7 +193,7 @@ Suggested actions for the user:
 		if !quietMode {
 			cli.SurfacingEmpty(totalVault)
 		}
-		return nil
+		return hookEmpty("no relevant notes")
 	}
 
 	// Inject pinned notes: always surface them regardless of search results.
@@ -345,7 +347,7 @@ Suggested actions for the user:
 		if !quietMode {
 			cli.SurfacingEmpty(totalVault)
 		}
-		return nil
+		return hookEmpty("token budget excluded all candidates")
 	}
 
 	// Display surfacing feedback to stderr
@@ -406,7 +408,7 @@ Suggested actions for the user:
 	}
 	verboseDecision("inject", mode.String(), -1, prompt, titles, totalTokens)
 
-	return &HookOutput{
+	out := &HookOutput{
 		HookSpecificOutput: &HookSpecific{
 			HookEventName: "UserPromptSubmit",
 			AdditionalContext: fmt.Sprintf(
@@ -415,4 +417,5 @@ Suggested actions for the user:
 			),
 		},
 	}
+	return hookInjected(out, len(injectedPaths), totalTokens, injectedPaths, "")
 }

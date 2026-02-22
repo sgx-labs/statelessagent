@@ -21,7 +21,7 @@ type DB struct {
 	ftsAvailable bool       // true if FTS5 module is available
 }
 
-const maxSchemaVersion = 6
+const maxSchemaVersion = 7
 
 // Open opens or creates the database at the configured path.
 func Open() (*DB, error) {
@@ -168,8 +168,20 @@ func (db *DB) migrate() error {
 			handoff_path TEXT DEFAULT '',
 			machine TEXT DEFAULT '',
 			files_changed TEXT DEFAULT '[]',
-			summary TEXT DEFAULT ''
+			summary TEXT DEFAULT '',
+			entry_kind TEXT NOT NULL DEFAULT 'session',
+			hook_timestamp INTEGER NOT NULL DEFAULT 0,
+			hook_name TEXT DEFAULT '',
+			hook_status TEXT DEFAULT '',
+			surfaced_notes INTEGER DEFAULT 0,
+			estimated_tokens INTEGER DEFAULT 0,
+			error_message TEXT DEFAULT '',
+			note_paths TEXT DEFAULT '[]',
+			detail TEXT DEFAULT '',
+			hook_session_id TEXT DEFAULT ''
 		)`,
+		`CREATE INDEX IF NOT EXISTS idx_session_log_entry_kind_time ON session_log(entry_kind, hook_timestamp DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_session_log_hook_session ON session_log(hook_session_id)`,
 
 		`CREATE TABLE IF NOT EXISTS context_usage (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -237,6 +249,7 @@ func (db *DB) migrate() error {
 		{4, db.migrateV4}, // agent attribution metadata
 		{5, db.migrateV5}, // multi-agent claims table
 		{6, db.migrateV6}, // knowledge graph tables
+		{7, db.migrateV7}, // hook activity logging metadata
 	}
 	for _, m := range versionedMigrations {
 		if currentVersion < m.version {
@@ -494,4 +507,39 @@ func (db *DB) migrateV6() error {
 		}
 	}
 	return graph.PopulateFromExistingNotes(db.conn)
+}
+
+// migrateV7 adds hook activity logging columns to session_log.
+func (db *DB) migrateV7() error {
+	cols := []struct {
+		name string
+		def  string
+	}{
+		{"entry_kind", "TEXT NOT NULL DEFAULT 'session'"},
+		{"hook_timestamp", "INTEGER NOT NULL DEFAULT 0"},
+		{"hook_name", "TEXT DEFAULT ''"},
+		{"hook_status", "TEXT DEFAULT ''"},
+		{"surfaced_notes", "INTEGER DEFAULT 0"},
+		{"estimated_tokens", "INTEGER DEFAULT 0"},
+		{"error_message", "TEXT DEFAULT ''"},
+		{"note_paths", "TEXT DEFAULT '[]'"},
+		{"detail", "TEXT DEFAULT ''"},
+		{"hook_session_id", "TEXT DEFAULT ''"},
+	}
+	for _, col := range cols {
+		if db.hasColumn("session_log", col.name) {
+			continue
+		}
+		stmt := fmt.Sprintf("ALTER TABLE session_log ADD COLUMN %s %s", col.name, col.def)
+		if _, err := db.conn.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	if _, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_session_log_entry_kind_time ON session_log(entry_kind, hook_timestamp DESC)`); err != nil {
+		return err
+	}
+	if _, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_session_log_hook_session ON session_log(hook_session_id)`); err != nil {
+		return err
+	}
+	return nil
 }

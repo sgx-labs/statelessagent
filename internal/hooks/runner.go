@@ -132,34 +132,36 @@ func Run(hookName string) {
 	// fires but the goroutine is still writing to the DB.
 
 	var output *HookOutput
+	activity := hookEmpty("")
 
 	// Run hook dispatch with timeout to prevent hung embedding providers
 	// from blocking the user's prompt indefinitely.
 	// A WaitGroup ensures the goroutine has finished before we close the DB.
 	type hookResult struct {
-		output *HookOutput
+		result hookRunResult
 	}
 	ch := make(chan hookResult, 1)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		var out *HookOutput
+		var result hookRunResult
 		switch hookName {
 		case "context-surfacing":
-			out = runContextSurfacing(db, input)
+			result = runContextSurfacing(db, input)
 		case "decision-extractor":
-			out = runDecisionExtractor(db, input)
+			result = runDecisionExtractor(db, input)
 		case "handoff-generator":
-			out = runHandoffGenerator(db, input)
+			result = runHandoffGenerator(db, input)
 		case "feedback-loop":
-			out = runFeedbackLoop(db, input)
+			result = runFeedbackLoop(db, input)
 		case "staleness-check":
-			out = runStalenessCheck(db, input)
+			result = runStalenessCheck(db, input)
 		case "session-bootstrap":
-			out = runSessionBootstrap(db, input)
+			result = runSessionBootstrap(db, input)
 		default:
 			fmt.Fprintf(os.Stderr, "same: unknown hook %q — your hooks config may need updating\n", hookName)
+			result = hookError("unknown hook")
 		}
 
 		// Run plugins matching this hook's event
@@ -167,24 +169,26 @@ func Run(hookName string) {
 		if eventName != "" {
 			pluginContexts := RunPlugins(eventName, inputData)
 			if len(pluginContexts) > 0 {
-				out = mergePluginOutput(out, eventName, pluginContexts)
+				result.Output = mergePluginOutput(result.Output, eventName, pluginContexts)
 			}
 		}
 
 		// Attach pending verbose message
 		if msg := getPendingVerboseMsg(); msg != "" {
-			if out == nil {
-				out = &HookOutput{}
+			if result.Output == nil {
+				result.Output = &HookOutput{}
 			}
-			out.SystemMessage += msg
+			result.Output.SystemMessage += msg
 		}
 
-		ch <- hookResult{output: out}
+		ch <- hookResult{result: normalizeHookResult(result)}
 	}()
 
 	select {
 	case result := <-ch:
-		output = result.output
+		normalized := normalizeHookResult(result.result)
+		output = normalized.Output
+		activity = normalized
 	case <-time.After(hookTimeout):
 		fmt.Fprintf(os.Stderr, "same: timed out waiting for Ollama — it may be starting up. If this persists, run 'same doctor'\n")
 		eventName := hookEventMap[hookName]
@@ -206,12 +210,15 @@ func Run(hookName string) {
 				SystemMessage: diagTimeout,
 			}
 		}
+		activity = hookError("timeout")
+		activity.Output = output
 	}
 
 	// Wait for the goroutine to finish before closing the DB.
 	// On timeout, this blocks briefly until the goroutine returns,
 	// preventing writes to a closed database.
 	wg.Wait()
+	recordHookActivity(db, hookName, input, activity)
 	db.Close()
 
 	// Always write valid JSON to stdout. Claude Code treats empty stdout
@@ -231,6 +238,31 @@ func Run(hookName string) {
 	}
 	os.Stdout.Write(data)
 	os.Stdout.Write([]byte("\n"))
+}
+
+func recordHookActivity(db *store.DB, hookName string, input *HookInput, result hookRunResult) {
+	if db == nil {
+		return
+	}
+	result = normalizeHookResult(result)
+
+	sessionID := ""
+	if input != nil {
+		sessionID = input.SessionID
+	}
+
+	rec := &store.HookActivityRecord{
+		TimestampUnix:   time.Now().Unix(),
+		HookSessionID:   sessionID,
+		HookName:        hookName,
+		Status:          result.Status,
+		SurfacedNotes:   result.NotesCount,
+		EstimatedTokens: result.EstimatedTokens,
+		ErrorMessage:    result.ErrorMessage,
+		Detail:          result.Detail,
+		NotePaths:       result.NotePaths,
+	}
+	_ = db.InsertHookActivity(rec) // best-effort telemetry
 }
 
 // mergePluginOutput appends plugin contexts to the built-in hook output.

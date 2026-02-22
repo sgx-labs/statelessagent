@@ -8,21 +8,22 @@ import (
 )
 
 // runStalenessCheck queries for stale notes and surfaces them.
-func runStalenessCheck(db *store.DB, _ *HookInput) *HookOutput {
+func runStalenessCheck(db *store.DB, _ *HookInput) hookRunResult {
 	stale := memory.FindStaleNotes(db, 5, true)
 	if len(stale) == 0 {
-		return nil
+		return hookEmpty("no stale notes")
 	}
 
 	contextText := memory.FormatStaleNotesContext(stale)
 	if contextText == "" {
-		return nil
+		return hookEmpty("no stale note context")
 	}
 
-	return &HookOutput{
+	out := &HookOutput{
 		SystemMessage: fmt.Sprintf(
 			"\n<vault-staleness>\n%s\n</vault-staleness>\n",
 			contextText,
 		),
 	}
+	return hookInjected(out, len(stale), memory.EstimateTokens(contextText), nil, "")
 }

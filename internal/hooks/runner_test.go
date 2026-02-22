@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
 // ---------------------------------------------------------------------------
@@ -354,5 +356,81 @@ func TestMergePluginOutput_PreservesEventName(t *testing.T) {
 		if !strings.Contains(result.SystemMessage, "ctx") {
 			t.Errorf("%s: expected plugin context in SystemMessage", event)
 		}
+	}
+}
+
+func TestRecordHookActivity_WritesHookLog(t *testing.T) {
+	tmp := t.TempDir()
+	dataDir := filepath.Join(tmp, ".same", "data")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("mkdir data dir: %v", err)
+	}
+	t.Setenv("VAULT_PATH", tmp)
+	t.Setenv("SAME_DATA_DIR", dataDir)
+	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
+
+	db, err := store.Open()
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer db.Close()
+
+	recordHookActivity(db, "context-surfacing", &HookInput{SessionID: "sess-1"}, hookRunResult{
+		Status:          "injected",
+		NotesCount:      3,
+		EstimatedTokens: 240,
+		NotePaths:       []string{"notes/a.md", "notes/b.md", "notes/c.md"},
+	})
+
+	rows, err := db.GetRecentHookActivity(10)
+	if err != nil {
+		t.Fatalf("GetRecentHookActivity: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(rows))
+	}
+	if rows[0].HookName != "context-surfacing" {
+		t.Fatalf("hook_name = %q, want context-surfacing", rows[0].HookName)
+	}
+	if rows[0].Status != "injected" {
+		t.Fatalf("status = %q, want injected", rows[0].Status)
+	}
+	if rows[0].SurfacedNotes != 3 || rows[0].EstimatedTokens != 240 {
+		t.Fatalf("notes/tokens = %d/%d, want 3/240", rows[0].SurfacedNotes, rows[0].EstimatedTokens)
+	}
+	if rows[0].HookSessionID != "sess-1" {
+		t.Fatalf("hook_session_id = %q, want sess-1", rows[0].HookSessionID)
+	}
+}
+
+func TestRecordHookActivity_DefaultStatusIsEmpty(t *testing.T) {
+	tmp := t.TempDir()
+	dataDir := filepath.Join(tmp, ".same", "data")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("mkdir data dir: %v", err)
+	}
+	t.Setenv("VAULT_PATH", tmp)
+	t.Setenv("SAME_DATA_DIR", dataDir)
+	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
+
+	db, err := store.Open()
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer db.Close()
+
+	recordHookActivity(db, "feedback-loop", &HookInput{SessionID: "sess-2"}, hookRunResult{})
+
+	rows, err := db.GetRecentHookActivity(10)
+	if err != nil {
+		t.Fatalf("GetRecentHookActivity: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(rows))
+	}
+	if rows[0].Status != "empty" {
+		t.Fatalf("status = %q, want empty", rows[0].Status)
 	}
 }

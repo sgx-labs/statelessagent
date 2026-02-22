@@ -20,8 +20,8 @@ func TestOpenPath_MigratesLegacyV5ToV6(t *testing.T) {
 	}
 	defer db.Close()
 
-	if got := db.SchemaVersion(); got != 6 {
-		t.Fatalf("schema version = %d, want 6", got)
+	if got := db.SchemaVersion(); got != 7 {
+		t.Fatalf("schema version = %d, want 7", got)
 	}
 
 	var noteNodeCount int

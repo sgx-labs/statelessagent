@@ -24,7 +24,7 @@ const (
 )
 
 // runSessionBootstrap surfaces handoff, decisions, and stale notes at session start.
-func runSessionBootstrap(db *store.DB, input *HookInput) *HookOutput {
+func runSessionBootstrap(db *store.DB, input *HookInput) hookRunResult {
 	sessionID := ""
 	if input != nil {
 		sessionID = input.SessionID
@@ -39,6 +39,7 @@ func runSessionBootstrap(db *store.DB, input *HookInput) *HookOutput {
 
 	quiet := isQuietMode()
 	var sections []string
+	surfacedNotes := 0
 
 	// Priority 0: Unified recovery (replaces separate session index + handoff lookup)
 	// Uses a priority cascade: handoff → instance → session index
@@ -46,6 +47,7 @@ func runSessionBootstrap(db *store.DB, input *HookInput) *HookOutput {
 	if recovered != nil {
 		if ctx := FormatRecoveryContext(recovered); ctx != "" {
 			sections = append(sections, ctx)
+			surfacedNotes++
 			if !quiet {
 				source := "session index"
 				switch recovered.Source {
@@ -67,8 +69,15 @@ func runSessionBootstrap(db *store.DB, input *HookInput) *HookOutput {
 	// Priority 1: Pinned notes (always included — user's most important context)
 	if pinned := findPinnedNotesSection(db); pinned != "" {
 		sections = append(sections, pinned)
+		n := strings.Count(pinned, "\n### ")
+		if n == 0 {
+			n = strings.Count(pinned, "\n- ")
+		}
+		if n == 0 {
+			n = 1
+		}
+		surfacedNotes += n
 		if !quiet {
-			n := strings.Count(pinned, "\n- ") + 1
 			fmt.Fprintf(os.Stderr, "same: 📌 %d pinned note(s) loaded\n", n)
 		}
 	}
@@ -88,17 +97,18 @@ func runSessionBootstrap(db *store.DB, input *HookInput) *HookOutput {
 	// Priority 3: Stale notes (reuse existing logic)
 	if stale := findStaleNotesSection(db); stale != "" {
 		sections = append(sections, stale)
+		n := strings.Count(stale, "\n- ")
+		if n == 0 {
+			n = 1
+		}
+		surfacedNotes += n
 		if !quiet {
-			n := strings.Count(stale, "\n- ")
-			if n == 0 {
-				n = 1
-			}
 			fmt.Fprintf(os.Stderr, "same: ⚠ %d stale note(s) need review\n", n)
 		}
 	}
 
 	if len(sections) == 0 {
-		return nil
+		return hookEmpty("no bootstrap context")
 	}
 
 	context := strings.Join(sections, "\n\n")
@@ -112,12 +122,13 @@ func runSessionBootstrap(db *store.DB, input *HookInput) *HookOutput {
 		context = context[:bootstrapMaxChars]
 	}
 
-	return &HookOutput{
+	out := &HookOutput{
 		SystemMessage: fmt.Sprintf(
 			"\n<session-bootstrap>\n%s\n</session-bootstrap>\n",
 			context,
 		),
 	}
+	return hookInjected(out, surfacedNotes, memory.EstimateTokens(context), nil, "")
 }
 
 // isQuietMode returns true if the user has set display mode to quiet.
