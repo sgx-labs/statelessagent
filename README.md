@@ -8,11 +8,11 @@
 [![MCP Tools](https://img.shields.io/badge/MCP_Tools-12-8A2BE2.svg)](#mcp-tools)
 [![Discord](https://img.shields.io/discord/1468523556076785757?color=5865F2&label=Discord&logo=discord&logoColor=white)](https://discord.gg/9KfTkcGs7g)
 
-> **Persistent project memory for AI coding workflows.**
+> **Your AI forgets everything between sessions. SAME fixes that.**
 
-SAME is a local-first memory layer for solo developers, researchers, creatives, and small teams using Claude Code, Cursor, Windsurf, or any MCP client.
+SAME is a local-first memory layer that gives AI agents persistent context. It works with Claude Code, Cursor, Windsurf, or any MCP client — and runs entirely on your machine.
 It indexes your markdown notes, surfaces relevant context in new sessions, and records decisions + handoffs so work continues across restarts.
-No cloud lock-in. No telemetry. One binary.
+No cloud lock-in. No telemetry. One ~10MB binary. Works on Mac, Linux, Windows, and Raspberry Pi.
 
 ## See it in 60 seconds
 
@@ -119,6 +119,12 @@ Replace `/absolute/path/to/your/notes` with the actual path to your project or n
 | Setup time | **<60 seconds** | One curl command |
 
 *Benchmarked against 105 ground-truth test cases. [Methodology](#eval-methodology)*
+
+### Works with on-device AI
+
+As LLMs move to phones and laptops (Qwen 3.5, Gemma, Phi, Llama), context windows get smaller and there's no server-side conversation history. SAME provides the persistent memory layer these models need — retrieval precision matters more, not less, when your context budget is tight.
+
+SAME's ~10MB binary + SQLite storage runs anywhere these models run: MacBooks, Linux workstations, Raspberry Pi, and eventually phones.
 
 ---
 
@@ -504,13 +510,15 @@ Supported embedding models (auto-detected dimensions):
 | `nomic-embed-text` | 768 | Default. Great balance of quality and speed |
 | `snowflake-arctic-embed2` | 1024 | Recommended upgrade. Best retrieval in its size class |
 | `mxbai-embed-large` | 1024 | Highest overall MTEB average |
-| `all-minilm` | 384 | Lightweight (~90MB). Good for constrained hardware |
+| `all-minilm` | 384 | Ultra-lightweight (~90MB, 384 dims). English-focused |
 | `snowflake-arctic-embed` | 1024 | v1 large model |
-| `embeddinggemma` | 768 | Google's Gemma-based embeddings |
+| `embeddinggemma` | 768 | Best for phones and constrained hardware (<200MB, 250+ languages) |
 | `qwen3-embedding` | 1024 | Qwen3 with 32K context |
 | `nomic-embed-text-v2-moe` | 768 | MoE upgrade from nomic |
 | `bge-m3` | 1024 | Multilingual (BAAI) |
 | `text-embedding-3-small` | 1536 | OpenAI cloud API |
+
+**On constrained hardware** (Raspberry Pi, phones, low-RAM machines): `embeddinggemma` gives the best quality-to-size ratio at under 200MB RAM and sub-15ms inference.
 
 Any model not listed works too — set `dimensions` explicitly in `.same/config.toml` under `[embedding]`.
 
