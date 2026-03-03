@@ -106,6 +106,29 @@ func Serve() error {
 	return server.Run(context.Background(), &mcp.StdioTransport{})
 }
 
+// refreshEmbedClient re-reads the embedding config and replaces the global
+// embedClient. Called after a successful reindex so that subsequent search
+// queries use the current model and dimensions (e.g. after a model switch).
+func refreshEmbedClient() {
+	ec := config.EmbeddingProviderConfig()
+	provCfg := embedding.ProviderConfig{
+		Provider:   ec.Provider,
+		Model:      ec.Model,
+		APIKey:     ec.APIKey,
+		BaseURL:    ec.BaseURL,
+		Dimensions: ec.Dimensions,
+	}
+	if (provCfg.Provider == "ollama" || provCfg.Provider == "") && provCfg.BaseURL == "" {
+		ollamaURL, urlErr := config.OllamaURL()
+		if urlErr == nil {
+			provCfg.BaseURL = ollamaURL
+		}
+	}
+	if client, err := embedding.NewProvider(provCfg); err == nil {
+		embedClient = client
+	}
+}
+
 func registerTools(server *mcp.Server) {
 	// Tool annotation helpers
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true}
@@ -416,8 +439,30 @@ func handleReindex(ctx context.Context, req *mcp.CallToolRequest, input reindexI
 
 	stats, err := indexer.Reindex(db, input.Force)
 	if err != nil {
-		return errorResult("Reindex error. Check that the vault path is accessible and Ollama is running."), nil, nil
+		// Mirror the CLI fallback: if embedding is unavailable, fall back to
+		// keyword-only indexing so the vault is still searchable via FTS5/LIKE.
+		errMsg := strings.ToLower(err.Error())
+		if strings.Contains(errMsg, "ollama") ||
+			strings.Contains(errMsg, "connection") ||
+			strings.Contains(errMsg, "refused") ||
+			strings.Contains(errMsg, "embedding backend unavailable") ||
+			strings.Contains(errMsg, "no embeddings generated") ||
+			strings.Contains(errMsg, "keyword-only mode") ||
+			strings.Contains(errMsg, `provider is "none"`) {
+			stats, err = indexer.ReindexLite(db, input.Force, nil)
+			if err != nil {
+				return errorResult(fmt.Sprintf("Reindex failed (keyword-only fallback): %v", err)), nil, nil
+			}
+			// Return stats with a note about lite mode
+			stats.Timestamp = "keyword-only (embedding unavailable)"
+		} else {
+			return errorResult(fmt.Sprintf("Reindex error: %v", err)), nil, nil
+		}
 	}
+
+	// Refresh the global embedClient so subsequent searches use the
+	// current model/dimensions after a model change + reindex.
+	refreshEmbedClient()
 
 	data, _ := json.MarshalIndent(stats, "", "  ")
 	return textResult(string(data)), nil, nil
