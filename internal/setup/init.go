@@ -917,7 +917,7 @@ func offerModelChoice(provider string) {
 		resp, err := httpClient.Get(ollamaURL + "/api/tags")
 		if err == nil {
 			defer resp.Body.Close()
-			body, _ := io.ReadAll(resp.Body)
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 			var tagsResp struct {
 				Models []struct {
 					Name string `json:"name"`
@@ -1084,7 +1084,7 @@ func checkOllama() error {
 		cli.Green, cli.Reset)
 
 	// Check if the model is available
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	if err != nil {
 		return fmt.Errorf("read Ollama response: %w", err)
 	}

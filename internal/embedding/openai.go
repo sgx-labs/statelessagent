@@ -192,7 +192,7 @@ func (p *OpenAIProvider) doEmbedRequest(body []byte) ([]float32, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		// SECURITY: sanitize response to prevent API key leakage (E7)
 		sanitized := sanitizeError(string(respBody), p.apiKey)
 		return nil, &openaiHTTPError{StatusCode: resp.StatusCode, Message: sanitized}

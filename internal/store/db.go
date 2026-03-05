@@ -31,7 +31,7 @@ func Open() (*DB, error) {
 // OpenPath opens or creates the database at the given path.
 func OpenPath(path string) (*DB, error) {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
 
@@ -383,6 +383,8 @@ func (db *DB) SetMeta(key, value string) error {
 }
 
 // hasColumn reports whether a table currently has a column.
+// SAFETY: table and column MUST be compile-time constants. fmt.Sprintf is used
+// here because SQLite PRAGMA statements do not support ? parameter placeholders.
 func (db *DB) hasColumn(table, column string) bool {
 	rows, err := db.conn.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
 	if err != nil {
@@ -510,6 +512,10 @@ func (db *DB) migrateV6() error {
 }
 
 // migrateV7 adds hook activity logging columns to session_log.
+// migrateV7 adds session_log columns for hook telemetry.
+// SAFETY: col.name and col.def are compile-time string constants defined below.
+// fmt.Sprintf is used because SQLite ALTER TABLE ADD COLUMN does not support
+// ? parameter placeholders.
 func (db *DB) migrateV7() error {
 	cols := []struct {
 		name string
