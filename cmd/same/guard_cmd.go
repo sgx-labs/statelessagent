@@ -475,14 +475,14 @@ func runGuardAllow(file, match string, allowAll, last bool) error {
 	if last {
 		// Allow everything from last scan
 		for _, v := range ls.Violations {
-			reviewed.Add(v.Redacted, string(v.Category), "user-allowed", "user", []string{v.File})
+			reviewed.Add(v.Match, string(v.Category), "user-allowed", "user", []string{v.File})
 			allowed++
 		}
 	} else if file != "" && allowAll {
 		// Allow all findings in a specific file
 		for _, v := range ls.Violations {
 			if v.File == file {
-				reviewed.Add(v.Redacted, string(v.Category), "user-allowed", "user", []string{v.File})
+				reviewed.Add(v.Match, string(v.Category), "user-allowed", "user", []string{v.File})
 				allowed++
 			}
 		}
@@ -490,7 +490,7 @@ func runGuardAllow(file, match string, allowAll, last bool) error {
 		// Allow a specific finding by file + redacted match
 		for _, v := range ls.Violations {
 			if v.File == file && v.Redacted == match {
-				reviewed.Add(v.Redacted, string(v.Category), "user-allowed", "user", []string{v.File})
+				reviewed.Add(v.Match, string(v.Category), "user-allowed", "user", []string{v.File})
 				allowed++
 			}
 		}

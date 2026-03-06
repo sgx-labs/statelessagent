@@ -153,6 +153,7 @@ func (s *Scanner) scanContent(file, text string, result *ScanResult) {
 					Category: bm.Category,
 					Rule:     "blocklist:" + bm.Term,
 					Redacted: redact(bm.Term),
+					Match:    bm.Term,
 				})
 				result.Passed = false
 			} else {
@@ -165,6 +166,7 @@ func (s *Scanner) scanContent(file, text string, result *ScanResult) {
 						Category: bm.Category,
 						Rule:     "blocklist:" + bm.Term,
 						Redacted: redact(bm.Term),
+						Match:    bm.Term,
 						Reviewed: s.reviewed.IsReviewed(bm.Term, file, cat),
 					})
 				} else {
@@ -175,6 +177,7 @@ func (s *Scanner) scanContent(file, text string, result *ScanResult) {
 						Category: bm.Category,
 						Rule:     "blocklist:" + bm.Term,
 						Redacted: redact(bm.Term),
+						Match:    bm.Term,
 					})
 					result.Passed = false
 				}
@@ -194,6 +197,7 @@ func (s *Scanner) scanContent(file, text string, result *ScanResult) {
 					Category: plr.Pattern.Category,
 					Rule:     plr.Pattern.Name,
 					Redacted: plr.Redacted,
+					Match:    plr.Match,
 					Reviewed: reviewed,
 				})
 			} else {
@@ -204,6 +208,7 @@ func (s *Scanner) scanContent(file, text string, result *ScanResult) {
 					Category: plr.Pattern.Category,
 					Rule:     plr.Pattern.Name,
 					Redacted: plr.Redacted,
+					Match:    plr.Match,
 				})
 				result.Passed = false
 			}

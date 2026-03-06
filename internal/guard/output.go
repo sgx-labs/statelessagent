@@ -16,6 +16,7 @@ type Violation struct {
 	Category Category `json:"category"`
 	Rule     string   `json:"rule"`
 	Redacted string   `json:"redacted"`
+	Match    string   `json:"-"` // original matched text, excluded from JSON output
 	Reviewed bool     `json:"reviewed,omitempty"`
 }
 
@@ -190,10 +191,23 @@ func (r *ScanResult) FormatFriendly() string {
 	return b.String()
 }
 
+// LastScanViolation extends Violation with the original match text for the allow flow.
+// This is stored only in the internal last-scan cache, never in user-facing output.
+type LastScanViolation struct {
+	File     string   `json:"file"`
+	Line     int      `json:"line"`
+	Tier     Tier     `json:"tier"`
+	Category Category `json:"category"`
+	Rule     string   `json:"rule"`
+	Redacted string   `json:"redacted"`
+	Match    string   `json:"match"`
+	Reviewed bool     `json:"reviewed,omitempty"`
+}
+
 // LastScan is the cached result of the most recent scan, for the allow flow.
 type LastScan struct {
-	Violations     []Violation     `json:"violations"`
-	PathViolations []PathViolation `json:"path_violations,omitempty"`
+	Violations     []LastScanViolation `json:"violations"`
+	PathViolations []PathViolation     `json:"path_violations,omitempty"`
 }
 
 // lastScanPath returns the path to the last-scan cache file.
@@ -203,8 +217,22 @@ func lastScanPath(vaultPath string) string {
 
 // SaveLastScan writes the scan's violations to disk for the allow flow.
 func SaveLastScan(vaultPath string, result *ScanResult) error {
+	// Convert Violations to LastScanViolations, preserving Match for the allow flow
+	lsViolations := make([]LastScanViolation, len(result.Violations))
+	for i, v := range result.Violations {
+		lsViolations[i] = LastScanViolation{
+			File:     v.File,
+			Line:     v.Line,
+			Tier:     v.Tier,
+			Category: v.Category,
+			Rule:     v.Rule,
+			Redacted: v.Redacted,
+			Match:    v.Match,
+			Reviewed: v.Reviewed,
+		}
+	}
 	ls := LastScan{
-		Violations:     result.Violations,
+		Violations:     lsViolations,
 		PathViolations: result.PathViolations,
 	}
 	path := lastScanPath(vaultPath)
