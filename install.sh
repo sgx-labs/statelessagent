@@ -463,8 +463,7 @@ else
     echo -e "  ${GREEN}✓${RESET} Ollama installed"
   else
     MISSING_OLLAMA=true
-    echo -e "  ${YELLOW}✗${RESET} Ollama not installed"
-    echo "    Download from: https://ollama.com"
+    echo -e "  ${YELLOW}-${RESET} Ollama not installed (optional)"
   fi
 fi
 
@@ -509,48 +508,31 @@ echo ""
 # What's Next — adapt based on what's actually ready
 # ─────────────────────────────────────────────────────────────
 
-if [ "$MISSING_OLLAMA" = false ] && [ "$MISSING_NODE" = false ]; then
-  # Everything's ready — run init directly
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo ""
-  echo -e "  ${BOLD}Starting setup wizard...${RESET}"
-  echo ""
-  same init --yes
-else
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo ""
-  echo "  WHAT'S NEXT?"
-  echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo -e "  ${GREEN}✓${RESET} ${BOLD}SAME installed successfully${RESET} ($INSTALLED_VERSION)"
+echo ""
 
-  if [ "$MISSING_OLLAMA" = true ] && [ "$MISSING_NODE" = true ]; then
-    # Missing both
-    echo "  SAME is installed! Before running 'same init', you'll need:"
+if [ "$MISSING_OLLAMA" = true ] || [ "$MISSING_NODE" = true ]; then
+  echo "  Optional dependencies:"
+  echo ""
+  if [ "$MISSING_OLLAMA" = true ]; then
+    echo "    Ollama is optional — SAME works great with keyword search."
+    echo "    Add Ollama later for semantic search: https://ollama.com"
     echo ""
-    echo "    • Ollama  — https://ollama.com"
-    echo "    • Node.js — https://nodejs.org"
-    echo ""
-    echo "  Install those, then run:"
-    echo ""
-    echo "    same init"
-  elif [ "$MISSING_OLLAMA" = true ]; then
-    # Missing only Ollama
-    echo "  Almost there! Install Ollama first:"
-    echo "    https://ollama.com"
-    echo ""
-    echo "  Then run:"
-    echo ""
-    echo "    same init"
-  elif [ "$MISSING_NODE" = true ]; then
-    # Missing only Node
-    echo "  SAME is installed! Install Node.js for full AI tool integration:"
-    echo "    https://nodejs.org"
-    echo ""
-    echo "  Then run:"
-    echo ""
-    echo "    same init"
   fi
-
-  echo ""
-  echo "  Questions? Join us: https://discord.gg/9KfTkcGs7g"
-  echo ""
+  if [ "$MISSING_NODE" = true ]; then
+    echo "    Node.js enables AI tool integrations (optional)."
+    echo "    Install from: https://nodejs.org"
+    echo ""
+  fi
 fi
+
+echo "  Try it now:"
+echo ""
+echo "    same demo          # see SAME in action (30 seconds)"
+echo "    same init          # set up SAME for your project"
+echo "    same tutorial      # learn SAME hands-on (7 minutes)"
+echo ""
+echo "  Questions? Join us: https://discord.gg/9KfTkcGs7g"
+echo ""

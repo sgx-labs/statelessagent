@@ -199,6 +199,7 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 	addGrouped("diagnostics",
 		statsCmd(),
 		repairCmd(),
+		budgetCmd(),
 	)
 
 	addGrouped("config",
@@ -207,7 +208,7 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 	)
 
 	// Internal commands (hidden from --help)
-	for _, cmd := range []*cobra.Command{migrateCmd(), hookCmd(), budgetCmd(), pluginCmd(), pushAllowCmd()} {
+	for _, cmd := range []*cobra.Command{migrateCmd(), hookCmd(), pluginCmd(), pushAllowCmd()} {
 		cmd.Hidden = true
 		root.AddCommand(cmd)
 	}

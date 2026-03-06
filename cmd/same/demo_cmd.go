@@ -369,10 +369,16 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 		}
 	}
 
-	// 8. Done
-	cli.Section("Ready")
-	fmt.Printf("  To use SAME with your own project:\n\n")
-	fmt.Printf("    %s$%s cd ~/your-project && same init\n\n", cli.Dim, cli.Reset)
+	// 8. Celebrate + next steps
+	fmt.Printf("\n  %s✦ That search found the right decision in %dms.%s\n", cli.Bold+cli.Green, searchElapsed.Milliseconds(), cli.Reset)
+	fmt.Printf("  %sNo copy-pasting. No re-explaining. No lost context.%s\n\n", cli.Dim, cli.Reset)
+	fmt.Printf("  Imagine this on %syour%s codebase — every decision, every architecture\n", cli.Bold, cli.Reset)
+	fmt.Printf("  choice, every debug session remembered and searchable.\n\n")
+
+	cli.Section("Ready to try it?")
+	fmt.Printf("  %scd ~/your-project && same init%s    Set up SAME for your project\n", cli.Cyan, cli.Reset)
+	fmt.Printf("  %ssame tutorial%s                     Learn SAME hands-on (7 min)\n", cli.Cyan, cli.Reset)
+	fmt.Printf("  %ssame web%s                          See the visual dashboard\n\n", cli.Cyan, cli.Reset)
 	fmt.Printf("  Demo vault saved at: %s%s%s\n", cli.Dim, demoDir, cli.Reset)
 	fmt.Printf("  %sExplore: same search \"query\" --vault %s%s\n\n", cli.Dim, demoDir, cli.Reset)
 

@@ -23,7 +23,7 @@ func doctorCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check system health and diagnose issues",
-		Long:  "Runs health checks on your SAME setup: verifies providers are configured, your notes are indexed, and search is working.",
+		Long:  "Run comprehensive diagnostic checks on your SAME installation. Checks vault path, database, embedding provider, search health, MCP integration, hooks, and index freshness. Use --json for machine-readable output.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDoctor(jsonOut)
 		},

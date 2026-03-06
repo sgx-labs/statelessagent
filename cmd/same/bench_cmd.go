@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sgx-labs/statelessagent/internal/config"
 	memory "github.com/sgx-labs/statelessagent/internal/memory"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
@@ -42,7 +43,7 @@ func runBench() error {
 	db, err := store.Open()
 	dbOpen := time.Since(t0)
 	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+		return config.ErrNoDatabase
 	}
 	defer db.Close()
 

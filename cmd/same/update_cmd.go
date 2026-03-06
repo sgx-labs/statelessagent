@@ -144,7 +144,7 @@ func runUpdate(force bool) error {
 
 	if resp.StatusCode != 200 {
 		fmt.Printf(" %sfailed%s\n", cli.Red, cli.Reset)
-		return fmt.Errorf("GitHub API returned %d", resp.StatusCode)
+		return fmt.Errorf("cannot check for updates: GitHub returned HTTP %d — try again later", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxReleaseMetadataSize))

@@ -495,7 +495,7 @@ func runGuardAllow(file, match string, allowAll, last bool) error {
 			}
 		}
 	} else {
-		return fmt.Errorf("use --last, or --file with --match or --all")
+		return fmt.Errorf("no findings specified — use --last to review the most recent scan, or --file with --match/--all to target specific files")
 	}
 
 	if allowed == 0 {

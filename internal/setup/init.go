@@ -512,6 +512,8 @@ func RunInit(opts InitOptions) error {
 		cli.Bold, cli.Reset, cli.Cyan, cli.Reset,
 		cli.Dim, cli.Reset,
 		cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
+	fmt.Printf("\n  %sSecurity: Run 'same guard settings set push-protect on' to enable PII scanning and push protection.%s\n",
+		cli.Dim, cli.Reset)
 
 	cli.Footer()
 

@@ -202,6 +202,9 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 		} else if len(results) > 0 {
 			fmt.Printf("  %sExplore: same related %s%s\n", cli.Dim, results[0].Path, cli.Reset)
 		}
+		if len(results) < 3 {
+			fmt.Printf("  %sTip: same ask '<your question>' for AI-powered answers with citations%s\n", cli.Dim, cli.Reset)
+		}
 	}
 
 	return nil
@@ -321,7 +324,8 @@ func relatedCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "related [note-path]",
 		Short: "Find notes related to a given note",
-		Long:  "Find notes related to a specific vault note using its stored embedding. Path is relative to vault root.",
+		Long:  "Find notes similar to a given note. SAME uses the note's embedding to find semantically related content in your vault.",
+		Example: `  same related "architecture.md"`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRelated(args[0], topK, jsonOut, verbose)

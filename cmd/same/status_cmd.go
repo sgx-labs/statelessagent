@@ -341,6 +341,8 @@ func runStatus(jsonOut bool) error {
 		fmt.Printf("  %sno config file%s (using defaults)\n", cli.Dim, cli.Reset)
 	}
 
+	fmt.Printf("\n  %sDashboard: run 'same web' for a visual overview%s\n", cli.Dim, cli.Reset)
+
 	cli.Footer()
 	return nil
 }

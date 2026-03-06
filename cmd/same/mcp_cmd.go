@@ -15,6 +15,7 @@ func mcpCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "mcp",
 		Short: "Start the AI tool integration server (MCP)",
+		Long:  "Start the SAME MCP server for tool integration with Claude Code, Cursor, Windsurf, and other MCP clients. This is typically started automatically by your AI tool — you rarely need to run it manually. Use 'same init' to configure MCP integration.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mcpserver.Version = Version
 			return mcpserver.Serve()
@@ -30,7 +31,7 @@ func budgetCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "budget",
-		Short: "See how much injected context your AI actually used",
+		Short: "Show context utilization metrics",
 		Long:  "Analyze how much injected context Claude actually used. Tracks injection events and reference detection.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runBudget(sessionID, lastN, jsonOut)

@@ -19,16 +19,18 @@ func askCmd() *cobra.Command {
 		Use:   "ask [question]",
 		Short: "Ask a question and get answers from your notes",
 		Long: `Ask a natural language question and get an answer synthesized from your
-indexed notes using your configured chat provider.
-
-Provider routing follows SAME_CHAT_PROVIDER (or auto mode), with SAME_EMBED_PROVIDER
-as the default hint. Queue fallback providers with SAME_CHAT_FALLBACKS.
-SAME will auto-detect the best available chat model.
+indexed notes. SAME searches your vault for relevant content, then uses a
+chat model to generate an answer with source citations.
 
 Examples:
   same ask "what did we decide about authentication?"
   same ask "how does the deployment process work?"
-  same ask "what are our coding standards?" --model mistral`,
+  same ask "what are our coding standards?" --model mistral
+
+Provider Configuration:
+  Provider routing follows SAME_CHAT_PROVIDER (or auto mode), with
+  SAME_EMBED_PROVIDER as the default hint. Queue fallback providers with
+  SAME_CHAT_FALLBACKS. SAME will auto-detect the best available chat model.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAsk(args[0], model, topK)

@@ -10,7 +10,7 @@
 
 **Your AI forgets everything between sessions. SAME fixes that.**
 
-SAME gives Claude Code, Cursor, Windsurf, and any MCP client persistent memory. It indexes your markdown notes, surfaces relevant context automatically, and records decisions and handoffs so your AI picks up where it left off.
+SAME gives every AI coding tool persistent memory. Claude Code, Cursor, Windsurf, Codex CLI, Gemini CLI — one memory layer that works everywhere. It indexes your markdown notes, surfaces relevant context automatically, and records decisions and handoffs so your AI picks up where it left off.
 
 One binary. Fully local. No cloud. No telemetry. Mac, Linux, Windows, Raspberry Pi.
 
@@ -74,6 +74,20 @@ same search "authentication decision"
 
 - **Connected knowledge** -- See how decisions, files, and notes relate to each other. Ask "what depends on this?" and get real answers. Powered by SQLite.
 
+## Security & Teams
+
+SAME includes enterprise-grade data protection out of the box:
+
+- **PII scanning** -- Pre-commit hooks detect emails, API keys, secrets, and personal data before they reach git. Configurable blocklists with false-positive review workflow.
+- **Push protection** -- Multi-agent file claims prevent AI agents from overwriting each other's work. Advisory locks with attribution.
+- **Audit logging** -- Every guard scan, every allow decision, every override is logged.
+- **Privacy tiers** -- `_PRIVATE/` is never indexed. `research/` is indexed but never committed. Your notes, your rules.
+
+```bash
+same guard settings set push-protect on    # enable push protection
+same guard scan                            # run PII scan manually
+```
+
 ## How It Works
 
 ```
@@ -130,6 +144,8 @@ Add to your MCP config (`.mcp.json`, Cursor settings, etc.):
 ```
 
 12 MCP tools available instantly. Works without Ollama (keyword fallback).
+
+Switch between Claude Code and Cursor without losing context. Your memory travels with you.
 
 ## MCP Server
 
@@ -289,6 +305,7 @@ Start with `same doctor` -- it runs 19 checks and tells you what's wrong.
 | Telemetry | None | Default ON | Yes | None |
 | MCP tools | 12 | 9 | Client only | No |
 | Knowledge graph | Built-in | Requires Neo4j | No | No |
+| Cross-tool memory | Yes | API only | No | Claude only |
 | Runs on Pi | Yes (~10MB) | No | No | Yes |
 
 </details>
