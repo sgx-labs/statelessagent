@@ -57,7 +57,7 @@ func TestRebuildFromIndexedNotes_RecreatesRelationships(t *testing.T) {
 		t.Fatalf("seed stale graph node: %v", err)
 	}
 
-	stats, err := RebuildFromIndexedNotes(conn, nil)
+	stats, err := RebuildFromIndexedNotes(conn, nil, nil)
 	if err != nil {
 		t.Fatalf("RebuildFromIndexedNotes: %v", err)
 	}

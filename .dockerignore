@@ -5,3 +5,14 @@ research/
 sessions/
 *.db
 .same/
+.DS_Store
+.github/
+.claude/
+.kilocode/
+.kilocodemodes
+.scripts/
+*.exe
+testdata/
+.golangci.yml
+.mailmap
+.mcp.json

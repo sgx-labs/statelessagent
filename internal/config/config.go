@@ -170,6 +170,7 @@ type EmbeddingConfig struct {
 // GraphConfig holds knowledge-graph extraction settings.
 type GraphConfig struct {
 	LLMMode string `toml:"llm_mode"` // "off" (default), "local-only", "on"
+	Model   string `toml:"model"`    // optional: override model for graph LLM extraction
 }
 
 // HooksConfig controls which hooks are enabled.
@@ -461,7 +462,9 @@ func generateTOMLContent(vaultPath string) string {
 	b.WriteString("#   \"off\"        = regex-only graph extraction (default)\n")
 	b.WriteString("#   \"local-only\" = allow LLM extraction only with local chat endpoints\n")
 	b.WriteString("#   \"on\"         = allow LLM extraction with any configured chat provider\n")
-	b.WriteString("llm_mode = \"off\"\n\n")
+	b.WriteString("llm_mode = \"off\"\n")
+	b.WriteString("# model = \"llama3.2\"            # optional: override model for graph extraction\n")
+	b.WriteString("#                               # defaults to auto-detected chat model\n\n")
 
 	b.WriteString("[memory]\n")
 	b.WriteString("# Presets: same profile use precise|balanced|broad|pi\n")
@@ -664,6 +667,19 @@ func GraphLLMMode() string {
 		// Fail closed for unknown values.
 		return "off"
 	}
+}
+
+// GraphModel returns the explicitly configured model for graph LLM extraction,
+// or empty string if none is set (caller should fall back to auto-detection).
+// Checked in order: SAME_GRAPH_MODEL env var > [graph] model in config.
+func GraphModel() string {
+	if v := os.Getenv("SAME_GRAPH_MODEL"); strings.TrimSpace(v) != "" {
+		return strings.TrimSpace(v)
+	}
+	if cfg := loadConfigSafe(); cfg != nil && strings.TrimSpace(cfg.Graph.Model) != "" {
+		return strings.TrimSpace(cfg.Graph.Model)
+	}
+	return ""
 }
 
 // loadConfigSafe loads config without risking recursion. Returns nil on error.

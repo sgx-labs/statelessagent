@@ -1051,14 +1051,17 @@ body {
   };
 
   // Hash router
+  var validPages = ['dashboard', 'search', 'browse', 'decisions', 'handoffs'];
   function handleHash() {
     var hash = window.location.hash.slice(1) || 'dashboard';
     if (hash.startsWith('note/')) {
       var path = decodeURIComponent(hash.slice(5));
       navigate('note', false);
       loadNote(path);
-    } else {
+    } else if (validPages.indexOf(hash) !== -1) {
       navigate(hash, false);
+    } else {
+      navigate('dashboard', false);
     }
   }
   window.addEventListener('hashchange', handleHash);

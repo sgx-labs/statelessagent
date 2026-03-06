@@ -417,55 +417,74 @@ func RunInit(opts InitOptions) error {
 	}
 	cli.Box(boxLines)
 
-	// Access scope — show exactly what the agent can see
-	cli.Section("Scope")
-	fmt.Printf("  %sIndexed%s     %s .md files in %s\n",
+	// Compact summary — collapsed Scope + Modes + Privacy into a few lines
+	searchMode := "keyword-only"
+	if useEmbeddings {
+		searchMode = fmt.Sprintf("semantic (%s)", embedProvider)
+	}
+	cli.Section("Summary")
+	fmt.Printf("  %sIndexed:%s  %s files in %s\n",
 		cli.Bold, cli.Reset,
 		cli.FormatNumber(stats.NotesInIndex), cli.ShortenHome(vaultPath))
-	fmt.Printf("  %sExcluded%s    _PRIVATE/, .obsidian/, .git/, .same/\n",
-		cli.Bold, cli.Reset)
-	fmt.Printf("  %sLocal-only%s  research/ is indexed but gitignored\n",
-		cli.Bold, cli.Reset)
-	fmt.Printf("  %sAgent sees%s  note title + path + 300-char snippet\n",
-		cli.Bold, cli.Reset)
-	fmt.Printf("  %sWrites to%s   %s (handoffs), %s (decisions)\n",
-		cli.Bold, cli.Reset,
-		config.HandoffDirectory(), config.DecisionLogPath())
+	fmt.Printf("  %sPrivate:%s  _PRIVATE/ %s(never indexed)%s, research/ %s(indexed, not committed)%s\n",
+		cli.Bold, cli.Reset, cli.Dim, cli.Reset, cli.Dim, cli.Reset)
+	if experience == LevelVibeCoder {
+		// Vibe-coders: just show search mode, skip graph/endpoint details
+		fmt.Printf("  %sSearch:%s   %s\n",
+			cli.Bold, cli.Reset, searchMode)
+	} else {
+		// Devs: show full mode details
+		fmt.Printf("  %sSearch:%s   %s\n",
+			cli.Bold, cli.Reset, searchMode)
+		graphMode := "regex"
+		switch config.GraphLLMMode() {
+		case "local-only":
+			graphMode = "LLM local-only + regex"
+		case "on":
+			graphMode = "LLM + regex"
+		}
+		fmt.Printf("  %sGraph:%s    %s  %s|  Ask: ready%s\n",
+			cli.Bold, cli.Reset, graphMode, cli.Dim, cli.Reset)
+	}
+	// Privacy — inline instead of a separate section
+	ec := config.EmbeddingProviderConfig()
+	if ec.Provider == "openai" || ec.Provider == "openai-compatible" {
+		fmt.Printf("  %sPrivacy:%s  embeddings via %s; raw notes stay local\n",
+			cli.Bold, cli.Reset, ec.Provider)
+	} else {
+		fmt.Printf("  %sPrivacy:%s  all processing is local\n",
+			cli.Bold, cli.Reset)
+	}
 	fmt.Println()
 	fmt.Printf("  Run %ssame status%s to review anytime.\n", cli.Bold, cli.Reset)
 
-	// Runtime modes — clarify how search, graph, and ask work together.
-	cli.Section("Modes")
-	searchMode := "keyword-only"
-	if useEmbeddings {
-		searchMode = "semantic"
-	}
-	fmt.Printf("  %sSearch%s     %s (%s provider)\n",
-		cli.Bold, cli.Reset, searchMode, embedProvider)
-	switch config.GraphLLMMode() {
-	case "local-only":
-		fmt.Printf("  %sGraph%s      LLM local-only + regex fallback\n", cli.Bold, cli.Reset)
-	case "on":
-		fmt.Printf("  %sGraph%s      LLM enabled + regex fallback\n", cli.Bold, cli.Reset)
-	default:
-		fmt.Printf("  %sGraph%s      regex-only (default)\n", cli.Bold, cli.Reset)
-	}
-	fmt.Printf("  %sAsk%s        requires a chat provider (configure anytime)\n", cli.Bold, cli.Reset)
-	fmt.Printf("  %sNote%s       graph is additive; it does not replace search\n", cli.Bold, cli.Reset)
-
-	// Test search to prove it works
-	cli.Section("Testing")
+	// Test search to prove it works — show snippet + score
 	testResult := runTestSearch(vaultPath)
-	if testResult != "" {
-		fmt.Printf("  %s✓%s Search working!\n", cli.Green, cli.Reset)
-		fmt.Printf("    Query: %s\"how does SAME work\"%s\n", cli.Dim, cli.Reset)
-		fmt.Printf("    Found: %s%s%s\n", cli.Bold, testResult, cli.Reset)
-	} else {
-		fmt.Printf("  %s✓%s Search ready\n", cli.Green, cli.Reset)
+	if testResult != nil {
+		fmt.Println()
+		fmt.Printf("  %s✓%s Search working! %s\"how does SAME work\"%s\n", cli.Green, cli.Reset, cli.Dim, cli.Reset)
+		// Truncate snippet to ~80 chars for compact display
+		snippet := testResult.Snippet
+		if len(snippet) > 80 {
+			snippet = snippet[:77] + "..."
+		}
+		snippet = strings.ReplaceAll(snippet, "\n", " ")
+		fmt.Printf("    %s→%s %s%s%s %s(%.0f%% match)%s\n",
+			cli.Cyan, cli.Reset, cli.Bold, testResult.Title, cli.Reset,
+			cli.Dim, testResult.Score*100, cli.Reset)
+		if snippet != "" {
+			fmt.Printf("      %s%s%s\n", cli.Dim, snippet, cli.Reset)
+		}
 	}
 
-	// The big moment
-	fmt.Println()
+	// Seeds (interactive install for empty vaults, intro for populated ones)
+	if stats.NotesInIndex > 0 {
+		showSeedIntro(opts)
+	} else {
+		offerSeedInstall(opts)
+	}
+
+	// The big moment — right before Get Started for maximum impact
 	fmt.Println()
 	fmt.Printf("  %s══════════════════════════════════════════════════════%s\n", cli.Cyan, cli.Reset)
 	fmt.Println()
@@ -477,62 +496,22 @@ func RunInit(opts InitOptions) error {
 	fmt.Println()
 	fmt.Printf("  %s══════════════════════════════════════════════════════%s\n", cli.Cyan, cli.Reset)
 	fmt.Println()
-	fmt.Println()
 
-	if stats.NotesInIndex > 0 {
-		fmt.Printf("  %sWhat happens next:%s\n", cli.Bold, cli.Reset)
-		fmt.Println()
-		fmt.Printf("  %s→%s Open your AI tool (Claude Code, Cursor, etc.)\n", cli.Cyan, cli.Reset)
-		fmt.Printf("  %s→%s Ask about something in your notes\n", cli.Cyan, cli.Reset)
-		fmt.Printf("  %s→%s Watch SAME surface the right context automatically\n", cli.Cyan, cli.Reset)
-		fmt.Println()
-		fmt.Printf("  Your AI will remember your decisions, your architecture,\n")
-		fmt.Printf("  your preferences — across every session.\n")
-		fmt.Println()
-		fmt.Printf("  %sNew to SAME?%s Run %ssame tutorial%s for a guided walkthrough.\n",
-			cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
-		fmt.Println()
-		fmt.Printf("  %sMore projects?%s Run %ssame init%s in any directory.\n",
-			cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
-		fmt.Printf("  Each project gets its own isolated vault and database.\n")
-		fmt.Println()
-		showSeedIntro(opts)
-	} else {
-		offerSeedInstall(opts)
-		fmt.Println()
-		fmt.Printf("  %sNew to SAME?%s Run %ssame tutorial%s for a guided walkthrough.\n",
-			cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
-		fmt.Println()
-		fmt.Printf("  %sMore projects?%s Run %ssame init%s in any directory.\n",
-			cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
-		fmt.Printf("  Each project gets its own isolated vault and database.\n")
-	}
-	fmt.Println()
-	fmt.Printf("  Run %ssame status%s anytime to check on things.\n", cli.Bold, cli.Reset)
-
-	// Next steps — tell user what to do now
+	// Get Started — immediately after the banner
 	cli.Section("Get Started")
-	fmt.Printf("  Your AI now has memory. Start a session:\n\n")
-	fmt.Printf("    %s$%s claude              %s# Claude Code (full hooks + MCP experience)%s\n",
+	fmt.Printf("    %s$%s claude              %s# Claude Code%s\n",
 		cli.Cyan, cli.Reset, cli.Dim, cli.Reset)
-	fmt.Printf("    %s$%s cursor .            %s# Cursor (MCP tools available)%s\n",
+	fmt.Printf("    %s$%s cursor .            %s# Cursor%s\n",
 		cli.Cyan, cli.Reset, cli.Dim, cli.Reset)
-	fmt.Printf("    %s$%s same search \"...\"   %s# Search from the command line%s\n",
+	fmt.Printf("    %s$%s same search \"...\"   %s# Search from CLI%s\n",
 		cli.Cyan, cli.Reset, cli.Dim, cli.Reset)
-	fmt.Printf("    %s$%s same web --open     %s# Browse your vault in the browser%s\n",
+	fmt.Printf("    %s$%s same web --open     %s# Browse in browser%s\n",
 		cli.Cyan, cli.Reset, cli.Dim, cli.Reset)
-
-	// Privacy at the end
-	cli.Section("Privacy")
-	ec := config.EmbeddingProviderConfig()
-	if ec.Provider == "openai" || ec.Provider == "openai-compatible" {
-		fmt.Printf("  Embeddings processed via %s.\n", ec.Provider)
-		fmt.Printf("  Your raw notes stay on this machine.\n")
-	} else {
-		fmt.Printf("  All processing is local.\n")
-	}
-	fmt.Printf("  Context sent to your AI tool's API as\n")
-	fmt.Printf("  part of your conversation.\n")
+	fmt.Println()
+	fmt.Printf("  %sNew?%s %ssame tutorial%s  %s|%s  %sMore projects?%s %ssame init%s in any directory.\n",
+		cli.Bold, cli.Reset, cli.Cyan, cli.Reset,
+		cli.Dim, cli.Reset,
+		cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
 
 	cli.Footer()
 
@@ -1758,11 +1737,11 @@ func generateConfigWithExperience(vaultPath string, experience ExperienceLevel) 
 
 // runTestSearch performs a quick search to verify everything works.
 // Returns the title of the first result, or empty string on failure.
-func runTestSearch(vaultPath string) string {
+func runTestSearch(vaultPath string) *store.SearchResult {
 	// Open the database
 	db, err := store.Open()
 	if err != nil {
-		return ""
+		return nil
 	}
 	defer db.Close()
 
@@ -1779,28 +1758,28 @@ func runTestSearch(vaultPath string) string {
 	if (provCfg.Provider == "ollama" || provCfg.Provider == "") && provCfg.BaseURL == "" {
 		ollamaURL, err := config.OllamaURL()
 		if err != nil {
-			return ""
+			return nil
 		}
 		provCfg.BaseURL = ollamaURL
 	}
 	provider, err := embedding.NewProvider(provCfg)
 	if err != nil {
-		return ""
+		return nil
 	}
 
 	// Embed a test query
 	vec, err := provider.GetQueryEmbedding("how does SAME work")
 	if err != nil {
-		return ""
+		return nil
 	}
 
 	// Search
 	results, err := db.VectorSearch(vec, store.SearchOptions{TopK: 1})
 	if err != nil || len(results) == 0 {
-		return ""
+		return nil
 	}
 
-	return results[0].Title
+	return &results[0]
 }
 
 // detectProjectDocs scans a directory for common project documentation files.

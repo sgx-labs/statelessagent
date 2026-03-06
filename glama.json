@@ -1,4 +1,57 @@
 {
   "$schema": "https://glama.ai/mcp/schemas/server.json",
-  "maintainers": ["sgx-labs"]
+  "maintainers": ["sgx-labs"],
+  "name": "SAME - Stateless Agent Memory Engine",
+  "description": "Persistent memory for AI coding agents. Local-first SQLite + vector search. 12 MCP tools for semantic search, note management, decision tracking, and session handoffs. Works with Claude Code, Cursor, Windsurf, and any MCP client.",
+  "keywords": ["memory", "knowledge-management", "ai-agents", "semantic-search", "vector-search", "sqlite", "mcp", "claude-code", "cursor", "obsidian", "markdown", "knowledge-base", "context", "rag"],
+  "tools": [
+    {
+      "name": "search_notes",
+      "description": "Semantic search across your knowledge base using vector embeddings and keyword matching"
+    },
+    {
+      "name": "search_notes_filtered",
+      "description": "Search with domain, workstream, and tag filters for precise knowledge retrieval"
+    },
+    {
+      "name": "search_across_vaults",
+      "description": "Federated search across multiple registered vaults for cross-project knowledge"
+    },
+    {
+      "name": "get_note",
+      "description": "Read full note content by path from the indexed vault"
+    },
+    {
+      "name": "find_similar_notes",
+      "description": "Discover related notes by semantic similarity for knowledge graph exploration"
+    },
+    {
+      "name": "get_session_context",
+      "description": "Get pinned notes, latest handoff, and recent decisions for session orientation"
+    },
+    {
+      "name": "recent_activity",
+      "description": "List recently modified notes to stay aware of vault changes"
+    },
+    {
+      "name": "reindex",
+      "description": "Re-scan and re-index the vault after external changes"
+    },
+    {
+      "name": "index_stats",
+      "description": "Get index health metrics: note count, chunk count, last indexed, database size"
+    },
+    {
+      "name": "save_note",
+      "description": "Create or update a markdown note with automatic indexing"
+    },
+    {
+      "name": "save_decision",
+      "description": "Log a structured project decision with title, body, and status tracking"
+    },
+    {
+      "name": "create_handoff",
+      "description": "Write a session handoff note for seamless multi-session continuity"
+    }
+  ]
 }

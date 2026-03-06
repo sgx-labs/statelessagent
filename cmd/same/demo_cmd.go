@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -15,8 +16,13 @@ import (
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
-var demoNotes = map[string]string{
-	"architecture.md": `---
+type demoNote struct {
+	Path    string
+	Content string
+}
+
+var demoNotes = []demoNote{
+	{"architecture.md", `---
 title: "Architecture Overview"
 tags: [architecture, decisions, backend]
 content_type: decision
@@ -37,8 +43,8 @@ API responses. Cache invalidation follows a write-through pattern.
 
 The API follows REST conventions with versioned endpoints (/api/v1/).
 We considered GraphQL but chose REST for simplicity and team familiarity.
-`,
-	"decisions.md": `---
+`},
+	{"decisions.md", `---
 title: "Decisions Log"
 tags: [decisions, architecture]
 content_type: decision
@@ -64,8 +70,8 @@ for financial transactions. Team has more SQL experience.
 **Status:** Accepted
 Single repo for API, frontend, and shared types. Simplifies CI/CD and
 ensures type consistency across boundaries.
-`,
-	"api-redesign.md": `---
+`},
+	{"api-redesign.md", `---
 title: "API Redesign Plan"
 tags: [api, migration, planning]
 content_type: note
@@ -92,8 +98,8 @@ workstream: api-v2
 2. Pagination uses cursor-based (was offset-based)
 3. Error responses use RFC 7807 Problem Details format
 4. Authentication header changed from X-API-Key to Authorization: Bearer
-`,
-	"coding-standards.md": `---
+`},
+	{"coding-standards.md", `---
 title: "Coding Standards"
 tags: [standards, code-quality, team]
 content_type: reference
@@ -117,8 +123,8 @@ content_type: reference
 - Always return JSON, even for errors
 - Version in URL path, not headers
 - Rate limit headers on every response
-`,
-	"sessions/2026-02-08-handoff.md": `---
+`},
+	{"sessions/2026-02-08-handoff.md", `---
 title: "Session Handoff — Feb 8"
 tags: [handoff, session]
 content_type: handoff
@@ -139,8 +145,8 @@ content_type: handoff
 - Write integration tests for the token refresh flow
 - Update the API documentation for auth endpoints
 - Review the rate limiting implementation
-`,
-	"research/performance-analysis.md": `---
+`},
+	{"research/performance-analysis.md", `---
 title: "Performance Analysis"
 tags: [performance, optimization, research]
 content_type: note
@@ -165,7 +171,7 @@ domain: engineering
 - Switch to streaming JSON encoder for large payloads
 - Add composite index on (user_id, created_at) to orders table
 - Consider connection pool tuning (current: 20, recommended: 50)
-`,
+`},
 }
 
 func demoCmd() *cobra.Command {
@@ -197,12 +203,12 @@ func runDemo(clean bool) error {
 	fmt.Printf("  Creating demo vault with %d sample notes...\n", len(demoNotes))
 
 	// Write demo notes
-	for relPath, content := range demoNotes {
-		fullPath := filepath.Join(demoDir, relPath)
+	for _, note := range demoNotes {
+		fullPath := filepath.Join(demoDir, note.Path)
 		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
 			return fmt.Errorf("create directory: %w", err)
 		}
-		if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(fullPath, []byte(note.Content), 0o644); err != nil {
 			return fmt.Errorf("write demo note: %w", err)
 		}
 	}
@@ -228,21 +234,23 @@ func runDemo(clean bool) error {
 
 	// 3. Index — use semantic mode if embeddings are available, else fall back to lite.
 	semanticAvailable := true
-	fmt.Printf("  Indexing")
+	fmt.Printf("  Indexing...")
+	indexStart := time.Now()
 	stats, err := indexer.Reindex(db, true)
+	mode := "semantic"
 	if err != nil {
 		// Embedding provider failed — fall back to lite mode
 		semanticAvailable = false
-		fmt.Printf(" (keyword mode)...")
+		mode = "keyword"
 		stats, err = indexer.ReindexLite(db, true, nil)
 		if err != nil {
 			fmt.Println()
 			return fmt.Errorf("indexing failed: %w", err)
 		}
-	} else {
-		fmt.Printf(" (semantic mode)...")
 	}
-	fmt.Printf(" done (%d notes, %d chunks)\n", stats.TotalFiles, stats.ChunksInIndex)
+	indexElapsed := time.Since(indexStart)
+	fmt.Printf(" done (%d notes, %d chunks, %s mode)\n", stats.TotalFiles, stats.ChunksInIndex, mode)
+	fmt.Printf("  Indexed %d notes in %dms\n", stats.TotalFiles, indexElapsed.Milliseconds())
 	if !semanticAvailable {
 		fmt.Printf("  %sConfigure embeddings (ollama/openai/openai-compatible) for semantic search%s\n", cli.Dim, cli.Reset)
 	}
@@ -252,6 +260,7 @@ func runDemo(clean bool) error {
 	query := "authentication approach"
 	fmt.Printf("  %s$%s same search \"%s\" --vault %s\n\n", cli.Dim, cli.Reset, query, demoDir)
 
+	searchStart := time.Now()
 	var results []store.SearchResult
 	if semanticAvailable {
 		embedClient, err := newEmbedProvider()
@@ -266,14 +275,17 @@ func runDemo(clean bool) error {
 	if len(results) == 0 && db.FTSAvailable() {
 		results, _ = db.FTS5Search(query, store.SearchOptions{TopK: 3})
 	}
+	searchElapsed := time.Since(searchStart)
 
 	if len(results) > 0 {
+		fmt.Printf("  Found in %dms\n\n", searchElapsed.Milliseconds())
+		// Split query into terms for highlighting
+		queryTerms := strings.Fields(strings.ToLower(query))
 		for i, r := range results {
 			snippet := r.Snippet
-			if len(snippet) > 120 {
-				snippet = snippet[:120] + "..."
-			}
 			snippet = strings.ReplaceAll(snippet, "\n", " ")
+			snippet = truncateAtWord(snippet, 120)
+			snippet = highlightTerms(snippet, queryTerms)
 			fmt.Printf("  %d. %s%s%s (score: %.2f)\n", i+1, cli.Bold, r.Title, cli.Reset, r.Score)
 			fmt.Printf("     %s\"%s\"%s\n\n", cli.Dim, snippet, cli.Reset)
 		}
@@ -372,4 +384,41 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 	}
 
 	return nil
+}
+
+// truncateAtWord truncates s to at most maxLen characters at a word boundary.
+func truncateAtWord(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	// Find last space at or before maxLen
+	cut := strings.LastIndex(s[:maxLen], " ")
+	if cut <= 0 {
+		cut = maxLen
+	}
+	return s[:cut] + "..."
+}
+
+// highlightTerms highlights occurrences of query terms in text using cyan+bold ANSI codes.
+func highlightTerms(text string, terms []string) string {
+	for _, term := range terms {
+		lower := strings.ToLower(text)
+		termLower := strings.ToLower(term)
+		var result strings.Builder
+		pos := 0
+		for {
+			idx := strings.Index(lower[pos:], termLower)
+			if idx < 0 {
+				result.WriteString(text[pos:])
+				break
+			}
+			result.WriteString(text[pos : pos+idx])
+			result.WriteString(cli.Reset + cli.Bold + cli.Cyan)
+			result.WriteString(text[pos+idx : pos+idx+len(term)])
+			result.WriteString(cli.Reset + cli.Dim)
+			pos += idx + len(term)
+		}
+		text = result.String()
+	}
+	return text
 }

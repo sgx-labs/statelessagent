@@ -251,7 +251,8 @@ func graphPathCmd() *cobra.Command {
 }
 
 func graphRebuildCmd() *cobra.Command {
-	return &cobra.Command{
+	var abortOnError bool
+	cmd := &cobra.Command{
 		Use:   "rebuild",
 		Short: "Rebuild graph nodes and relationships from indexed notes",
 		Long:  "Clear and rebuild graph data from indexed notes, including reference/decision extraction.",
@@ -269,15 +270,29 @@ func graphRebuildCmd() *cobra.Command {
 				fmt.Printf("  Graph LLM extraction: %s\n", llmStatus)
 			}
 
-			stats, err := graph.RebuildFromIndexedNotes(db.Conn(), extractor)
+			opts := &graph.RebuildOptions{
+				ContinueOnError: !abortOnError,
+			}
+
+			stats, err := graph.RebuildFromIndexedNotes(db.Conn(), extractor, opts)
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Done. Processed %d note(s), %d node(s), %d edge(s).\n",
-				stats.NotesProcessed, stats.TotalNodes, stats.TotalEdges)
+
+			if stats.NotesFailed > 0 {
+				for _, e := range stats.Errors {
+					fmt.Fprintf(os.Stderr, "  warning: %s\n", e)
+				}
+			}
+
+			fmt.Printf("Graph rebuilt: %d files processed, %d succeeded, %d failed, %d node(s), %d edge(s).\n",
+				stats.NotesProcessed, stats.NotesSucceeded, stats.NotesFailed,
+				stats.TotalNodes, stats.TotalEdges)
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&abortOnError, "abort-on-error", false, "Abort rebuild on first extraction error (default: continue)")
+	return cmd
 }
 
 func configureGraphRebuildLLM(extractor *graph.Extractor) string {
@@ -290,9 +305,12 @@ func configureGraphRebuildLLM(extractor *graph.Extractor) string {
 		if err != nil {
 			return fmt.Sprintf("fallback regex-only (%s)", sanitizeRuntimeError(err))
 		}
-		model, err := chatClient.PickBestModel()
-		if err != nil || strings.TrimSpace(model) == "" {
-			return "fallback regex-only (no local chat model found)"
+		model := config.GraphModel()
+		if model == "" {
+			model, err = chatClient.PickBestModel()
+			if err != nil || strings.TrimSpace(model) == "" {
+				return "fallback regex-only (no local chat model found)"
+			}
 		}
 		extractor.SetLLM(chatClient, model)
 		return fmt.Sprintf("enabled (%s/%s)", chatClient.Provider(), model)
@@ -301,9 +319,12 @@ func configureGraphRebuildLLM(extractor *graph.Extractor) string {
 		if err != nil {
 			return fmt.Sprintf("fallback regex-only (%s)", sanitizeRuntimeError(err))
 		}
-		model, err := chatClient.PickBestModel()
-		if err != nil || strings.TrimSpace(model) == "" {
-			return "fallback regex-only (no chat model found)"
+		model := config.GraphModel()
+		if model == "" {
+			model, err = chatClient.PickBestModel()
+			if err != nil || strings.TrimSpace(model) == "" {
+				return "fallback regex-only (no chat model found)"
+			}
 		}
 		extractor.SetLLM(chatClient, model)
 		return fmt.Sprintf("enabled (%s/%s)", chatClient.Provider(), model)

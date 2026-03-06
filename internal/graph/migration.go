@@ -83,17 +83,31 @@ func PopulateFromExistingNotes(conn *sql.DB) error {
 // RebuildStats captures rebuild output for UX/reporting.
 type RebuildStats struct {
 	NotesProcessed int
+	NotesSucceeded int
+	NotesFailed    int
 	TotalNodes     int
 	TotalEdges     int
+	Errors         []string // per-file error messages (only when ContinueOnError is true)
+}
+
+// RebuildOptions controls rebuild behavior.
+type RebuildOptions struct {
+	// ContinueOnError makes the rebuild continue past extraction failures
+	// instead of aborting on the first error. Default is true.
+	ContinueOnError bool
 }
 
 // RebuildFromIndexedNotes clears graph tables, then rebuilds nodes/edges from
 // indexed notes (including regex/decision/agent extraction).
 //
 // If extractor is nil, a default regex-only extractor is used.
-func RebuildFromIndexedNotes(conn *sql.DB, extractor *Extractor) (*RebuildStats, error) {
+// If opts is nil, defaults are used (ContinueOnError=true).
+func RebuildFromIndexedNotes(conn *sql.DB, extractor *Extractor, opts *RebuildOptions) (*RebuildStats, error) {
 	if extractor == nil {
 		extractor = NewExtractor(NewDB(conn))
+	}
+	if opts == nil {
+		opts = &RebuildOptions{ContinueOnError: true}
 	}
 
 	if _, err := conn.Exec("DELETE FROM graph_edges"); err != nil {
@@ -153,10 +167,16 @@ func RebuildFromIndexedNotes(conn *sql.DB, extractor *Extractor) (*RebuildStats,
 	}
 
 	for _, n := range notes {
+		stats.NotesProcessed++
 		if err := extractor.ExtractFromNote(n.id, n.path, n.content, n.agent); err != nil {
+			if opts.ContinueOnError {
+				stats.NotesFailed++
+				stats.Errors = append(stats.Errors, fmt.Sprintf("%s: %v", n.path, err))
+				continue
+			}
 			return nil, fmt.Errorf("extract graph for %s: %w", n.path, err)
 		}
-		stats.NotesProcessed++
+		stats.NotesSucceeded++
 	}
 
 	gdb := NewDB(conn)

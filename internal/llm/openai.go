@@ -11,6 +11,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/sgx-labs/statelessagent/internal/llmutil"
 )
 
 const (
@@ -262,7 +264,7 @@ func (c *openAIClient) generate(model, prompt string, jsonMode bool) (string, er
 	if strings.TrimSpace(text) == "" {
 		return "", fmt.Errorf("chat response had empty content")
 	}
-	return strings.TrimSpace(text), nil
+	return llmutil.StripThinkingTokens(text), nil
 }
 
 type listModelsResponse struct {
@@ -358,7 +360,7 @@ func parseChatContent(raw json.RawMessage) string {
 }
 
 func normalizeJSONText(s string) string {
-	t := strings.TrimSpace(s)
+	t := llmutil.StripThinkingTokens(s)
 	if strings.HasPrefix(t, "```") {
 		t = strings.TrimPrefix(t, "```")
 		t = strings.TrimSpace(t)

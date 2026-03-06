@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Thinking model compatibility: `stripThinkingTokens()` utility strips `<think>`, `<reasoning>`, `<reflection>` tags from LLM responses
+- Graph extraction: `[graph] model` config key and `SAME_GRAPH_MODEL` env var for choosing a non-thinking model
+- Graph extraction: `--abort-on-error` flag (continue-on-error is now the default)
+- Graph extraction: Ollama structured output with JSON schema for more reliable parsing
+- Dockerfile: Multi-stage build, non-root user, OCI labels
+
+### Fixed
+
+- Graph LLM extraction now works with thinking/reasoning models (DeepSeek-R1, QwQ, etc.)
+- `same ask`, demo, and tutorial commands no longer display thinking tokens
+- Ollama and OpenAI response paths strip thinking tags at the transport layer
+- URL redirect vulnerability fixed with page whitelist in web dashboard
+- MCP SDK bumped to v1.4.0 (security fix)
+
+### Changed
+
+- README overhauled: conversion-focused, 270 lines, collapsible reference sections
+
 ## v0.9.1 — Cross-Platform CI and Extraction Reliability
 
 ### Fixed

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sgx-labs/statelessagent/internal/config"
+	"github.com/sgx-labs/statelessagent/internal/llmutil"
 )
 
 // Client talks to a local Ollama instance for LLM generation.
@@ -131,11 +132,14 @@ func (c *Client) PickBestModel() (string, error) {
 	return models[0].Name, nil
 }
 
+// generateRequest is the Ollama /api/generate request body.
+// The Format field uses json.RawMessage so it can hold either a string
+// ("json") or a full JSON schema object for structured output.
 type generateRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	Format string `json:"format,omitempty"`
-	Stream bool   `json:"stream"`
+	Model  string          `json:"model"`
+	Prompt string          `json:"prompt"`
+	Format json.RawMessage `json:"format,omitempty"`
+	Stream bool            `json:"stream"`
 }
 
 type generateResponse struct {
@@ -144,15 +148,62 @@ type generateResponse struct {
 
 // Generate sends a prompt to Ollama and returns the response.
 func (c *Client) Generate(model, prompt string) (string, error) {
-	return c.generate(model, prompt, "")
+	return c.generate(model, prompt, nil)
 }
 
 // GenerateJSON sends a prompt to Ollama and forces a JSON response.
+// It first attempts structured output using a JSON schema (supported by
+// Ollama 0.5+), which constrains the model to emit valid JSON matching
+// the LLMResponse schema. If the schema-based request fails (older Ollama
+// or model that doesn't support it), it falls back to format:"json".
 func (c *Client) GenerateJSON(model, prompt string) (string, error) {
-	return c.generate(model, prompt, "json")
+	// Try structured output with JSON schema first.
+	resp, err := c.generate(model, prompt, graphExtractionSchema)
+	if err == nil {
+		return resp, nil
+	}
+
+	// Fallback: simple format:"json" string.
+	return c.generate(model, prompt, []byte(`"json"`))
 }
 
-func (c *Client) generate(model, prompt, format string) (string, error) {
+// graphExtractionSchema is a JSON schema that constrains the Ollama output
+// to a valid graph extraction response with nodes and edges arrays.
+var graphExtractionSchema = func() json.RawMessage {
+	schema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"nodes": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"type": map[string]interface{}{"type": "string"},
+						"name": map[string]interface{}{"type": "string"},
+					},
+					"required": []string{"type", "name"},
+				},
+			},
+			"edges": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"source":   map[string]interface{}{"type": "string"},
+						"target":   map[string]interface{}{"type": "string"},
+						"relation": map[string]interface{}{"type": "string"},
+					},
+					"required": []string{"source", "target", "relation"},
+				},
+			},
+		},
+		"required": []string{"nodes", "edges"},
+	}
+	b, _ := json.Marshal(schema)
+	return json.RawMessage(b)
+}()
+
+func (c *Client) generate(model, prompt string, format json.RawMessage) (string, error) {
 	body, err := json.Marshal(generateRequest{
 		Model:  model,
 		Prompt: prompt,
@@ -185,5 +236,5 @@ func (c *Client) generate(model, prompt, format string) (string, error) {
 		return "", fmt.Errorf("decode response: %w", err)
 	}
 
-	return strings.TrimSpace(result.Response), nil
+	return llmutil.StripThinkingTokens(result.Response), nil
 }
