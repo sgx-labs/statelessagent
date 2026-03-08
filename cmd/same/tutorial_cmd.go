@@ -469,7 +469,7 @@ API_KEY=sk-example-key-do-not-share
 
 func lessonAsk(ts *tutorialState) error {
 	fmt.Printf("\n  %ssame ask%s lets you ask questions and get answers FROM your notes.\n", cli.Bold, cli.Reset)
-	fmt.Printf("  Like ChatGPT, but the answers come from YOUR knowledge base.\n\n")
+	fmt.Printf("  Like a chatbot, but the answers come from YOUR knowledge base.\n\n")
 
 	// Write some notes to ask about
 	arch := `---

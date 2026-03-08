@@ -82,7 +82,7 @@ func runVersionCheck() error {
 	latestVer := strings.TrimPrefix(release.TagName, "v")
 	currentVer := strings.TrimPrefix(Version, "v")
 
-	// C3: Use semver comparison instead of string comparison
+	// Use semver comparison instead of string comparison
 	if compareSemver(latestVer, currentVer) > 0 {
 		// Output as systemMessage for SessionStart hook
 		// (hookSpecificOutput is only valid for UserPromptSubmit/PostToolUse)
@@ -168,7 +168,7 @@ func runUpdate(force bool) error {
 	fmt.Printf(" %s✓%s\n", cli.Green, cli.Reset)
 	fmt.Printf("  Latest version:  %s%s%s\n", cli.Bold, release.TagName, cli.Reset)
 
-	// C3: Use semver comparison instead of string comparison
+	// Use semver comparison instead of string comparison
 	cmp := compareSemver(latestVer, currentVer)
 	if cmp == 0 && !force {
 		fmt.Printf("\n  %s✓%s Already on the latest version.\n\n", cli.Green, cli.Reset)

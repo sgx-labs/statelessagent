@@ -37,7 +37,7 @@ USER same
 LABEL org.opencontainers.image.source="https://github.com/sgx-labs/statelessagent"
 LABEL org.opencontainers.image.title="SAME - Stateless Agent Memory Engine"
 LABEL org.opencontainers.image.description="Persistent memory for AI coding agents. Local-first vault with semantic search, 12 MCP tools, and Claude Code hooks."
-LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.licenses="BSL-1.1"
 LABEL org.opencontainers.image.url="https://statelessagent.com"
 
 # MCP server uses stdio, no ports needed
