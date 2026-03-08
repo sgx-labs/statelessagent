@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -415,12 +414,6 @@ func guardBlocklistCmd() *cobra.Command {
 				fmt.Printf("  [%s] %s\n", t.Tier, t.Term)
 			}
 			fmt.Printf("\n  %d total terms\n\n", len(terms))
-
-			// JSON for agent consumption
-			if false { // placeholder for --json flag
-				data, _ := json.Marshal(terms)
-				fmt.Println(string(data))
-			}
 
 			return nil
 		},
