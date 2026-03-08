@@ -14,7 +14,7 @@
 All commits must use the pseudonymous identity:
 ```
 git config user.name "sgx-labs"
-git config user.email "dev@sgx-labs.dev"
+git config user.email "dev@thirty3labs.com"
 ```
 
 ## Development

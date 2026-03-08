@@ -13,7 +13,7 @@
 
 If you discover a security vulnerability in SAME, please report it responsibly:
 
-**Email:** dev@sgx-labs.dev
+**Email:** dev@thirty3labs.com
 
 **What to include:**
 - Description of the vulnerability

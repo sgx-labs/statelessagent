@@ -90,4 +90,4 @@ Delete `.same/` to remove all SAME data.
 
 ## Contact
 
-Questions about privacy: dev@sgx-labs.dev
+Questions about privacy: dev@thirty3labs.com

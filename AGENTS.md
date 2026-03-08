@@ -27,7 +27,7 @@ go test -cover ./...        # Per-package coverage percentages
 ```bash
 # Identity (REQUIRED — never use personal identity)
 git config user.name "sgx-labs"
-git config user.email "dev@sgx-labs.dev"
+git config user.email "dev@thirty3labs.com"
 
 # Commit format
 git commit -m "Refactor: extract searchCmd to search_cmd.go"

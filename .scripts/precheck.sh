@@ -167,10 +167,10 @@ fi
 # Check git identity
 GIT_NAME=$(git -C "$REPO_ROOT" config user.name 2>/dev/null || echo "")
 GIT_EMAIL=$(git -C "$REPO_ROOT" config user.email 2>/dev/null || echo "")
-if [ "$GIT_NAME" = "sgx-labs" ] && [ "$GIT_EMAIL" = "dev@sgx-labs.dev" ]; then
+if [ "$GIT_NAME" = "sgx-labs" ] && [ "$GIT_EMAIL" = "dev@thirty3labs.com" ]; then
     pass "Git identity: $GIT_NAME <$GIT_EMAIL>"
 else
-    fail "Git identity: $GIT_NAME <$GIT_EMAIL> (expected sgx-labs <dev@sgx-labs.dev>)"
+    fail "Git identity: $GIT_NAME <$GIT_EMAIL> (expected sgx-labs <dev@thirty3labs.com>)"
 fi
 
 # Check server.json is valid JSON
