@@ -70,13 +70,13 @@ same search "authentication decision"
 
 - **Safe for teams** -- Multiple AI agents on the same codebase won't step on each other. File claims, push protection, and attribution built in.
 
-- **Instant expertise** -- 17 pre-built knowledge vaults with 880+ expert notes. One command to install. Your AI gets domain knowledge in seconds.
+- **Instant expertise** -- 17 pre-built knowledge vaults with 880+ curated notes. One command to install. Your AI gets domain knowledge in seconds.
 
 - **Connected knowledge** -- See how decisions, files, and notes relate to each other. Ask "what depends on this?" and get real answers. Powered by SQLite.
 
 ## Security & Teams
 
-SAME includes enterprise-grade data protection out of the box:
+SAME includes built-in PII scanning and push protection:
 
 - **PII scanning** -- Pre-commit hooks detect emails, API keys, secrets, and personal data before they reach git. Configurable blocklists with false-positive review workflow.
 - **Push protection** -- Multi-agent file claims prevent AI agents from overwriting each other's work. Advisory locks with attribution.
@@ -114,7 +114,7 @@ Your markdown notes get embedded and stored in SQLite. When your AI starts a ses
 
 | Metric | Value |
 |--------|-------|
-| Retrieval precision | **99.5%** (105 ground-truth test cases) |
+| Retrieval precision | **99.5%** on internal eval (105 synthetic test cases) |
 | MRR | **0.949** (right note first, almost every time) |
 | Prompt overhead | **<200ms** |
 | Binary size | **~10MB** |
