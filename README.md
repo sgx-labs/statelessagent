@@ -6,7 +6,7 @@
 [![Latest Release](https://img.shields.io/github/v/release/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent)
 [![MCP Tools](https://img.shields.io/badge/MCP_Tools-12-8A2BE2.svg)](#mcp-server)
-[![Discord](https://img.shields.io/discord/1468523556076785757?color=5865F2&label=Discord&logo=discord&logoColor=white)](https://discord.gg/9KfTkcGs7g)
+[![Discord](https://img.shields.io/discord/1468523556076785757?color=5865F2&label=Discord&logo=discord&logoColor=white)](https://discord.gg/Qg8AXavNWu)
 
 **Your AI forgets everything between sessions. SAME fixes that.**
 
@@ -70,7 +70,7 @@ same search "authentication decision"
 
 - **Safe for teams** -- Multiple AI agents on the same codebase won't step on each other. File claims, push protection, and attribution built in.
 
-- **Instant expertise** -- 17 pre-built knowledge vaults with 880+ curated notes. One command to install. Your AI gets domain knowledge in seconds.
+- **Instant expertise** -- 17 pre-built knowledge vaults with 870+ curated notes. One command to install. Your AI gets domain knowledge in seconds.
 
 - **Connected knowledge** -- See how decisions, files, and notes relate to each other. Ask "what depends on this?" and get real answers. Powered by SQLite.
 
@@ -331,7 +331,7 @@ All evaluation uses synthetic vault data. No user data used.
 - [Website](https://statelessagent.com)
 - [Telegram Bot Plugin](https://github.com/sgx-labs/same-telegram)
 - [SeedVaults](https://github.com/sgx-labs/seed-vaults)
-- [Discord](https://discord.gg/9KfTkcGs7g)
+- [Discord](https://discord.gg/Qg8AXavNWu)
 - [Changelog](CHANGELOG.md)
 
 ## Contributing
