@@ -12,7 +12,7 @@ go test ./...              # run all tests
 golangci-lint run          # lint
 ```
 
-Requires Go 1.25+. No CGO. Produces a single static binary.
+Requires Go 1.25+. Requires CGO (SQLite). Produces a single static binary.
 
 ## Project Structure
 
