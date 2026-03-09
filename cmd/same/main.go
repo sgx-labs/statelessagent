@@ -166,6 +166,7 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 		pinCmd(),
 		feedbackCmd(),
 		claimCmd(),
+		importCmd(),
 		vaultCmd(),
 		graphCmd(),
 	)
