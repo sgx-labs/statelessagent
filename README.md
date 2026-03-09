@@ -117,7 +117,7 @@ Your markdown notes get embedded and stored in SQLite. When your AI starts a ses
 | Retrieval precision | **99.5%** on internal eval (105 synthetic test cases) |
 | MRR | **0.949** (right note first, almost every time) |
 | Prompt overhead | **<200ms** |
-| Binary size | **~10MB** |
+| Binary size | **~12MB** |
 | Setup time | **<60 seconds** |
 
 ## Add to Your AI Tool
@@ -306,7 +306,7 @@ Start with `same doctor` -- it runs 19 checks and tells you what's wrong.
 | MCP tools | 12 | 9 | Client only | No |
 | Knowledge graph | Built-in | Requires Neo4j | No | No |
 | Cross-tool memory | Yes | API only | No | Claude only |
-| Runs on Pi | Yes (~10MB) | No | No | Yes |
+| Runs on Pi | Yes (~12MB) | No | No | Yes |
 
 </details>
 

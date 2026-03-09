@@ -73,7 +73,7 @@ same demo
 
 ## Privacy
 
-- ~10MB Go binary. SQLite + Ollama on localhost.
+- ~12MB Go binary. SQLite + Ollama on localhost.
 - Zero outbound network calls. No telemetry. No analytics. No accounts. No API keys.
 - Your notes never leave your machine.
 
