@@ -46,7 +46,7 @@ func budgetCmd() *cobra.Command {
 func runBudget(sessionID string, lastN int, jsonOut bool) error {
 	db, err := store.Open()
 	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+		return dbOpenError(err)
 	}
 	defer db.Close()
 

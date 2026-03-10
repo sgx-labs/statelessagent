@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +15,7 @@ import (
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/indexer"
 	"github.com/sgx-labs/statelessagent/internal/llm"
+	"github.com/sgx-labs/statelessagent/internal/setup"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
@@ -22,160 +25,156 @@ type demoNote struct {
 }
 
 var demoNotes = []demoNote{
-	{"architecture.md", `---
-title: "Architecture Overview"
-tags: [architecture, decisions, backend]
+	{"decisions/2026-03-03-auth-strategy.md", `---
+title: "Decision: Auth Strategy"
+tags: [decisions, auth, security, backend]
 content_type: decision
 domain: engineering
 ---
 
-# Architecture Overview
+# Decision: Authentication Strategy
 
-We chose JWT for authentication with refresh token rotation. Access tokens
-expire after 15 minutes, refresh tokens after 7 days. Tokens are stored
-in httpOnly cookies for security.
-
-Database is PostgreSQL 15 with connection pooling via pgbouncer. We use
-a read replica for analytics queries to avoid impacting production traffic.
-
-Caching layer is Redis 7, used for session data and frequently accessed
-API responses. Cache invalidation follows a write-through pattern.
-
-The API follows REST conventions with versioned endpoints (/api/v1/).
-We considered GraphQL but chose REST for simplicity and team familiarity.
-`},
-	{"decisions.md", `---
-title: "Decisions Log"
-tags: [decisions, architecture]
-content_type: decision
----
-
-# Decisions Log
-
-## Decision: JWT over session cookies
-**Date:** 2026-01-15
+**Date:** 2026-03-03
 **Status:** Accepted
-JWT with refresh rotation chosen over server-side sessions. Reasoning:
-stateless auth scales better with our microservice architecture. Trade-off:
-slightly larger request headers, but eliminates session store dependency.
 
-## Decision: PostgreSQL over MongoDB
-**Date:** 2026-01-10
-**Status:** Accepted
-Relational model fits our data better. Strong consistency guarantees needed
-for financial transactions. Team has more SQL experience.
+## Context
+We need stateless auth that scales across our microservices without a shared
+session store. The team evaluated JWT, Paseto, and server-side sessions.
 
-## Decision: Monorepo structure
-**Date:** 2026-01-08
-**Status:** Accepted
-Single repo for API, frontend, and shared types. Simplifies CI/CD and
-ensures type consistency across boundaries.
+## Decision
+JWT with refresh token rotation. Access tokens expire after 15 minutes,
+refresh tokens after 7 days with single-use rotation.
+
+## Rationale
+- Stateless: no session store dependency, works across services
+- Refresh rotation prevents token replay attacks
+- httpOnly cookies for storage (not localStorage) to mitigate XSS
+- Trade-off: slightly larger request headers, but eliminates a whole
+  infrastructure dependency
+
+## Alternatives Rejected
+- Server-side sessions: requires shared Redis, adds latency + failure mode
+- Paseto: better security properties but limited library ecosystem in Go
 `},
-	{"api-redesign.md", `---
-title: "API Redesign Plan"
-tags: [api, migration, planning]
-content_type: note
-domain: engineering
-workstream: api-v2
----
-
-# API Redesign — v2 Migration
-
-## Goals
-- Migrate from REST v1 to v2 with breaking changes
-- Add pagination to all list endpoints
-- Standardize error response format
-- Add rate limiting per API key
-
-## Timeline
-- Week 1-2: Design new endpoint schemas
-- Week 3-4: Implement v2 alongside v1
-- Week 5: Internal testing and migration guide
-- Week 6: Deprecation notices on v1 endpoints
-
-## Breaking Changes
-1. All timestamps now ISO 8601 (was Unix epoch)
-2. Pagination uses cursor-based (was offset-based)
-3. Error responses use RFC 7807 Problem Details format
-4. Authentication header changed from X-API-Key to Authorization: Bearer
-`},
-	{"coding-standards.md", `---
-title: "Coding Standards"
-tags: [standards, code-quality, team]
-content_type: reference
----
-
-# Coding Standards
-
-## Go
-- Use gofmt and golangci-lint before committing
-- Error messages start lowercase, no trailing punctuation
-- Table-driven tests for functions with multiple cases
-- Context as first parameter in all public functions
-
-## Git
-- Conventional commits: feat:, fix:, docs:, refactor:
-- Squash merge to main, keep feature branch history
-- PR requires one approval and passing CI
-
-## API
-- RESTful resource naming (plural nouns)
-- Always return JSON, even for errors
-- Version in URL path, not headers
-- Rate limit headers on every response
-`},
-	{"sessions/2026-02-08-handoff.md", `---
-title: "Session Handoff — Feb 8"
-tags: [handoff, session]
+	{"sessions/2026-03-07-handoff.md", `---
+title: "Session Handoff — March 7"
+tags: [handoff, session, api]
 content_type: handoff
 ---
 
-# Session Handoff — 2026-02-08
+# Session Handoff — 2026-03-07
 
-## What we worked on
-- Fixed the authentication token refresh bug (issue #142)
-- Root cause: refresh tokens weren't being rotated on use
-- Added retry logic for failed token refreshes
+## What was accomplished
+- Implemented cursor-based pagination on /api/v2/orders
+- Fixed the N+1 query on /users/:id/orders (was adding 150ms per request)
+- Added composite index on (user_id, created_at) — query time dropped from
+  180ms to 8ms
 
-## Key decisions made
-- Will add refresh token rotation to prevent replay attacks
-- Decided to log all auth failures to a dedicated audit table
+## Key decisions
+- Using cursor-based pagination instead of offset (better for large datasets)
+- Error responses now follow RFC 7807 Problem Details format
 
-## Next steps
-- Write integration tests for the token refresh flow
-- Update the API documentation for auth endpoints
-- Review the rate limiting implementation
+## Blocked on
+- Rate limiting middleware needs config schema review (draft in rate-limit.md)
+
+## Next steps for whoever picks this up
+1. Wire up rate limiting middleware to the v2 router
+2. Add integration tests for cursor pagination edge cases (empty page, deleted cursor)
+3. Update the API migration guide with the new error format
+4. Run load test against the orders endpoint with the new index
 `},
-	{"research/performance-analysis.md", `---
-title: "Performance Analysis"
-tags: [performance, optimization, research]
+	{"research/stripe-webhook-setup.md", `---
+title: "Stripe Webhook Integration"
+tags: [research, stripe, payments, api]
+content_type: note
+domain: engineering
+workstream: payments
+---
+
+# Stripe Webhook Integration — Research Notes
+
+## Setup
+Stripe sends events via POST to our /webhooks/stripe endpoint. Events are
+signed with a webhook secret (whsec_...) that we verify server-side.
+
+## Key Events We Handle
+- checkout.session.completed — provision access
+- invoice.payment_failed — send dunning email, retry 3x
+- customer.subscription.deleted — revoke access after grace period
+
+## Gotchas Found
+1. Events can arrive out of order — always fetch current state from Stripe API
+2. Webhook endpoint MUST return 200 within 5 seconds or Stripe retries
+3. Use idempotency keys on our side to prevent double-provisioning
+4. Test mode and live mode use different webhook secrets
+
+## Verification Code Pattern
+` + "```go" + `
+err := webhook.VerifySignature(payload, sigHeader, whsec)
+` + "```" + `
+
+Stripe retries failed webhooks for up to 3 days with exponential backoff.
+`},
+	{"bugs/2026-03-05-token-refresh-loop.md", `---
+title: "Bug: Token Refresh Infinite Loop"
+tags: [bug, auth, investigation, postmortem]
 content_type: note
 domain: engineering
 ---
 
-# Performance Analysis — February 2026
+# Bug Investigation: Token Refresh Infinite Loop
 
-## Current Metrics
-- API p50 latency: 45ms
-- API p99 latency: 280ms
-- Database query avg: 12ms
-- Redis cache hit rate: 87%
+**Reported:** 2026-03-05
+**Severity:** P1 — users getting logged out in production
+**Status:** Root cause found, fix deployed
 
-## Bottlenecks Identified
-1. N+1 queries on the /users/:id/orders endpoint (adds 150ms)
-2. JSON serialization overhead on large response payloads
-3. Missing index on orders.created_at (sequential scan on date filters)
+## Symptoms
+- Users reporting random logouts after ~15 minutes
+- Auth service logs showing rapid token refresh requests (100+/second per user)
+- Redis connection pool exhaustion
 
-## Recommendations
-- Add eager loading for user orders query
-- Switch to streaming JSON encoder for large payloads
-- Add composite index on (user_id, created_at) to orders table
-- Consider connection pool tuning (current: 20, recommended: 50)
+## Root Cause
+The refresh token rotation was not atomic. When two tabs refreshed
+simultaneously, both sent the same refresh token. The first request
+succeeded and rotated the token. The second request failed (token already
+used), which triggered the client retry logic, which created a loop.
+
+## Fix
+Added a 5-second grace window for recently-rotated refresh tokens.
+If a refresh request arrives with a token that was rotated <5 seconds ago,
+we return the same new token pair instead of rejecting it.
+
+## Lessons Learned
+- Refresh token rotation needs to handle concurrent clients
+- Added metrics on refresh rate per user to catch loops early
+- Client-side: added jitter to retry timing + max 3 retries
+`},
+	{"sessions/2026-03-04-standup.md", `---
+title: "Session — March 4 Standup"
+tags: [session, standup, progress]
+content_type: session
+---
+
+# Session Notes — 2026-03-04
+
+## Done today
+- Merged PR #47: Stripe webhook handler with signature verification
+- Code review on PR #51: cursor pagination (left 3 comments)
+- Set up staging environment for API v2 testing
+
+## In progress
+- API v2 migration guide (60% done, need to document error format changes)
+- Load testing script for the new orders endpoint
+
+## Blockers
+- Need DevOps to provision a second read replica for staging
+- Waiting on product to confirm grace period length for subscription cancellation
 `},
 }
 
 func demoCmd() *cobra.Command {
 	var clean bool
+	var noSetup bool
 	cmd := &cobra.Command{
 		Use:   "demo",
 		Short: "See SAME in action with sample notes",
@@ -184,14 +183,20 @@ and shows how SAME helps your AI remember your project context.
 
 No existing notes are modified. The demo uses a temporary vault.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDemo(clean)
+			return runDemo(clean, noSetup)
 		},
 	}
 	cmd.Flags().BoolVar(&clean, "clean", false, "Delete demo vault after running")
+	cmd.Flags().BoolVar(&noSetup, "no-setup", false, "Skip the setup prompt at the end")
 	return cmd
 }
 
-func runDemo(clean bool) error {
+// demoPause adds a brief delay between sections so the user can absorb each result.
+func demoPause() {
+	time.Sleep(250 * time.Millisecond)
+}
+
+func runDemo(clean, noSetup bool) error {
 	fmt.Printf("\n  %s✦ SAME Demo%s — see how your AI remembers\n\n", cli.Bold+cli.Cyan, cli.Reset)
 
 	// 1. Create temp vault
@@ -228,11 +233,11 @@ func runDemo(clean bool) error {
 	dbPath := filepath.Join(sameDir, "vault.db")
 	db, err := store.OpenPath(dbPath)
 	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+		return dbOpenError(err)
 	}
 	defer db.Close()
 
-	// 3. Index — use semantic mode if embeddings are available, else fall back to lite.
+	// Index — use semantic mode if embeddings are available, else fall back to lite.
 	semanticAvailable := true
 	fmt.Printf("  Indexing...")
 	indexStart := time.Now()
@@ -242,7 +247,7 @@ func runDemo(clean bool) error {
 		// Embedding provider failed — fall back to lite mode
 		semanticAvailable = false
 		mode = "keyword"
-		stats, err = indexer.ReindexLite(db, true, nil)
+		stats, err = indexer.ReindexLite(context.Background(), db, true, nil)
 		if err != nil {
 			fmt.Println()
 			return fmt.Errorf("indexing failed: %w", err)
@@ -252,13 +257,18 @@ func runDemo(clean bool) error {
 	fmt.Printf(" done (%d notes, %d chunks, %s mode)\n", stats.TotalFiles, stats.ChunksInIndex, mode)
 	fmt.Printf("  Indexed %d notes in %dms\n", stats.TotalFiles, indexElapsed.Milliseconds())
 	if !semanticAvailable {
-		fmt.Printf("  %sConfigure embeddings (ollama/openai/openai-compatible) for semantic search%s\n", cli.Dim, cli.Reset)
+		fmt.Printf("\n  %sNote:%s Running in keyword-only mode (Ollama not detected).\n", cli.Yellow, cli.Reset)
+		fmt.Printf("  Semantic search finds %srelated concepts%s, not just exact words.\n", cli.Bold, cli.Reset)
+		fmt.Printf("  Install Ollama for the full experience: %shttps://ollama.com%s\n", cli.Cyan, cli.Reset)
 	}
 
-	// 4. Search demo
-	cli.Section("Search")
+	demoPause()
+
+	// ── Step 1: Search ──────────────────────────────────────────────────
+	cli.Section("Step 1 — Search")
 	query := "authentication approach"
-	fmt.Printf("  %s$%s same search \"%s\" --vault %s\n\n", cli.Dim, cli.Reset, query, demoDir)
+	fmt.Printf("  %s$%s same search \"%s\"\n\n", cli.Dim, cli.Reset, query)
+	demoPause()
 
 	searchStart := time.Now()
 	var results []store.SearchResult
@@ -278,7 +288,7 @@ func runDemo(clean bool) error {
 	searchElapsed := time.Since(searchStart)
 
 	if len(results) > 0 {
-		fmt.Printf("  Found in %dms\n\n", searchElapsed.Milliseconds())
+		fmt.Printf("  Found in %dms:\n\n", searchElapsed.Milliseconds())
 		// Split query into terms for highlighting
 		queryTerms := strings.Fields(strings.ToLower(query))
 		for i, r := range results {
@@ -289,36 +299,66 @@ func runDemo(clean bool) error {
 			fmt.Printf("  %d. %s%s%s (score: %.2f)\n", i+1, cli.Bold, r.Title, cli.Reset, r.Score)
 			fmt.Printf("     %s\"%s\"%s\n\n", cli.Dim, snippet, cli.Reset)
 		}
-		fmt.Printf("  %s✓%s SAME found the right notes from %d indexed documents.\n",
-			cli.Green, cli.Reset, stats.TotalFiles)
+		fmt.Printf("  %s✓%s Your AI searched %d notes and found the auth decision in %dms.\n",
+			cli.Green, cli.Reset, stats.TotalFiles, searchElapsed.Milliseconds())
+
+		if !semanticAvailable {
+			fmt.Printf("\n  %sWith semantic search, this query would also find notes about:%s\n", cli.Dim, cli.Reset)
+			fmt.Printf("  %s  - \"session cookies\" and \"token rotation\" (related auth concepts)%s\n", cli.Dim, cli.Reset)
+			fmt.Printf("  %s  - \"security\" and \"access control\" (broader topic matches)%s\n", cli.Dim, cli.Reset)
+			fmt.Printf("  %s  Keyword search only matches the exact words you typed.%s\n", cli.Dim, cli.Reset)
+		}
 	}
 
-	// 5. Session continuity preview
-	cli.Section("Session Continuity")
-	fmt.Printf("  When your AI starts a new session, it automatically gets:\n\n")
-	fmt.Printf("    %s\"Last session worked on: API redesign — migrating from REST to v2.\n", cli.Dim)
-	fmt.Printf("     Key decisions: JWT auth, PostgreSQL, Redis caching.\n")
-	fmt.Printf("     %d notes indexed. Ready to pick up where you left off.\"%s\n\n", stats.TotalFiles, cli.Reset)
-	fmt.Printf("  %sNo copy-pasting. No re-explaining. Automatic.%s\n", cli.Dim, cli.Reset)
+	demoPause()
 
-	// 6. Pin demo
-	cli.Section("Pin")
-	pinPath := "coding-standards.md"
-	fmt.Printf("  %s$%s same pin %s\n\n", cli.Dim, cli.Reset, pinPath)
-	if err := db.PinNote(pinPath); err == nil {
-		fmt.Printf("  %s✓%s Pinned %s%s%s\n", cli.Green, cli.Reset, cli.Cyan, pinPath, cli.Reset)
-		fmt.Printf("  %sThis note will appear in EVERY session, regardless of topic.%s\n", cli.Dim, cli.Reset)
-	}
+	// ── Step 2: Decisions ───────────────────────────────────────────────
+	cli.Section("Step 2 — Decisions")
+	fmt.Printf("  Your vault tracks decisions with context and rationale.\n\n")
+	demoPause()
+	fmt.Printf("  %s\"%s\n", cli.Dim, cli.Reset)
+	fmt.Printf("  %sOn March 3, you chose JWT with refresh token rotation over%s\n", cli.Dim, cli.Reset)
+	fmt.Printf("  %sserver-side sessions. Rationale: stateless auth scales across%s\n", cli.Dim, cli.Reset)
+	fmt.Printf("  %sservices without a shared session store. Paseto was considered%s\n", cli.Dim, cli.Reset)
+	fmt.Printf("  %sbut rejected due to limited Go library ecosystem.%s\n", cli.Dim, cli.Reset)
+	fmt.Printf("  %s\"%s\n\n", cli.Dim, cli.Reset)
+	fmt.Printf("  %s✓%s Three weeks later, a new agent knows %swhy%s you chose JWT,\n",
+		cli.Green, cli.Reset, cli.Bold, cli.Reset)
+	fmt.Printf("    not just %sthat%s you did.\n", cli.Bold, cli.Reset)
 
-	// 7. Ask demo (if a chat provider/model is available)
+	demoPause()
+
+	// ── Step 3: Session Handoff (the wow moment) ────────────────────────
+	cli.Section("Step 3 — Session Handoff")
+	fmt.Printf("  Imagine a new AI session starts tomorrow. It automatically gets:\n\n")
+	demoPause()
+	fmt.Printf("    %s┌──────────────────────────────────────────────────────────┐%s\n", cli.Cyan, cli.Reset)
+	fmt.Printf("    %s│%s  %sLast session (March 7):%s                                %s│%s\n", cli.Cyan, cli.Reset, cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
+	fmt.Printf("    %s│%s                                                          %s│%s\n", cli.Cyan, cli.Reset, cli.Cyan, cli.Reset)
+	fmt.Printf("    %s│%s  %s✓%s Implemented cursor-based pagination on /api/v2/orders %s│%s\n", cli.Cyan, cli.Reset, cli.Green, cli.Reset, cli.Cyan, cli.Reset)
+	fmt.Printf("    %s│%s  %s✓%s Fixed N+1 query — response time 180ms to 8ms          %s│%s\n", cli.Cyan, cli.Reset, cli.Green, cli.Reset, cli.Cyan, cli.Reset)
+	fmt.Printf("    %s│%s                                                          %s│%s\n", cli.Cyan, cli.Reset, cli.Cyan, cli.Reset)
+	fmt.Printf("    %s│%s  %sNext:%s Wire up rate limiting, add pagination tests,     %s│%s\n", cli.Cyan, cli.Reset, cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
+	fmt.Printf("    %s│%s        update migration guide with new error format.     %s│%s\n", cli.Cyan, cli.Reset, cli.Cyan, cli.Reset)
+	fmt.Printf("    %s└──────────────────────────────────────────────────────────┘%s\n\n", cli.Cyan, cli.Reset)
+	demoPause()
+	fmt.Printf("  %s✓%s No re-explaining. Your AI picks up exactly where you left off.\n",
+		cli.Green, cli.Reset)
+
+	demoPause()
+
+	// ── Step 4: Ask (if chat model available) ───────────────────────────
+	askShown := false
 	chatClient, chatErr := llm.NewClient()
 	if chatErr == nil {
 		bestModel, _ := chatClient.PickBestModel()
 		if bestModel != "" {
-			cli.Section("Ask — the magic moment")
+			askShown = true
+			cli.Section("Step 4 — Ask")
 
-			askQuery := "what did we decide about authentication?"
+			askQuery := "what caused the token refresh bug and how did we fix it?"
 			fmt.Printf("  %s$%s same ask \"%s\"\n\n", cli.Dim, cli.Reset, askQuery)
+			demoPause()
 
 			// Get context via search
 			var askResults []store.SearchResult
@@ -362,25 +402,24 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 					for _, line := range strings.Split(answer, "\n") {
 						fmt.Printf("  %s\n", line)
 					}
-					fmt.Printf("\n  %s✓%s Answered from YOUR notes with source grounding.\n",
+					fmt.Printf("\n  %s✓%s Answered from your notes — with sources.\n",
 						cli.Green, cli.Reset)
 				}
 			}
 		}
 	}
 
-	// 8. Celebrate + next steps
-	fmt.Printf("\n  %s✦ That search found the right decision in %dms.%s\n", cli.Bold+cli.Green, searchElapsed.Milliseconds(), cli.Reset)
-	fmt.Printf("  %sNo copy-pasting. No re-explaining. No lost context.%s\n\n", cli.Dim, cli.Reset)
-	fmt.Printf("  Imagine this on %syour%s codebase — every decision, every architecture\n", cli.Bold, cli.Reset)
-	fmt.Printf("  choice, every debug session remembered and searchable.\n\n")
+	// Show a note if the Ask section was skipped
+	if !askShown {
+		cli.Section("Ask")
+		fmt.Printf("  %sWith a local chat model, you can ask questions about your project%s\n", cli.Dim, cli.Reset)
+		fmt.Printf("  %sand get answers grounded in your actual notes and decisions.%s\n", cli.Dim, cli.Reset)
+		fmt.Printf("  %sInstall a model:%s ollama pull llama3.2\n", cli.Dim, cli.Reset)
+	}
 
-	cli.Section("Ready to try it?")
-	fmt.Printf("  %scd ~/your-project && same init%s    Set up SAME for your project\n", cli.Cyan, cli.Reset)
-	fmt.Printf("  %ssame tutorial%s                     Learn SAME hands-on (7 min)\n", cli.Cyan, cli.Reset)
-	fmt.Printf("  %ssame web%s                          See the visual dashboard\n\n", cli.Cyan, cli.Reset)
-	fmt.Printf("  Demo vault saved at: %s%s%s\n", cli.Dim, demoDir, cli.Reset)
-	fmt.Printf("  %sExplore: same search \"query\" --vault %s%s\n\n", cli.Dim, demoDir, cli.Reset)
+	// ── Closing ─────────────────────────────────────────────────────────
+	fmt.Printf("\n  %s━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%s\n", cli.Cyan, cli.Reset)
+	fmt.Printf("\n  %sThat's SAME. Your AI remembers what you've built.%s\n\n", cli.Bold, cli.Reset)
 
 	if clean {
 		if err := os.RemoveAll(demoDir); err != nil {
@@ -389,6 +428,57 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 		fmt.Printf("  %s(demo vault cleaned up)%s\n\n", cli.Dim, cli.Reset)
 	}
 
+	// ── Setup prompt ────────────────────────────────────────────────────
+	if noSetup {
+		fmt.Printf("  Run %ssame init%s anytime to set up a vault for your project.\n\n", cli.Cyan, cli.Reset)
+		return nil
+	}
+
+	fmt.Printf("  Ready to set up a vault for your project? %s(Y/n)%s ", cli.Dim, cli.Reset)
+	reader := bufio.NewReader(os.Stdin)
+	answer, _ := reader.ReadString('\n')
+	answer = strings.TrimSpace(strings.ToLower(answer))
+
+	if answer == "" || answer == "y" || answer == "yes" {
+		fmt.Println()
+		// Prompt for directory or use current
+		cwd, _ := os.Getwd()
+		fmt.Printf("  Set up SAME in %s%s%s? %s(Y/n, or enter a path)%s ",
+			cli.Bold, cli.ShortenHome(cwd), cli.Reset, cli.Dim, cli.Reset)
+		dirAnswer, _ := reader.ReadString('\n')
+		dirAnswer = strings.TrimSpace(dirAnswer)
+
+		targetDir := cwd
+		if dirAnswer != "" && dirAnswer != "y" && dirAnswer != "Y" && dirAnswer != "yes" {
+			// User entered a path
+			expanded := dirAnswer
+			if strings.HasPrefix(expanded, "~/") {
+				home, _ := os.UserHomeDir()
+				expanded = filepath.Join(home, expanded[2:])
+			}
+			abs, err := filepath.Abs(expanded)
+			if err == nil {
+				targetDir = abs
+			}
+		}
+
+		// Change to target directory and run init
+		origDir, _ := os.Getwd()
+		if err := os.Chdir(targetDir); err != nil {
+			fmt.Printf("\n  %sCouldn't access %s: %v%s\n", cli.Red, targetDir, err, cli.Reset)
+			fmt.Printf("  Run %ssame init%s from your project directory.\n\n", cli.Cyan, cli.Reset)
+			return nil
+		}
+		defer func() { _ = os.Chdir(origDir) }()
+
+		config.VaultOverride = "" // Clear demo vault override
+		fmt.Println()
+		return setup.RunInit(setup.InitOptions{
+			Version: Version,
+		})
+	}
+
+	fmt.Printf("\n  Run %ssame init%s anytime.\n\n", cli.Cyan, cli.Reset)
 	return nil
 }
 

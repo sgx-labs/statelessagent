@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sgx-labs/statelessagent/internal/cli"
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/setup"
 )
@@ -22,6 +23,12 @@ func configCmd() *cobra.Command {
 		Use:   "show",
 		Short: "Show effective configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Printf("\n  %sEffective Configuration%s\n", cli.Bold, cli.Reset)
+			fmt.Printf("  %sMerged from config file, environment variables, and defaults.%s\n", cli.Dim, cli.Reset)
+			if cf := config.FindConfigFile(); cf != "" {
+				fmt.Printf("  %sLoaded from: %s%s\n", cli.Dim, cli.ShortenHome(cf), cli.Reset)
+			}
+			fmt.Printf("  %sEdit with: same config edit%s\n\n", cli.Dim, cli.Reset)
 			fmt.Println(config.ShowConfig())
 			return nil
 		},

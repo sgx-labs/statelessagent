@@ -35,7 +35,7 @@ func versionCmd() *cobra.Command {
 			if check {
 				return runVersionCheck()
 			}
-			fmt.Printf("same %s\n", Version)
+			fmt.Printf("same %s (%s/%s)\n", Version, runtime.GOOS, runtime.GOARCH)
 			return nil
 		},
 	}

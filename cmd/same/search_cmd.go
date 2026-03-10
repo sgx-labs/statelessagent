@@ -11,6 +11,7 @@ import (
 
 	"github.com/sgx-labs/statelessagent/internal/cli"
 	"github.com/sgx-labs/statelessagent/internal/config"
+	"github.com/sgx-labs/statelessagent/internal/embedding"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
@@ -24,8 +25,9 @@ func searchCmd() *cobra.Command {
 		vaults    string
 	)
 	cmd := &cobra.Command{
-		Use:   "search [query]",
-		Short: "Search your notes by meaning or keyword",
+		Use:     "search [query]",
+		Aliases: []string{"s"},
+		Short:   "Search your notes by meaning or keyword",
 		Long: `Search the current vault, or search across multiple vaults.
 
 Examples:
@@ -127,12 +129,12 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 			}
 		} else {
 			if mismatchErr := db.CheckEmbeddingMeta(client.Name(), client.Model(), client.Dimensions()); mismatchErr != nil {
-				return mismatchErr
+				return embedding.HumanizeError(mismatchErr)
 			}
 
 			queryVec, err := client.GetQueryEmbedding(query)
 			if err != nil {
-				return fmt.Errorf("embed query: %w", err)
+				return embedding.HumanizeError(fmt.Errorf("embed query: %w", err))
 			}
 
 			results, err = db.HybridSearch(queryVec, query, store.SearchOptions{
@@ -199,11 +201,12 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 		reg := config.LoadRegistry()
 		if len(reg.Vaults) >= 2 {
 			fmt.Printf("  %sSearching 1 vault. Use --all to search %d vaults.%s\n", cli.Dim, len(reg.Vaults), cli.Reset)
-		} else if len(results) > 0 {
-			fmt.Printf("  %sExplore: same related %s%s\n", cli.Dim, results[0].Path, cli.Reset)
+		}
+		if len(results) > 0 {
+			fmt.Printf("  %sExplore related: same related %s%s\n", cli.Dim, results[0].Path, cli.Reset)
 		}
 		if len(results) < 3 {
-			fmt.Printf("  %sTip: same ask '<your question>' for AI-powered answers with citations%s\n", cli.Dim, cli.Reset)
+			fmt.Printf("  %sTip: run 'same ask \"<your question>\"' for AI-powered answers with citations%s\n", cli.Dim, cli.Reset)
 		}
 	}
 
@@ -340,7 +343,7 @@ func relatedCmd() *cobra.Command {
 func runRelated(notePath string, topK int, jsonOut bool, verbose bool) error {
 	db, err := store.Open()
 	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+		return dbOpenError(err)
 	}
 	defer db.Close()
 
@@ -350,7 +353,7 @@ func runRelated(notePath string, topK int, jsonOut bool, verbose bool) error {
 		return fmt.Errorf("embedding provider: %w", err)
 	}
 	if mismatchErr := db.CheckEmbeddingMeta(client.Name(), client.Model(), client.Dimensions()); mismatchErr != nil {
-		return mismatchErr
+		return embedding.HumanizeError(mismatchErr)
 	}
 
 	// Get the stored embedding for this note

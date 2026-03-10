@@ -48,7 +48,10 @@ func runLog(lastN int, jsonOut bool) error {
 	}
 
 	if len(entries) == 0 {
-		fmt.Println("\nNo recent activity. SAME records activity when hooks fire during Claude Code sessions.")
+		fmt.Println("\n  No recent activity.")
+		fmt.Println("  SAME records activity when hooks fire during Claude Code sessions.")
+		fmt.Println("  Set up hooks with: same setup hooks")
+		fmt.Println()
 		return nil
 	}
 

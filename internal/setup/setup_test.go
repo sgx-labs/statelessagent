@@ -932,9 +932,9 @@ func TestIsCloudSyncedPath(t *testing.T) {
 
 func TestCreateSeedStructure_CreatesDirectories(t *testing.T) {
 	dir := t.TempDir()
-	createSeedStructure(dir)
+	createSeedStructure(dir, LevelDev)
 
-	for _, name := range []string{"sessions", "_PRIVATE"} {
+	for _, name := range []string{"sessions", "_PRIVATE", "decisions"} {
 		info, err := os.Stat(filepath.Join(dir, name))
 		if err != nil {
 			t.Errorf("expected %s to be created: %v", name, err)
@@ -954,7 +954,7 @@ func TestCreateSeedStructure_SkipsExisting(t *testing.T) {
 	os.MkdirAll(sessDir, 0o755)
 	os.WriteFile(filepath.Join(sessDir, "test.md"), []byte("existing"), 0o644)
 
-	createSeedStructure(dir)
+	createSeedStructure(dir, LevelDev)
 
 	// Verify existing content is preserved
 	data, err := os.ReadFile(filepath.Join(sessDir, "test.md"))

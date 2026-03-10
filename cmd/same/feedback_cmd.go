@@ -97,7 +97,7 @@ func runFeedback(pathPattern, direction string) error {
 			if err := db.SetAccessBoost(n.path, 5); err != nil {
 				fmt.Fprintf(os.Stderr, "  error boosting %s: %v\n", n.path, err)
 			}
-			boostMsg = fmt.Sprintf("Boosted '%s' — confidence: %.2f → %.2f, access +5",
+			boostMsg = fmt.Sprintf("✓ Boosted '%s' — confidence: %.2f → %.2f, access +5",
 				n.title, oldConf, newConf)
 		} else {
 			newConf = oldConf - 0.3
@@ -108,7 +108,7 @@ func runFeedback(pathPattern, direction string) error {
 				fmt.Fprintf(os.Stderr, "  error adjusting %s: %v\n", n.path, err)
 				continue
 			}
-			boostMsg = fmt.Sprintf("Penalized '%s' — confidence: %.2f → %.2f",
+			boostMsg = fmt.Sprintf("✓ Penalized '%s' — confidence: %.2f → %.2f",
 				n.title, oldConf, newConf)
 		}
 

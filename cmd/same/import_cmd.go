@@ -85,7 +85,7 @@ type importedFile struct {
 func runImport(scanDir, explicitFile string, recursive bool) error {
 	vaultPath := config.VaultPath()
 	if vaultPath == "" {
-		return userError("No vault found", "Run 'same init' first to set up your vault")
+		return userError("No vault found", "run 'same init' first to set up your vault")
 	}
 
 	importsDir := filepath.Join(vaultPath, "imports")

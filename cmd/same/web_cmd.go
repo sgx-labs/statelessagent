@@ -118,6 +118,14 @@ func launchBackground(addr string, port int, vaultPath string) error {
 	}
 
 	if !ready {
+		// Check if port is already in use (another instance)
+		conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			fmt.Printf("\n  %s!%s Port %d is already in use.\n", cli.Yellow, cli.Reset, port)
+			fmt.Printf("  %sTry a different port: same web --port %d%s\n\n", cli.Dim, port+1, cli.Reset)
+			return nil
+		}
 		fmt.Printf("  %s!%s Server may not have started — check port %d\n", cli.Yellow, cli.Reset, port)
 		return nil
 	}

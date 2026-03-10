@@ -43,7 +43,7 @@ func watchCmd() *cobra.Command {
 
 			db, err := store.Open()
 			if err != nil {
-				return fmt.Errorf("open database: %w", err)
+				return dbOpenError(err)
 			}
 			defer db.Close()
 			return watcher.Watch(ctx, db)
@@ -58,26 +58,32 @@ func vaultCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "list",
-		Short: "List registered vaults",
+		Use:     "list",
+		Aliases: []string{"ls"},
+		Short:   "List registered vaults",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			reg := config.LoadRegistry()
 			if len(reg.Vaults) == 0 {
-				fmt.Println("No vaults registered. Use 'same vault add <name> <path>' to register one.")
-				fmt.Printf("Current vault (auto-detected): %s\n", config.VaultPath())
+				fmt.Printf("\n  No vaults registered.\n")
+				vp := config.VaultPath()
+				if vp != "" {
+					fmt.Printf("  Current vault (auto-detected): %s\n", cli.ShortenHome(vp))
+				}
+				fmt.Printf("\n  %sRegister one with: same vault add <name> <path>%s\n\n", cli.Dim, cli.Reset)
 				return nil
 			}
-			fmt.Println("Registered vaults:")
+			fmt.Printf("\n  %sRegistered Vaults%s\n\n", cli.Bold, cli.Reset)
 			for name, path := range reg.Vaults {
 				marker := "  "
 				if name == reg.Default {
-					marker = "* "
+					marker = fmt.Sprintf("%s* %s", cli.Green, cli.Reset)
 				}
-				fmt.Printf("  %s%-15s %s\n", marker, name, path)
+				fmt.Printf("  %s%-15s %s\n", marker, name, cli.ShortenHome(path))
 			}
 			if reg.Default != "" {
-				fmt.Printf("\n  (* = default)\n")
+				fmt.Printf("\n  %s(* = default)%s\n", cli.Dim, cli.Reset)
 			}
+			fmt.Println()
 			return nil
 		},
 	})
@@ -106,9 +112,9 @@ func vaultCmd() *cobra.Command {
 			if err := reg.Save(); err != nil {
 				return fmt.Errorf("save registry: %w", err)
 			}
-			fmt.Printf("Registered vault %q at %s\n", name, absPath)
+			fmt.Printf("  %s✓%s Registered vault %q at %s\n", cli.Green, cli.Reset, name, cli.ShortenHome(absPath))
 			if reg.Default == name {
-				fmt.Println("Set as default vault.")
+				fmt.Printf("  Set as default vault.\n")
 			}
 			if len(reg.Vaults) >= 2 {
 				fmt.Printf("\n  %sTry: same search --all \"query\" to search across vaults%s\n", cli.Dim, cli.Reset)
@@ -136,7 +142,7 @@ func vaultCmd() *cobra.Command {
 			if err := reg.Save(); err != nil {
 				return fmt.Errorf("save registry: %w", err)
 			}
-			fmt.Printf("Removed vault %q\n", name)
+			fmt.Printf("  %s✓%s Removed vault %q\n", cli.Green, cli.Reset, name)
 			if reg.Default == "" && len(reg.Vaults) > 0 {
 				fmt.Printf("  %sNo default vault. Use 'same vault default <name>' to set one.%s\n", cli.Dim, cli.Reset)
 			}
@@ -158,7 +164,7 @@ func vaultCmd() *cobra.Command {
 			if err := reg.Save(); err != nil {
 				return fmt.Errorf("save registry: %w", err)
 			}
-			fmt.Printf("Default vault set to %q (%s)\n", name, reg.Vaults[name])
+			fmt.Printf("  %s✓%s Default vault set to %q (%s)\n", cli.Green, cli.Reset, name, cli.ShortenHome(reg.Vaults[name]))
 			return nil
 		},
 	})
@@ -188,7 +194,7 @@ func vaultCmd() *cobra.Command {
 			if err := reg.Save(); err != nil {
 				return fmt.Errorf("save registry: %w", err)
 			}
-			fmt.Printf("Renamed vault %q → %q\n", oldName, newName)
+			fmt.Printf("  %s✓%s Renamed vault %q → %q\n", cli.Green, cli.Reset, oldName, newName)
 			return nil
 		},
 	})
@@ -468,14 +474,15 @@ func runVaultFeed(sourceAlias, targetAlias string, dryRun bool) error {
 	}
 
 	if dryRun {
-		fmt.Printf("\nDry run: %d note(s) would be copied, %d skipped, %d blocked by PII guard\n",
+		fmt.Printf("\n  Dry run: %d note(s) would be copied, %d skipped, %d blocked by PII guard\n\n",
 			copied, skipped, blocked)
 	} else {
-		fmt.Printf("\nFed %d note(s) from %q to %q (skipped %d, blocked %d)\n",
-			copied, sourceAlias, targetAlias, skipped, blocked)
+		fmt.Printf("\n  %s✓%s Fed %d note(s) from %q to %q (skipped %d, blocked %d)\n",
+			cli.Green, cli.Reset, copied, sourceAlias, targetAlias, skipped, blocked)
 		if copied > 0 {
-			fmt.Println("Run 'same reindex' in the target vault to index the new notes.")
+			fmt.Printf("  %sRun 'same reindex' in the target vault to index the new notes.%s\n", cli.Dim, cli.Reset)
 		}
+		fmt.Println()
 	}
 
 	return nil

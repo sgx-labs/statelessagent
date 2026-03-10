@@ -66,18 +66,18 @@ func setDisplayMode(mode string) error {
 
 	switch mode {
 	case "full":
-		fmt.Println("Display mode: full (show all details)")
-		fmt.Println("\nSAME will show the complete box with included/excluded notes.")
+		fmt.Printf("\n  %s✓%s Display mode: full (show all details)\n", cli.Green, cli.Reset)
+		fmt.Println("  SAME will show the complete box with included/excluded notes.")
 	case "compact":
-		fmt.Println("Display mode: compact (one-liner)")
-		fmt.Println("\nSAME will show: ✦ SAME surfaced 3 of 847 memories")
+		fmt.Printf("\n  %s✓%s Display mode: compact (one-liner)\n", cli.Green, cli.Reset)
+		fmt.Printf("  SAME will show: %s✦ SAME surfaced 3 of 847 memories%s\n", cli.Dim, cli.Reset)
 	case "quiet":
-		fmt.Println("Display mode: quiet (hidden)")
-		fmt.Println("\nSAME will work silently in the background.")
+		fmt.Printf("\n  %s✓%s Display mode: quiet (hidden)\n", cli.Green, cli.Reset)
+		fmt.Println("  SAME will work silently in the background.")
 	}
 
-	fmt.Printf("\nSaved to: %s\n", cli.ShortenHome(cfgPath))
-	fmt.Println("Change takes effect on next prompt.")
+	fmt.Printf("\n  Saved to: %s\n", cli.ShortenHome(cfgPath))
+	fmt.Printf("  %sChange takes effect on next prompt.%s\n", cli.Dim, cli.Reset)
 	return nil
 }
 

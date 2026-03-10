@@ -131,7 +131,7 @@ func Box(lines []string) {
 
 // Footer prints the branded footer in dim text.
 func Footer() {
-	fmt.Printf("\n%s%sstatelessagent.com \u00b7 sgx-labs/statelessagent%s\n\n", margin, Dim, Reset)
+	fmt.Printf("\n%s%sstatelessagent.com%s\n\n", margin, Dim, Reset)
 }
 
 // padRight pads s with spaces to exactly width characters.

@@ -3,18 +3,22 @@ package setup
 
 import (
 	"bufio"
+	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/sgx-labs/statelessagent/internal/cli"
@@ -266,6 +270,11 @@ func RunInit(opts InitOptions) error {
 		experience = askExperienceLevel()
 	}
 
+	// Scan and show project context
+	cwd, _ := os.Getwd()
+	projectCtx := scanProjectContext(cwd)
+	showProjectContext(projectCtx)
+
 	providerReady := true
 
 	if embedProvider == "none" {
@@ -288,9 +297,12 @@ func RunInit(opts InitOptions) error {
 	} else {
 		cli.Section("Embeddings")
 		if opts.Yes {
-			// Non-interactive: try Ollama silently, fall back to keyword-only
+			// Non-interactive: try Ollama, warn if falling back to keyword-only
 			if err := checkOllama(); err != nil {
 				providerReady = false
+				fmt.Printf("  %s⚠%s Ollama not detected. Using keyword-only mode (exact matches only).\n", cli.Yellow, cli.Reset)
+				fmt.Printf("  %s  For semantic search, install Ollama: https://ollama.com%s\n", cli.Dim, cli.Reset)
+				fmt.Printf("  %s  Then run: same reindex%s\n", cli.Dim, cli.Reset)
 			}
 		} else {
 			// Interactive: probe Ollama, then let user choose provider
@@ -341,6 +353,7 @@ func RunInit(opts InitOptions) error {
 				_ = os.Setenv("SAME_EMBED_PROVIDER", "none")
 				providerReady = false
 				fmt.Printf("\n  %s✓%s Keyword-only mode\n", cli.Green, cli.Reset)
+				fmt.Printf("  %s  Semantic search is disabled — recall will only match exact keywords.%s\n", cli.Dim, cli.Reset)
 				fmt.Printf("  %s  Add an embedding provider anytime and run 'same reindex' to upgrade.%s\n", cli.Dim, cli.Reset)
 			}
 		}
@@ -367,7 +380,7 @@ func RunInit(opts InitOptions) error {
 	copyWelcomeNotes(vaultPath)
 
 	// Create seed directories
-	createSeedStructure(vaultPath)
+	createSeedStructure(vaultPath, experience)
 
 	// Indexing — use full mode if any embedding provider is available
 	useEmbeddings := embedProvider != "none" && providerReady
@@ -497,16 +510,22 @@ func RunInit(opts InitOptions) error {
 	fmt.Printf("  %s══════════════════════════════════════════════════════%s\n", cli.Cyan, cli.Reset)
 	fmt.Println()
 
-	// Get Started — immediately after the banner
-	cli.Section("Get Started")
-	fmt.Printf("    %s$%s claude              %s# Claude Code%s\n",
-		cli.Cyan, cli.Reset, cli.Dim, cli.Reset)
-	fmt.Printf("    %s$%s cursor .            %s# Cursor%s\n",
-		cli.Cyan, cli.Reset, cli.Dim, cli.Reset)
-	fmt.Printf("    %s$%s same search \"...\"   %s# Search from CLI%s\n",
-		cli.Cyan, cli.Reset, cli.Dim, cli.Reset)
-	fmt.Printf("    %s$%s same web --open     %s# Browse in browser%s\n",
-		cli.Cyan, cli.Reset, cli.Dim, cli.Reset)
+	// Smart seed hints based on detected project
+	showSmartSeedHints(projectCtx)
+
+	// Model awareness — only show for smaller/local models
+	showModelAwareness(embedProvider)
+
+	// Quick start — clear next steps
+	cli.Section("Quick start")
+	fmt.Printf("    %ssame search \"your query\"%s     Search your notes\n",
+		cli.Cyan, cli.Reset)
+	fmt.Printf("    %ssame seed list%s               Browse knowledge packs\n",
+		cli.Cyan, cli.Reset)
+	fmt.Printf("    %ssame web%s                     Open the dashboard\n",
+		cli.Cyan, cli.Reset)
+	fmt.Println()
+	fmt.Printf("  Your AI will automatically use SAME via MCP.\n")
 	fmt.Println()
 	fmt.Printf("  %sNew?%s %ssame tutorial%s  %s|%s  %sMore projects?%s %ssame init%s in any directory.\n",
 		cli.Bold, cli.Reset, cli.Cyan, cli.Reset,
@@ -954,6 +973,12 @@ func probeOllama() bool {
 // Returns the chosen provider name: "ollama", "openai", "openai-compatible", or "none".
 func offerProviderChoice(ollamaDetected bool) string {
 	fmt.Println()
+	// Show container environment notice if detected
+	if ci := config.DetectContainer(); ci.Detected {
+		fmt.Printf("  %sDetected: container environment (%s)%s\n\n", cli.Dim, ci.Type, cli.Reset)
+		fmt.Printf("  %sEmbedding with Ollama may be slower in containers.%s\n", cli.Dim, cli.Reset)
+		fmt.Printf("  %sConsider a remote endpoint or keyword-only mode if performance is an issue.%s\n\n", cli.Dim, cli.Reset)
+	}
 	if ollamaDetected {
 		fmt.Printf("  %s✓%s Ollama detected at localhost:11434\n\n", cli.Green, cli.Reset)
 	}
@@ -973,7 +998,7 @@ func offerProviderChoice(ollamaDetected bool) string {
 		{"ollama", ollamaLabel},
 		{"openai", "OpenAI API (requires OPENAI_API_KEY)"},
 		{"openai-compatible", "OpenAI-compatible (llama.cpp, VLLM, LM Studio, OpenRouter)"},
-		{"none", "None (keyword-only mode — exact matches only)"},
+		{"none", "None (keyword-only — no semantic search, exact matches only)"},
 	}
 
 	for i, opt := range options {
@@ -1433,19 +1458,54 @@ func runIndex(vaultPath string, verbose, useEmbeddings bool) (*indexer.Stats, er
 	// Count files first for time estimate
 	noteCount := indexer.CountMarkdownFiles(vaultPath)
 
-	// Show time estimate for large vaults
-	if noteCount > 500 {
-		estMinutes := (noteCount * 50) / 1000 / 60 // ~50ms per note
-		if estMinutes < 1 {
-			estMinutes = 1
+	// Show time estimate for large vaults.
+	// With embeddings: ~800ms/note (chunking + HTTP embedding calls); ~200ms with batching.
+	// Keyword-only: ~50ms/note (just parsing + keyword extraction).
+	// Container environments with local Ollama get a 2x multiplier for more honest estimates.
+	if noteCount > 100 {
+		var msPerNote int
+		if useEmbeddings {
+			msPerNote = 200 // batched embedding estimate (50 per request)
+			// Local Ollama in containers is typically slower due to virtualization overhead
+			if config.IsContainer() {
+				ec := config.EmbeddingProviderConfig()
+				provider := ec.Provider
+				if provider == "" || provider == "ollama" {
+					msPerNote *= 2
+				}
+			}
+		} else {
+			msPerNote = 50 // keyword-only mode
 		}
-		fmt.Printf("  Found %s notes. Estimated time: ~%d minute(s)\n\n",
-			cli.FormatNumber(noteCount), estMinutes)
+		estSeconds := (noteCount * msPerNote) / 1000
+		if estSeconds < 60 {
+			fmt.Printf("  Found %s notes. Estimated time: ~%d seconds\n\n",
+				cli.FormatNumber(noteCount), estSeconds)
+		} else {
+			estMinutes := (estSeconds + 30) / 60 // round to nearest minute
+			if estMinutes < 1 {
+				estMinutes = 1
+			}
+			fmt.Printf("  Found %s notes. Estimated time: ~%d minute(s)\n\n",
+				cli.FormatNumber(noteCount), estMinutes)
+		}
 	}
 
 	if noteCount > 5000 {
 		fmt.Printf("  %s⚠%s Large vault detected.\n", cli.Yellow, cli.Reset)
-		fmt.Println("  Initial indexing may take 10+ minutes.")
+		if useEmbeddings {
+			largeMs := 200
+			if config.IsContainer() {
+				ec := config.EmbeddingProviderConfig()
+				if ec.Provider == "" || ec.Provider == "ollama" {
+					largeMs = 400
+				}
+			}
+			estLargeMin := (noteCount * largeMs) / 1000 / 60
+			fmt.Printf("  Initial indexing may take %d+ minutes.\n", estLargeMin)
+		} else {
+			fmt.Println("  Initial indexing may take several minutes.")
+		}
 		fmt.Println("  After this, SAME only re-indexes changed files.")
 		fmt.Println()
 	}
@@ -1484,39 +1544,95 @@ func runIndex(vaultPath string, verbose, useEmbeddings bool) (*indexer.Stats, er
 	defer db.Close()
 
 	barWidth := 40
+	startTime := time.Now()
 	progress := func(current, total int, path string) {
 		if total == 0 {
 			return
 		}
+		elapsed := time.Since(startTime)
+		elapsedStr := formatDuration(elapsed)
+
+		// Estimate remaining time based on progress so far
+		var remainStr string
+		if current > 0 {
+			perNote := elapsed / time.Duration(current)
+			remaining := perNote * time.Duration(total-current)
+			remainStr = formatDuration(remaining)
+		}
+
 		if verbose {
 			// Show each file being processed
 			shortPath := path
 			if len(path) > 50 {
 				shortPath = "..." + path[len(path)-47:]
 			}
-			fmt.Printf("\r  [%d/%d] %s\033[K\n", current, total, shortPath)
+			if remainStr != "" {
+				fmt.Printf("\r  [%d/%d] %s elapsed · ~%s remaining · %s\033[K\n",
+					current, total, elapsedStr, remainStr, shortPath)
+			} else {
+				fmt.Printf("\r  [%d/%d] %s\033[K\n", current, total, shortPath)
+			}
 		} else {
-			// Just show progress bar
+			// Show progress bar with timing
 			filled := current * barWidth / total
 			bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
-			fmt.Printf("\r  [%s] %d/%d", bar, current, total)
+			if remainStr != "" {
+				fmt.Printf("\r  [%s] %d/%d · %s elapsed · ~%s remaining\033[K",
+					bar, current, total, elapsedStr, remainStr)
+			} else {
+				fmt.Printf("\r  [%s] %d/%d\033[K", bar, current, total)
+			}
 		}
 	}
 
+	// Set up context with signal handling for graceful cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		select {
+		case <-sigCh:
+			fmt.Fprintf(os.Stderr, "\n  Stopping... press Ctrl+C again to force quit\n")
+			cancel()
+			// Wait for second signal to force quit
+			<-sigCh
+			os.Exit(1)
+		case <-ctx.Done():
+		}
+	}()
+	defer signal.Stop(sigCh)
+
 	var stats *indexer.Stats
 	if useEmbeddings {
-		stats, err = indexer.ReindexWithProgress(db, true, progress)
+		stats, err = indexer.ReindexWithProgress(ctx, db, true, progress)
 	} else {
-		stats, err = indexer.ReindexLite(db, true, progress)
+		stats, err = indexer.ReindexLite(ctx, db, true, progress)
 	}
-	if err != nil {
+	if err != nil && !errors.Is(err, indexer.ErrCancelled) {
 		return nil, fmt.Errorf("indexing failed: %w", err)
 	}
 
 	if !verbose {
 		fmt.Println() // newline after progress bar
 	}
+	if stats != nil && stats.Cancelled {
+		fmt.Printf("\n  %sReindex cancelled by user. %d of %d notes indexed.%s\n",
+			cli.Yellow, stats.NewlyIndexed, stats.TotalFiles, cli.Reset)
+	}
 	return stats, nil
+}
+
+// formatDuration returns a human-friendly duration string like "2m12s" or "45s".
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	m := int(d.Minutes())
+	s := int(d.Seconds()) % 60
+	if m > 0 {
+		return fmt.Sprintf("%dm%02ds", m, s)
+	}
+	return fmt.Sprintf("%ds", s)
 }
 
 // sameGitignoreTemplate is the recommended .gitignore content for SAME vaults.
@@ -1600,13 +1716,16 @@ func handleGitignore(vaultPath string, autoAccept bool) {
 
 // createSeedStructure creates the recommended vault directory structure.
 // Only creates directories that don't already exist. Never overwrites.
-func createSeedStructure(vaultPath string) {
-	seedDirs := []struct {
+// For new users (vibe-coder), each directory gets a one-line explanation.
+func createSeedStructure(vaultPath string, experience ExperienceLevel) {
+	type seedDir struct {
 		path string
-		desc string
-	}{
-		{"sessions", "session handoffs"},
-		{"_PRIVATE", "private notes (not indexed)"},
+		hint string // shown only for vibe-coder level
+	}
+	seedDirs := []seedDir{
+		{"sessions", "Session handoffs live here. Your AI writes what's in progress at end of session."},
+		{"_PRIVATE", "Never indexed. Safe for credentials, personal notes, anything sensitive."},
+		{"decisions", "Tracked decisions with rationale. Prevents relitigating settled choices."},
 	}
 
 	created := 0
@@ -1619,13 +1738,15 @@ func createSeedStructure(vaultPath string) {
 			continue
 		}
 		created++
+		if experience == LevelVibeCoder {
+			fmt.Printf("  %s✓%s %s/\n", cli.Green, cli.Reset, d.path)
+			fmt.Printf("    %s%s%s\n", cli.Dim, d.hint, cli.Reset)
+		}
 	}
 
-	if created > 0 {
-		fmt.Printf("  %s✓%s Created seed directories: sessions/, _PRIVATE/\n",
+	if created > 0 && experience == LevelDev {
+		fmt.Printf("  %s✓%s Created directories: sessions/, _PRIVATE/, decisions/\n",
 			cli.Green, cli.Reset)
-		fmt.Printf("    %ssessions/ = handoff notes, _PRIVATE/ = never indexed%s\n",
-			cli.Dim, cli.Reset)
 	}
 }
 
@@ -1782,6 +1903,197 @@ func runTestSearch(vaultPath string) *store.SearchResult {
 	}
 
 	return &results[0]
+}
+
+// ProjectContext holds detected project characteristics.
+type ProjectContext struct {
+	Language    string   // e.g. "Go", "TypeScript", "Python"
+	LangFile   string   // e.g. "go.mod", "package.json"
+	AITools    []string // e.g. "Claude Code (.claude/)", "Cursor (.cursorrules)"
+	Docs       []string // e.g. "CLAUDE.md (2.9 KB)", "README.md (4.1 KB)"
+	HasGit     bool
+	GitBranch  string
+	GitCommits int
+}
+
+// scanProjectContext detects the language, AI tools, docs, and git state of the current directory.
+func scanProjectContext(dir string) *ProjectContext {
+	ctx := &ProjectContext{}
+
+	// Detect language
+	langFiles := []struct {
+		file string
+		lang string
+	}{
+		{"go.mod", "Go"},
+		{"package.json", "TypeScript/Node"},
+		{"tsconfig.json", "TypeScript"},
+		{"Cargo.toml", "Rust"},
+		{"pyproject.toml", "Python"},
+		{"requirements.txt", "Python"},
+		{"setup.py", "Python"},
+		{"Gemfile", "Ruby"},
+		{"pom.xml", "Java"},
+		{"build.gradle", "Java/Kotlin"},
+		{"composer.json", "PHP"},
+		{"mix.exs", "Elixir"},
+	}
+	for _, lf := range langFiles {
+		if _, err := os.Stat(filepath.Join(dir, lf.file)); err == nil {
+			if ctx.Language == "" {
+				ctx.Language = lf.lang
+				ctx.LangFile = lf.file
+			}
+			break
+		}
+	}
+
+	// Detect AI tools
+	aiMarkers := []struct {
+		path  string
+		label string
+	}{
+		{".claude", "Claude Code (.claude/)"},
+		{".cursorrules", "Cursor (.cursorrules)"},
+		{".cursor", "Cursor (.cursor/)"},
+		{".windsurfrules", "Windsurf (.windsurfrules)"},
+		{".github/copilot-instructions.md", "Copilot (.github/copilot-instructions.md)"},
+		{".aider.conf.yml", "Aider (.aider.conf.yml)"},
+	}
+	for _, m := range aiMarkers {
+		if _, err := os.Stat(filepath.Join(dir, m.path)); err == nil {
+			ctx.AITools = append(ctx.AITools, m.label)
+		}
+	}
+
+	// Detect docs with sizes
+	docFiles := []string{
+		"CLAUDE.md", "README.md", "ARCHITECTURE.md", "DESIGN.md",
+		"CONTRIBUTING.md", "CHANGELOG.md", ".cursorrules", ".windsurfrules",
+	}
+	for _, name := range docFiles {
+		if info, err := os.Stat(filepath.Join(dir, name)); err == nil && !info.IsDir() {
+			sizeKB := float64(info.Size()) / 1024
+			ctx.Docs = append(ctx.Docs, fmt.Sprintf("%s (%.1f KB)", name, sizeKB))
+		}
+	}
+
+	// Detect git
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+		ctx.HasGit = true
+		if out, err := exec.Command("git", "-C", dir, "rev-parse", "--abbrev-ref", "HEAD").Output(); err == nil {
+			ctx.GitBranch = strings.TrimSpace(string(out))
+		}
+		if out, err := exec.Command("git", "-C", dir, "rev-list", "--count", "HEAD").Output(); err == nil {
+			if n, err := strconv.Atoi(strings.TrimSpace(string(out))); err == nil {
+				ctx.GitCommits = n
+			}
+		}
+	}
+
+	// Only return if we found something interesting
+	if ctx.Language == "" && len(ctx.AITools) == 0 && len(ctx.Docs) == 0 && !ctx.HasGit {
+		return nil
+	}
+	return ctx
+}
+
+// showProjectContext prints the detected project context during init.
+func showProjectContext(ctx *ProjectContext) {
+	if ctx == nil {
+		return
+	}
+	fmt.Println()
+	fmt.Printf("  %sDetected project context:%s\n", cli.Bold, cli.Reset)
+	if ctx.Language != "" {
+		fmt.Printf("    Language: %s (%s found)\n", ctx.Language, ctx.LangFile)
+	}
+	if len(ctx.AITools) > 0 {
+		fmt.Printf("    AI tools: %s\n", strings.Join(ctx.AITools, ", "))
+	}
+	if len(ctx.Docs) > 0 {
+		fmt.Printf("    Existing docs: %s\n", strings.Join(ctx.Docs, ", "))
+	}
+	if ctx.HasGit {
+		gitInfo := "yes"
+		if ctx.GitBranch != "" {
+			gitInfo += fmt.Sprintf(" (%s branch", ctx.GitBranch)
+			if ctx.GitCommits > 0 {
+				gitInfo += fmt.Sprintf(", %d commits", ctx.GitCommits)
+			}
+			gitInfo += ")"
+		}
+		fmt.Printf("    Git: %s\n", gitInfo)
+	}
+	fmt.Println()
+}
+
+// showSmartSeedHints prints contextual seed suggestions based on detected project.
+func showSmartSeedHints(ctx *ProjectContext) {
+	if ctx == nil {
+		return
+	}
+
+	// Cross-tool memory hint
+	hasClaude := false
+	hasCursor := false
+	for _, t := range ctx.AITools {
+		if strings.Contains(t, "Claude") {
+			hasClaude = true
+		}
+		if strings.Contains(t, "Cursor") {
+			hasCursor = true
+		}
+	}
+	if hasClaude && hasCursor {
+		fmt.Printf("  %s✦%s Both Cursor and Claude Code detected. They'll share this vault automatically.\n",
+			cli.Cyan, cli.Reset)
+		fmt.Println()
+	}
+
+	// Language-specific seed hints
+	switch ctx.Language {
+	case "TypeScript/Node", "TypeScript":
+		fmt.Printf("  %sTip:%s TypeScript project detected. Try: %ssame seed install typescript-fullstack-patterns%s\n",
+			cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
+	case "Go":
+		fmt.Printf("  %sTip:%s Go project detected. Seed vaults like %sapi-design-patterns%s and %sdevops-runbooks%s pair well.\n",
+			cli.Bold, cli.Reset, cli.Cyan, cli.Reset, cli.Cyan, cli.Reset)
+	case "Python":
+		fmt.Printf("  %sTip:%s Python project detected. Try: %ssame seed install ai-agent-architecture%s for AI/ML patterns.\n",
+			cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
+	}
+}
+
+// showModelAwareness shows a tip about model quality when using smaller/local models.
+// Only displayed for non-OpenAI, non-none providers where the user might benefit
+// from knowing that larger models produce richer output.
+func showModelAwareness(embedProvider string) {
+	// Don't show for OpenAI users (they're already on capable models)
+	// Don't show for none (no embeddings at all)
+	if embedProvider == "openai" || embedProvider == "none" {
+		return
+	}
+
+	// Check if the user has Claude or GPT-4 available via AI tool detection.
+	// If they have .claude/ or known large-model configs, skip the hint.
+	cwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+
+	// Users with Claude Code or Cursor likely have access to strong models
+	for _, marker := range []string{".claude", ".cursor"} {
+		if _, err := os.Stat(filepath.Join(cwd, marker)); err == nil {
+			return // they're using a strong model, no need for the tip
+		}
+	}
+
+	fmt.Println()
+	fmt.Printf("  %sTip:%s Larger models (Claude Opus, GPT-4) produce richer handoffs\n",
+		cli.Bold, cli.Reset)
+	fmt.Printf("  and graph extraction. Your current setup works great for search\n")
+	fmt.Printf("  and decisions.\n")
 }
 
 // detectProjectDocs scans a directory for common project documentation files.

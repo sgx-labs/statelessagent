@@ -109,16 +109,16 @@ func seedInstallCmd() *cobra.Command {
 					fmt.Printf("  Downloading...               ")
 				},
 				OnDownloadDone: func(sizeKB int) {
-					fmt.Printf("done (%d KB)\n", sizeKB)
+					fmt.Printf("%s✓%s (%d KB)\n", cli.Green, cli.Reset, sizeKB)
 				},
 				OnExtractDone: func(fileCount int) {
-					fmt.Printf("  Extracting %d files...       done\n", fileCount)
+					fmt.Printf("  Extracting %d files...       %s✓%s\n", fileCount, cli.Green, cli.Reset)
 				},
 				OnIndexDone: func(chunks int) {
 					if chunks > 0 {
-						fmt.Printf("  Indexed %d chunks\n", chunks)
+						fmt.Printf("  Indexed %d chunks            %s✓%s\n", chunks, cli.Green, cli.Reset)
 					} else {
-						fmt.Printf("  Indexing skipped (no embeddings provider)\n")
+						fmt.Printf("  Indexing skipped %s(no embeddings provider)%s\n", cli.Dim, cli.Reset)
 					}
 				},
 			}
@@ -127,13 +127,13 @@ func seedInstallCmd() *cobra.Command {
 			if err != nil {
 				errMsg := err.Error()
 				if strings.Contains(errMsg, "already exists") {
-					return userError(errMsg, "Use --force to overwrite the existing installation")
+					return userError(errMsg, "use --force to overwrite the existing installation")
 				}
 				if strings.Contains(errMsg, "not found") {
-					return userError(errMsg, "Run 'same seed list' to see available seeds")
+					return userError(errMsg, "run 'same seed list' to see available seeds")
 				}
 				if strings.Contains(errMsg, "requires SAME") {
-					return userError(errMsg, "Run 'same update' to get the latest version")
+					return userError(errMsg, "run 'same update' to get the latest version")
 				}
 				if strings.Contains(errMsg, "already installed") {
 					fmt.Printf("  %s✓%s %s\n", cli.Green, cli.Reset, errMsg)
@@ -183,7 +183,7 @@ func seedInfoCmd() *cobra.Command {
 			if s == nil {
 				return userError(
 					fmt.Sprintf("Seed %q not found", name),
-					"Run 'same seed list' to see available seeds",
+					"run 'same seed list' to see available seeds",
 				)
 			}
 
@@ -228,7 +228,7 @@ func seedRemoveCmd() *cobra.Command {
 			if !seed.IsInstalled(name) {
 				return userError(
 					fmt.Sprintf("Seed %q is not installed", name),
-					"Run 'same seed list' to see installed seeds",
+					"run 'same seed list' to see installed seeds",
 				)
 			}
 
@@ -250,9 +250,9 @@ func seedRemoveCmd() *cobra.Command {
 			}
 
 			if deleteFiles {
-				fmt.Printf("  Removed seed %q and deleted files.\n", name)
+				fmt.Printf("  %s✓%s Removed seed %q and deleted files.\n", cli.Green, cli.Reset, name)
 			} else {
-				fmt.Printf("  Unregistered seed %q (files kept).\n", name)
+				fmt.Printf("  %s✓%s Unregistered seed %q (files kept).\n", cli.Green, cli.Reset, name)
 			}
 			return nil
 		},
