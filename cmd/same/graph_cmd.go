@@ -28,6 +28,8 @@ func graphCmd() *cobra.Command {
 	cmd.AddCommand(graphQueryCmd())
 	cmd.AddCommand(graphPathCmd())
 	cmd.AddCommand(graphRebuildCmd())
+	cmd.AddCommand(graphEnableCmd())
+	cmd.AddCommand(graphDisableCmd())
 
 	return cmd
 }
@@ -62,14 +64,13 @@ func graphStatsCmd() *cobra.Command {
 			if stats.TotalNodes > 0 {
 				fmt.Printf("  Avg Degree: %.2f\n", stats.AvgDegree)
 			}
-			graphLLM := os.Getenv("SAME_GRAPH_LLM")
-			switch graphLLM {
+			switch config.GraphLLMMode() {
 			case "on":
 				fmt.Printf("  Extraction: LLM-enhanced\n")
 			case "local-only":
 				fmt.Printf("  Extraction: LLM (local only)\n")
 			default:
-				fmt.Printf("  Extraction: regex-only (set SAME_GRAPH_LLM=on for richer results)\n")
+				fmt.Printf("  Extraction: regex-only (run 'same graph enable' for richer results)\n")
 			}
 			fmt.Println("\nNodes by Type:")
 			for t, c := range stats.NodesByType {
@@ -330,6 +331,49 @@ func configureGraphRebuildLLM(extractor *graph.Extractor) string {
 		return fmt.Sprintf("enabled (%s/%s)", chatClient.Provider(), model)
 	default:
 		return "disabled (regex-only)"
+	}
+}
+
+func graphEnableCmd() *cobra.Command {
+	var localOnly bool
+	cmd := &cobra.Command{
+		Use:   "enable",
+		Short: "Enable LLM-enhanced graph extraction",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			vp := config.VaultPath()
+			mode := "on"
+			if localOnly {
+				mode = "local-only"
+			}
+			if err := config.SetGraphLLMMode(vp, mode); err != nil {
+				return fmt.Errorf("update config: %w", err)
+			}
+			if localOnly {
+				fmt.Println("Graph LLM extraction set to local-only.")
+			} else {
+				fmt.Println("Graph LLM extraction enabled.")
+			}
+			fmt.Println("Run 'same graph rebuild' to apply changes to existing notes.")
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&localOnly, "local-only", false, "Only use local models (e.g., Ollama)")
+	return cmd
+}
+
+func graphDisableCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "disable",
+		Short: "Disable LLM graph extraction (regex-only)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			vp := config.VaultPath()
+			if err := config.SetGraphLLMMode(vp, "off"); err != nil {
+				return fmt.Errorf("update config: %w", err)
+			}
+			fmt.Println("Graph LLM extraction disabled (regex-only).")
+			fmt.Println("Run 'same graph rebuild' to apply changes to existing notes.")
+			return nil
+		},
 	}
 }
 

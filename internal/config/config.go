@@ -682,6 +682,31 @@ func GraphModel() string {
 	return ""
 }
 
+// SetGraphLLMMode updates the graph LLM extraction mode in the vault config file.
+// Valid modes: "off", "local-only", "on".
+func SetGraphLLMMode(vaultPath, mode string) error {
+	cfgPath := ConfigFilePath(vaultPath)
+
+	cfg, err := LoadConfigFrom(cfgPath)
+	if err != nil {
+		cfg = DefaultConfig()
+	}
+
+	cfg.Graph.LLMMode = mode
+
+	var buf bytes.Buffer
+	encoder := toml.NewEncoder(&buf)
+	if err := encoder.Encode(cfg); err != nil {
+		return fmt.Errorf("encode config: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+
+	return os.WriteFile(cfgPath, buf.Bytes(), 0o600)
+}
+
 // loadConfigSafe loads config without risking recursion. Returns nil on error.
 func loadConfigSafe() *Config {
 	cfg, err := LoadConfig()

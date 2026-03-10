@@ -152,6 +152,7 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 		initCmd(),
 		demoCmd(),
 		tutorialCmd(),
+		tipsCmd(),
 		seedCmd(),
 	)
 
@@ -284,4 +285,9 @@ func (e *sameError) Error() string {
 
 func userError(message, hint string) error {
 	return &sameError{message: message, hint: hint}
+}
+
+// dbOpenError wraps a database open error with a user-friendly message.
+func dbOpenError(err error) error {
+	return userError("Could not open the vault database", "run 'same init' to set up your vault, or check file permissions")
 }

@@ -463,7 +463,7 @@ else
     echo -e "  ${GREEN}✓${RESET} Ollama installed"
   else
     MISSING_OLLAMA=true
-    echo -e "  ${YELLOW}-${RESET} Ollama not installed (optional)"
+    echo -e "  ${YELLOW}-${RESET} Ollama not installed (semantic search unavailable)"
   fi
 fi
 
@@ -497,7 +497,7 @@ else
     echo -e "  ${GREEN}✓${RESET} Node.js installed"
   else
     MISSING_NODE=true
-    echo -e "  ${YELLOW}✗${RESET} Node.js not installed"
+    echo -e "  ${YELLOW}-${RESET} Node.js not installed (npx-based MCP integration unavailable)"
     echo "    Download from: https://nodejs.org"
   fi
 fi
@@ -514,15 +514,16 @@ echo -e "  ${GREEN}✓${RESET} ${BOLD}SAME installed successfully${RESET} ($INST
 echo ""
 
 if [ "$MISSING_OLLAMA" = true ] || [ "$MISSING_NODE" = true ]; then
-  echo "  Optional dependencies:"
+  echo "  Missing dependencies:"
   echo ""
   if [ "$MISSING_OLLAMA" = true ]; then
-    echo "    Ollama is optional — SAME works great with keyword search."
-    echo "    Add Ollama later for semantic search: https://ollama.com"
+    echo "    Ollama enables semantic search (recommended)."
+    echo "    Without it, SAME uses keyword matching only."
+    echo "    Install Ollama for the full experience: https://ollama.com"
     echo ""
   fi
   if [ "$MISSING_NODE" = true ]; then
-    echo "    Node.js enables AI tool integrations (optional)."
+    echo "    Node.js enables npx-based MCP integration (optional)."
     echo "    Install from: https://nodejs.org"
     echo ""
   fi

@@ -23,8 +23,9 @@ import (
 func statusCmd() *cobra.Command {
 	var jsonOut bool
 	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "See what SAME is tracking in your project",
+		Use:     "status",
+		Aliases: []string{"st"},
+		Short:   "See what SAME is tracking in your project",
 		Long: `Shows you the current state of SAME for your project:
   - How many notes are indexed
   - Which embedding/chat providers are active
@@ -68,6 +69,10 @@ type StatusData struct {
 		IndexedAgo string  `json:"indexed_ago,omitempty"`
 		DBSizeMB   float64 `json:"db_size_mb,omitempty"`
 	} `json:"vault"`
+	Environment *struct {
+		Container bool   `json:"container"`
+		Type      string `json:"type,omitempty"`
+	} `json:"environment,omitempty"`
 	Embedding runtimeStatus      `json:"embedding"`
 	Chat      runtimeStatus      `json:"chat"`
 	Graph     graphRuntimeStatus `json:"graph"`
@@ -112,6 +117,13 @@ func runStatus(jsonOut bool) error {
 		data.Embedding = embeddingStatus
 		data.Chat = chatStatus
 		data.Graph = graphStatus
+
+		if ci := config.DetectContainer(); ci.Detected {
+			data.Environment = &struct {
+				Container bool   `json:"container"`
+				Type      string `json:"type,omitempty"`
+			}{Container: true, Type: ci.Type}
+		}
 
 		db, err := store.Open()
 		if err != nil {
@@ -201,7 +213,7 @@ func runStatus(jsonOut bool) error {
 	// Human output
 	cli.Header("SAME Status")
 
-	cli.Section("Vault")
+	cli.Section("Index")
 	fmt.Printf("  Path:    %s\n", cli.ShortenHome(vp))
 
 	db, err := store.Open()
@@ -235,6 +247,9 @@ func runStatus(jsonOut bool) error {
 	}
 
 	cli.Section("AI Runtime")
+	if ci := config.DetectContainer(); ci.Detected {
+		fmt.Printf("  Environment: %s container\n", ci.Type)
+	}
 	fmt.Printf("  Embedding: %s\n", summarizeRuntime(embeddingStatus))
 	fmt.Printf("  Chat:      %s\n", summarizeRuntime(chatStatus))
 	fmt.Printf("  Graph LLM: %s\n", summarizeGraphRuntime(graphStatus))

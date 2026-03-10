@@ -493,6 +493,24 @@ func runDoctor(jsonOut bool) error {
 		return "", nil
 	})
 
+	// 8b. Container environment
+	check("Container environment", "consider a remote embedding endpoint if local Ollama is slow", func() (string, error) {
+		ci := config.DetectContainer()
+		if !ci.Detected {
+			return "not detected (bare metal / VM)", nil
+		}
+		ec := config.EmbeddingProviderConfig()
+		provider := strings.TrimSpace(ec.Provider)
+		if provider == "" {
+			provider = "ollama"
+		}
+		detail := ci.Type + " container"
+		if provider == "ollama" {
+			detail += " with local Ollama — if indexing is slow, consider a remote endpoint or keyword-only mode"
+		}
+		return detail, nil
+	})
+
 	// 9. Hook installation
 	if !vaultOK {
 		skip("Hooks installed", "skipped (vault path not found)")
