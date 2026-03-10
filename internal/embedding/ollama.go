@@ -76,16 +76,6 @@ type ollamaEmbedResponse struct {
 	Embeddings [][]float32 `json:"embeddings"`
 }
 
-// Legacy single-prompt types kept for reference/compat.
-type ollamaEmbeddingRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-}
-
-type ollamaEmbeddingResponse struct {
-	Embedding []float32 `json:"embedding"`
-}
-
 // httpError distinguishes client errors (4xx, don't retry) from server/network errors (retry).
 type httpError struct {
 	StatusCode int
@@ -148,6 +138,14 @@ func classifyNetworkError(err error) string {
 // For nomic-embed-text, purpose maps to the search_document/search_query prefix.
 // Retries on 5xx and network errors with exponential backoff (max 3 attempts).
 func (p *OllamaProvider) GetEmbedding(text string, purpose string) ([]float32, error) {
+	return p.getEmbeddingWithDepth(text, purpose, 0)
+}
+
+// ollamaMaxTruncationDepth limits how many times GetEmbedding can recursively
+// truncate text on 500 errors. Prevents unbounded recursion with large inputs.
+const ollamaMaxTruncationDepth = 3
+
+func (p *OllamaProvider) getEmbeddingWithDepth(text string, purpose string, depth int) ([]float32, error) {
 	prefix := "search_document"
 	if purpose == "query" {
 		prefix = "search_query"
@@ -175,10 +173,10 @@ func (p *OllamaProvider) GetEmbedding(text string, purpose string) ([]float32, e
 			return results[0], nil
 		}
 
-		// If 500 with long text, try truncation instead of retry
-		if he, ok := err.(*httpError); ok && he.StatusCode == http.StatusInternalServerError && len(text) > 3000 {
+		// If 500 with long text, try truncation instead of retry (bounded depth)
+		if he, ok := err.(*httpError); ok && he.StatusCode == http.StatusInternalServerError && len(text) > 3000 && depth < ollamaMaxTruncationDepth {
 			truncated := text[:len(text)/2]
-			return p.GetEmbedding(truncated, purpose)
+			return p.getEmbeddingWithDepth(truncated, purpose, depth+1)
 		}
 
 		// Don't retry 4xx errors
@@ -208,17 +206,19 @@ func (p *OllamaProvider) doBatchEmbedRequest(inputs []string) ([][]float32, erro
 	)
 	if err != nil {
 		reason := classifyNetworkError(err)
-		return nil, &httpError{StatusCode: 0, Body: err.Error(), Reason: reason}
+		return nil, &httpError{StatusCode: 0, Body: sanitizeOllamaError(err.Error()), Reason: reason}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-		return nil, &httpError{StatusCode: resp.StatusCode, Body: string(respBody)}
+		return nil, &httpError{StatusCode: resp.StatusCode, Body: sanitizeOllamaError(string(respBody))}
 	}
 
+	// Limit successful response body to 100MB to prevent a malicious endpoint
+	// from sending an unbounded response that exhausts memory.
 	var result ollamaEmbedResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 100*1024*1024)).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
@@ -312,6 +312,17 @@ func validateLocalhostOnly(rawURL string) error {
 		return fmt.Errorf("Ollama URL must point to localhost for security, got: %s", host)
 	}
 	return nil
+}
+
+// sanitizeOllamaError strips internal details (file paths, stack traces, raw
+// error bodies) from Ollama error messages to prevent information leakage.
+func sanitizeOllamaError(msg string) string {
+	// Truncate overly long error bodies that may contain internal details
+	const maxLen = 256
+	if len(msg) > maxLen {
+		msg = msg[:maxLen] + "... (truncated)"
+	}
+	return msg
 }
 
 // ollamaDefaultDims returns the default embedding dimensions for known Ollama models.

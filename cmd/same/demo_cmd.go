@@ -210,17 +210,17 @@ func runDemo(clean, noSetup bool) error {
 	// Write demo notes
 	for _, note := range demoNotes {
 		fullPath := filepath.Join(demoDir, note.Path)
-		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o700); err != nil {
 			return fmt.Errorf("create directory: %w", err)
 		}
-		if err := os.WriteFile(fullPath, []byte(note.Content), 0o644); err != nil {
+		if err := os.WriteFile(fullPath, []byte(note.Content), 0o600); err != nil {
 			return fmt.Errorf("write demo note: %w", err)
 		}
 	}
 
 	// Create .same marker so vault detection works
 	sameDir := filepath.Join(demoDir, ".same", "data")
-	if err := os.MkdirAll(sameDir, 0o755); err != nil {
+	if err := os.MkdirAll(sameDir, 0o700); err != nil {
 		return fmt.Errorf("create .same dir: %w", err)
 	}
 
@@ -378,7 +378,7 @@ func runDemo(clean, noSetup bool) error {
 			if len(askResults) > 0 {
 				var ctx strings.Builder
 				for i, r := range askResults {
-					ctx.WriteString(fmt.Sprintf("--- Source %d: %s (%s) ---\n", i+1, r.Title, r.Path))
+					fmt.Fprintf(&ctx, "--- Source %d: %s (%s) ---\n", i+1, r.Title, r.Path)
 					snippet := r.Snippet
 					if len(snippet) > 1000 {
 						snippet = snippet[:1000]
@@ -478,6 +478,19 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 			abs, err := filepath.Abs(expanded)
 			if err == nil {
 				targetDir = abs
+			}
+		}
+
+		// Warn if target is home directory
+		if homeDir, err := os.UserHomeDir(); err == nil && targetDir == homeDir {
+			fmt.Printf("\n  %sWarning:%s You're in your home directory. Consider cd'ing to a project folder first,\n", cli.Yellow, cli.Reset)
+			fmt.Printf("  or SAME will index everything here.\n")
+			fmt.Printf("  Continue anyway? %s(y/N)%s ", cli.Dim, cli.Reset)
+			confirmAnswer, _ := reader.ReadString('\n')
+			confirmAnswer = strings.TrimSpace(strings.ToLower(confirmAnswer))
+			if confirmAnswer != "y" && confirmAnswer != "yes" {
+				fmt.Printf("\n  Run %ssame init%s from your project directory.\n\n", cli.Cyan, cli.Reset)
+				return nil
 			}
 		}
 

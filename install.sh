@@ -296,6 +296,10 @@ fi
 
 if [ "$BINARY_ACQUIRED" = false ]; then
   echo ""
+  if [ "$SKIP_DOWNLOAD" = false ]; then
+    echo "  Checksum verification failed. Falling back to build from source..."
+    echo ""
+  fi
   # Strategy 2: Build from source
   if build_prereqs_ok; then
     GO_VER=$(go version | grep -oE 'go[0-9]+\.[0-9]+' | head -1)
@@ -405,7 +409,7 @@ else
   fi
 
   # Check if we already added it before
-  if grep -q "$INSTALL_DIR" "$RC_FILE" 2>/dev/null; then
+  if grep -Fq "$INSTALL_DIR" "$RC_FILE" 2>/dev/null; then
     echo "  Already configured in $RC_FILE"
   else
     echo "" >> "$RC_FILE"
@@ -439,6 +443,8 @@ if [ "$OS" = "Darwin" ] && ! command -v brew >/dev/null 2>&1; then
   echo ""
 fi
 
+INSTALLED_OLLAMA=""
+INSTALLED_NODE=""
 MISSING_OLLAMA=false
 MISSING_NODE=false
 

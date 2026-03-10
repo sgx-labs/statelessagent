@@ -405,7 +405,7 @@ func ConfigFilePath(vaultPath string) string {
 // If vaultPath is provided, it's included in the generated config.
 func GenerateConfig(vaultPath string) error {
 	configPath := ConfigFilePath(vaultPath)
-	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
@@ -425,7 +425,7 @@ func generateTOMLContent(vaultPath string) string {
 
 	b.WriteString("[vault]\n")
 	if vaultPath != "" {
-		b.WriteString(fmt.Sprintf("path = %q\n", vaultPath))
+		fmt.Fprintf(&b, "path = %q\n", vaultPath)
 	} else {
 		b.WriteString("# path = \"/path/to/your/notes\"  # auto-detected if unset\n")
 	}
@@ -443,7 +443,7 @@ func generateTOMLContent(vaultPath string) string {
 
 	b.WriteString("[ollama]\n")
 	b.WriteString("url = \"http://localhost:11434\"\n")
-	b.WriteString(fmt.Sprintf("model = %q\n\n", activeModel))
+	fmt.Fprintf(&b, "model = %q\n\n", activeModel)
 
 	b.WriteString("[embedding]\n")
 	b.WriteString("# Embedding provider: \"ollama\" (default), \"openai\", \"openai-compatible\", or \"none\" (keyword-only)\n")
@@ -451,8 +451,8 @@ func generateTOMLContent(vaultPath string) string {
 	if activeProvider == "" {
 		activeProvider = "ollama"
 	}
-	b.WriteString(fmt.Sprintf("provider = %q\n", activeProvider))
-	b.WriteString(fmt.Sprintf("model = %q\n", activeModel))
+	fmt.Fprintf(&b, "provider = %q\n", activeProvider)
+	fmt.Fprintf(&b, "model = %q\n", activeModel)
 	b.WriteString("# api_key = \"\"                  # required for cloud providers\n")
 	b.WriteString("#                               # or set SAME_EMBED_API_KEY / OPENAI_API_KEY\n")
 	b.WriteString("# dimensions = 0                # 0 = use provider default\n\n")
@@ -685,6 +685,14 @@ func GraphModel() string {
 // SetGraphLLMMode updates the graph LLM extraction mode in the vault config file.
 // Valid modes: "off", "local-only", "on".
 func SetGraphLLMMode(vaultPath, mode string) error {
+	// Validate mode to prevent writing arbitrary values into config.
+	switch mode {
+	case "off", "local-only", "on":
+		// valid
+	default:
+		return fmt.Errorf("invalid graph LLM mode %q: must be one of: off, local-only, on", mode)
+	}
+
 	cfgPath := ConfigFilePath(vaultPath)
 
 	cfg, err := LoadConfigFrom(cfgPath)
@@ -700,7 +708,7 @@ func SetGraphLLMMode(vaultPath, mode string) error {
 		return fmt.Errorf("encode config: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
 		return fmt.Errorf("create config directory: %w", err)
 	}
 
@@ -1309,7 +1317,7 @@ func SetProfile(vaultPath, profileName string) error {
 	}
 
 	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
 		return fmt.Errorf("create config directory: %w", err)
 	}
 
@@ -1339,7 +1347,7 @@ func SetDisplayMode(vaultPath, mode string) error {
 	}
 
 	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
 		return fmt.Errorf("create config directory: %w", err)
 	}
 
@@ -1366,7 +1374,7 @@ func SetEmbeddingModel(vaultPath, model string) error {
 		return fmt.Errorf("encode config: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
 		return fmt.Errorf("create config directory: %w", err)
 	}
 	return os.WriteFile(cfgPath, buf.Bytes(), 0o600)

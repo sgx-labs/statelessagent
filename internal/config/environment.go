@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"os"
 	"strings"
+	"sync"
 )
 
 // ContainerInfo holds detected container environment details.
@@ -12,18 +13,19 @@ type ContainerInfo struct {
 	Type     string // "Docker", "Podman", "Kubernetes", "LXC", "containerd", "Codespaces", "Gitpod", "container"
 }
 
-// cachedContainer caches the result so detection runs only once per process.
-var cachedContainer *ContainerInfo
+// containerOnce ensures detection runs only once per process (thread-safe).
+var (
+	containerOnce   sync.Once
+	cachedContainer ContainerInfo
+)
 
 // DetectContainer probes the runtime environment for signs of containerisation.
 // Detection is informational only — it never limits functionality.
 func DetectContainer() ContainerInfo {
-	if cachedContainer != nil {
-		return *cachedContainer
-	}
-	info := detectContainerOnce()
-	cachedContainer = &info
-	return info
+	containerOnce.Do(func() {
+		cachedContainer = detectContainerOnce()
+	})
+	return cachedContainer
 }
 
 // IsContainer returns true when the process appears to be running inside a container.
@@ -39,7 +41,8 @@ func ContainerType() string {
 
 // ResetContainerCache clears the cached detection result (for testing).
 func ResetContainerCache() {
-	cachedContainer = nil
+	containerOnce = sync.Once{}
+	cachedContainer = ContainerInfo{}
 }
 
 func detectContainerOnce() ContainerInfo {
@@ -92,7 +95,9 @@ func detectFromCgroup() string {
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
+	// Limit to 100 lines — /proc/1/cgroup is typically <10 lines.
+	// Prevents unbounded reads from a malicious/corrupted cgroup file.
+	for i := 0; i < 100 && scanner.Scan(); i++ {
 		line := strings.ToLower(scanner.Text())
 		switch {
 		case strings.Contains(line, "docker"):

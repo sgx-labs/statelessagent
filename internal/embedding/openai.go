@@ -164,8 +164,10 @@ func (p *OpenAIProvider) doEmbedRequest(body []byte) ([][]float32, error) {
 		return nil, &openaiHTTPError{StatusCode: resp.StatusCode, Message: sanitized}
 	}
 
+	// Limit successful response body to 100MB to prevent a malicious endpoint
+	// from sending an unbounded response that exhausts memory.
 	var result openaiEmbeddingResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 100*1024*1024)).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
