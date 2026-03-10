@@ -3,6 +3,7 @@ package mcp
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -14,8 +15,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/sgx-labs/statelessagent/internal/config"
+	"github.com/sgx-labs/statelessagent/internal/consolidate"
 	"github.com/sgx-labs/statelessagent/internal/embedding"
 	"github.com/sgx-labs/statelessagent/internal/indexer"
+	"github.com/sgx-labs/statelessagent/internal/llm"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
@@ -219,6 +222,34 @@ func registerTools(server *mcp.Server) {
 		Description: "Search across multiple registered vaults at once. Use this instead of search_notes when you need context from other projects or want a cross-project view. Vaults must be registered first via the CLI (`same vault add <name> <path>`).\n\nArgs:\n  query: Natural language search query\n  top_k: Number of results (default 10, max 100)\n  vaults: Comma-separated vault aliases to search. Omit to search all registered vaults. Unknown aliases are silently skipped.\n\nReturns ranked results with titles, paths, snippets, and source vault name.",
 		Annotations: readOnly,
 	}, handleSearchAcrossVaults)
+
+	// mem_consolidate (autonomous memory management)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mem_consolidate",
+		Description: "Consolidate related notes in the vault. Merges duplicates, resolves contradictions, extracts key facts. Creates new knowledge files without modifying originals. Use this when the vault has many similar or overlapping notes.\n\nArgs:\n  dry_run: Preview what would be consolidated without writing files (default false)\n  threshold: Similarity threshold for grouping notes, 0.0-1.0 (default 0.75)\n\nReturns consolidation summary with groups found, facts extracted, and conflicts resolved.",
+		Annotations: writeDestructive,
+	}, handleMemConsolidate)
+
+	// mem_brief (autonomous memory management)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mem_brief",
+		Description: "Get an orientation briefing of what matters right now. Shows recent activity, open decisions, and key context. Use this at the start of a session to understand current project state.\n\nArgs:\n  max_items: Maximum items per section (default 5)\n\nReturns a concise briefing generated from vault contents.",
+		Annotations: readOnly,
+	}, handleMemBrief)
+
+	// mem_health (autonomous memory management)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mem_health",
+		Description: "Check the health of the memory vault. Returns a health score (0-100) and actionable recommendations. Use this to determine if the vault needs consolidation, reindexing, or cleanup.\n\nReturns health score, key metrics, and recommendations.",
+		Annotations: readOnly,
+	}, handleMemHealth)
+
+	// mem_forget (autonomous memory management)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mem_forget",
+		Description: "Suppress a memory so it won't be surfaced in normal search. The note is not deleted -- it's marked as suppressed and will only appear if explicitly requested. Use this for outdated, incorrect, or irrelevant memories.\n\nArgs:\n  path: Path of the note to suppress (required)\n  reason: Why this memory is being suppressed (optional)\n\nReturns confirmation of suppression.",
+		Annotations: writeNonDestructive,
+	}, handleMemForget)
 }
 
 // Tool input types
@@ -282,6 +313,20 @@ type searchAcrossVaultsInput struct {
 }
 
 type emptyInput struct{}
+
+type memConsolidateInput struct {
+	DryRun    bool    `json:"dry_run" jsonschema:"Preview what would be consolidated without writing files"`
+	Threshold float64 `json:"threshold" jsonschema:"Similarity threshold for grouping notes (0.0-1.0)"`
+}
+
+type memBriefInput struct {
+	MaxItems int `json:"max_items" jsonschema:"Maximum items per section (default 5)"`
+}
+
+type memForgetInput struct {
+	Path   string `json:"path" jsonschema:"Path of the note to suppress"`
+	Reason string `json:"reason,omitempty" jsonschema:"Why this memory is being suppressed"`
+}
 
 // Tool handlers
 
@@ -964,6 +1009,511 @@ func handleSearchAcrossVaults(ctx context.Context, req *mcp.CallToolRequest, inp
 
 	data, _ := json.MarshalIndent(results, "", "  ")
 	return textResult(string(data)), nil, nil
+}
+
+// --- Autonomous memory management handlers ---
+
+func handleMemConsolidate(ctx context.Context, req *mcp.CallToolRequest, input memConsolidateInput) (*mcp.CallToolResult, any, error) {
+	if !checkWriteRateLimit() && !input.DryRun {
+		return errorResult("Error: too many write operations. Try again in a minute."), nil, nil
+	}
+
+	chat, err := llm.NewClient()
+	if err != nil {
+		return errorResult("Consolidation requires an LLM provider. Run 'same init' to configure one, or set SAME_CHAT_PROVIDER."), nil, nil
+	}
+
+	model, err := chat.PickBestModel()
+	if err != nil || model == "" {
+		return errorResult("No chat model available. Ensure your LLM provider has at least one model installed."), nil, nil
+	}
+
+	threshold := input.Threshold
+	if threshold <= 0 || threshold > 1.0 {
+		threshold = 0.75
+	}
+
+	vaultPath, _ := filepath.Abs(config.VaultPath())
+
+	// embedClient (package-level) may be used as consolidate.EmbedProvider.
+	// The consolidate engine accepts nil and falls back to keyword-based grouping.
+	var ep consolidate.EmbedProvider
+	if embedClient != nil {
+		ep = embedClient
+	}
+
+	engine := consolidate.NewEngine(db, chat, ep, model, vaultPath, threshold)
+	result, err := engine.Run(input.DryRun)
+	if err != nil {
+		return errorResult(fmt.Sprintf("Consolidation error: %v", err)), nil, nil
+	}
+
+	// Build formatted text output
+	var b strings.Builder
+	if result.DryRun {
+		b.WriteString("=== Consolidation Preview (dry run) ===\n\n")
+	} else {
+		b.WriteString("=== Consolidation Complete ===\n\n")
+	}
+	fmt.Fprintf(&b, "Groups found: %d\n", result.GroupsFound)
+	fmt.Fprintf(&b, "Notes processed: %d\n", result.NotesProcessed)
+	fmt.Fprintf(&b, "Facts extracted: %d\n", result.FactsExtracted)
+	fmt.Fprintf(&b, "Conflicts found: %d\n", result.ConflictsFound)
+	if !result.DryRun {
+		fmt.Fprintf(&b, "Knowledge files created: %d\n", result.NotesCreated)
+	}
+
+	for i, g := range result.Groups {
+		fmt.Fprintf(&b, "\n--- Group %d: %s ---\n", i+1, g.Theme)
+		fmt.Fprintf(&b, "Sources: %d notes\n", len(g.SourceNotes))
+		for _, src := range g.SourceNotes {
+			fmt.Fprintf(&b, "  - %s (%s)\n", src.Path, src.Title)
+		}
+		if len(g.Facts) > 0 {
+			b.WriteString("Key facts:\n")
+			for _, fact := range g.Facts {
+				fmt.Fprintf(&b, "  - %s\n", fact)
+			}
+		}
+		if len(g.Conflicts) > 0 {
+			b.WriteString("Conflicts:\n")
+			for _, c := range g.Conflicts {
+				fmt.Fprintf(&b, "  - %s\n", c.Fact1)
+			}
+		}
+		if g.OutputPath != "" {
+			fmt.Fprintf(&b, "Output: %s\n", g.OutputPath)
+		}
+	}
+
+	return textResult(b.String()), nil, nil
+}
+
+// briefNote holds a note record gathered for MCP briefing context.
+type mcpBriefNote struct {
+	Path        string
+	Title       string
+	Text        string
+	Modified    float64
+	ContentType string
+	Confidence  float64
+	AccessCount int
+}
+
+func handleMemBrief(ctx context.Context, req *mcp.CallToolRequest, input memBriefInput) (*mcp.CallToolResult, any, error) {
+	maxItems := input.MaxItems
+	if maxItems <= 0 {
+		maxItems = 5
+	}
+	if maxItems > 50 {
+		maxItems = 50
+	}
+
+	noteCount, _ := db.NoteCount()
+	if noteCount == 0 {
+		return textResult("Your vault is empty. Store some notes first with save_note or run 'same demo' to add sample data."), nil, nil
+	}
+
+	conn := db.Conn()
+
+	recentNotes := queryMCPBriefNotes(conn,
+		`SELECT path, title, text, modified, content_type, confidence
+		 FROM vault_notes
+		 WHERE chunk_id = 0 AND path NOT LIKE '_PRIVATE/%' AND COALESCE(suppressed, 0) = 0
+		 ORDER BY modified DESC
+		 LIMIT 20`)
+
+	sessionNotes := queryMCPBriefNotes(conn,
+		`SELECT path, title, text, modified, content_type, confidence
+		 FROM vault_notes
+		 WHERE chunk_id = 0 AND (content_type = 'session' OR path LIKE 'sessions/%' OR path LIKE '%session%')
+			AND COALESCE(suppressed, 0) = 0
+		 ORDER BY modified DESC
+		 LIMIT ?`, maxItems)
+
+	decisionNotes := queryMCPBriefNotes(conn,
+		`SELECT path, title, text, modified, content_type, confidence
+		 FROM vault_notes
+		 WHERE chunk_id = 0 AND (content_type = 'decision' OR path LIKE '%decision%')
+			AND COALESCE(suppressed, 0) = 0
+		 ORDER BY modified DESC
+		 LIMIT ?`, maxItems)
+
+	highConfNotes := queryMCPBriefNotesWithAccess(conn,
+		`SELECT path, title, text, confidence, access_count
+		 FROM vault_notes
+		 WHERE chunk_id = 0 AND confidence > 0.7 AND path NOT LIKE '_PRIVATE/%'
+			AND COALESCE(suppressed, 0) = 0
+		 ORDER BY confidence DESC, access_count DESC
+		 LIMIT 10`)
+
+	totalGathered := len(recentNotes) + len(sessionNotes) + len(decisionNotes) + len(highConfNotes)
+	if totalGathered == 0 {
+		return textResult(fmt.Sprintf("No notes found for briefing. Your vault has %d notes but none match briefing criteria. Try adding session logs or decision records.", noteCount)), nil, nil
+	}
+
+	chat, err := llm.NewClient()
+	if err != nil {
+		return errorResult("Brief requires an LLM provider. Run 'same init' to configure one, or set SAME_CHAT_PROVIDER."), nil, nil
+	}
+
+	model, err := chat.PickBestModel()
+	if err != nil || model == "" {
+		return errorResult("No chat model available. Ensure your LLM provider has at least one model installed."), nil, nil
+	}
+
+	prompt := buildMCPBriefPrompt(recentNotes, sessionNotes, decisionNotes, highConfNotes)
+	answer, err := chat.Generate(model, prompt)
+	if err != nil {
+		return errorResult(fmt.Sprintf("Briefing generation failed: %v", err)), nil, nil
+	}
+
+	// Add sources summary
+	var b strings.Builder
+	b.WriteString(answer)
+	fmt.Fprintf(&b, "\n\n---\nBased on %d notes (%d sessions, %d decisions, %d knowledge).",
+		totalGathered, len(sessionNotes), len(decisionNotes), len(highConfNotes))
+
+	return textResult(neutralizeTags(b.String())), nil, nil
+}
+
+func handleMemHealth(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
+	conn := db.Conn()
+
+	// Total notes
+	var totalNotes int
+	if err := conn.QueryRow(
+		`SELECT COUNT(*) FROM vault_notes WHERE chunk_id = 0`,
+	).Scan(&totalNotes); err != nil {
+		return errorResult(fmt.Sprintf("Error querying notes: %v", err)), nil, nil
+	}
+
+	if totalNotes == 0 {
+		return textResult("Your vault is empty. Store some notes first with save_note or run 'same demo' to get started."), nil, nil
+	}
+
+	// Embedding coverage
+	var embeddedCount int
+	err := conn.QueryRow(
+		`SELECT COUNT(DISTINCT vn.id) FROM vault_notes vn
+		 INNER JOIN vault_notes_vec vnv ON vn.id = vnv.note_id
+		 WHERE vn.chunk_id = 0`,
+	).Scan(&embeddedCount)
+	if err != nil {
+		embeddedCount = 0
+	}
+
+	// Content type distribution
+	type contentTypeStat struct {
+		name  string
+		count int
+	}
+	var contentTypes []contentTypeStat
+	ctRows, err := conn.Query(
+		`SELECT COALESCE(content_type, 'note') as ct, COUNT(*)
+		 FROM vault_notes WHERE chunk_id = 0
+		 GROUP BY ct ORDER BY COUNT(*) DESC`,
+	)
+	if err == nil {
+		defer ctRows.Close()
+		for ctRows.Next() {
+			var ct contentTypeStat
+			if err := ctRows.Scan(&ct.name, &ct.count); err == nil {
+				contentTypes = append(contentTypes, ct)
+			}
+		}
+	}
+
+	// Average confidence
+	var avgConfidence sql.NullFloat64
+	_ = conn.QueryRow(
+		`SELECT AVG(confidence) FROM vault_notes WHERE chunk_id = 0 AND confidence > 0`,
+	).Scan(&avgConfidence)
+
+	// Stale notes
+	thirtyDaysAgo := float64(time.Now().Add(-30 * 24 * time.Hour).Unix())
+	var staleCount int
+	_ = conn.QueryRow(
+		`SELECT COUNT(*) FROM vault_notes
+		 WHERE chunk_id = 0 AND access_count = 0 AND modified < ?`,
+		thirtyDaysAgo,
+	).Scan(&staleCount)
+
+	// Recent activity
+	sevenDaysAgo := float64(time.Now().Add(-7 * 24 * time.Hour).Unix())
+	var recentCount int
+	_ = conn.QueryRow(
+		`SELECT COUNT(*) FROM vault_notes WHERE chunk_id = 0 AND modified > ?`,
+		sevenDaysAgo,
+	).Scan(&recentCount)
+
+	// Knowledge notes
+	var knowledgeCount int
+	_ = conn.QueryRow(
+		`SELECT COUNT(*) FROM vault_notes
+		 WHERE chunk_id = 0 AND (path LIKE 'knowledge/%' OR content_type = 'knowledge')`,
+	).Scan(&knowledgeCount)
+
+	// Accessed notes
+	var accessedCount int
+	_ = conn.QueryRow(
+		`SELECT COUNT(*) FROM vault_notes WHERE chunk_id = 0 AND access_count > 0`,
+	).Scan(&accessedCount)
+
+	// Never accessed
+	var neverAccessedCount int
+	_ = conn.QueryRow(
+		`SELECT COUNT(*) FROM vault_notes WHERE chunk_id = 0 AND access_count = 0`,
+	).Scan(&neverAccessedCount)
+
+	// Suppressed notes
+	var suppressedCount int
+	_ = conn.QueryRow(
+		`SELECT COUNT(*) FROM vault_notes WHERE chunk_id = 0 AND COALESCE(suppressed, 0) = 1`,
+	).Scan(&suppressedCount)
+
+	// Compute health score (same formula as health_cmd.go)
+	score := computeMCPHealthScore(totalNotes, embeddedCount, knowledgeCount, recentCount, accessedCount)
+
+	// Build formatted output
+	var b strings.Builder
+	fmt.Fprintf(&b, "=== Vault Health ===\n\n")
+	fmt.Fprintf(&b, "Score: %d/100 (%s)\n\n", score, healthLabel(score))
+
+	fmt.Fprintf(&b, "--- Overview ---\n")
+	fmt.Fprintf(&b, "Total notes: %d\n", totalNotes)
+	if totalNotes > 0 {
+		embedPct := embeddedCount * 100 / totalNotes
+		fmt.Fprintf(&b, "Embedded: %d/%d (%d%%)\n", embeddedCount, totalNotes, embedPct)
+	}
+	fmt.Fprintf(&b, "Knowledge notes: %d\n", knowledgeCount)
+	if suppressedCount > 0 {
+		fmt.Fprintf(&b, "Suppressed: %d\n", suppressedCount)
+	}
+
+	if len(contentTypes) > 0 {
+		fmt.Fprintf(&b, "\n--- Content Types ---\n")
+		for _, ct := range contentTypes {
+			pct := ct.count * 100 / totalNotes
+			fmt.Fprintf(&b, "%s: %d (%d%%)\n", ct.name, ct.count, pct)
+		}
+	}
+
+	fmt.Fprintf(&b, "\n--- Activity ---\n")
+	fmt.Fprintf(&b, "Active (7 days): %d notes\n", recentCount)
+	fmt.Fprintf(&b, "Stale (30+ days): %d notes\n", staleCount)
+	fmt.Fprintf(&b, "Never accessed: %d notes\n", neverAccessedCount)
+	if avgConfidence.Valid {
+		fmt.Fprintf(&b, "Avg confidence: %.2f\n", avgConfidence.Float64)
+	}
+
+	// Recommendations
+	var recs []string
+	if staleCount > 0 {
+		recs = append(recs, fmt.Sprintf("Run mem_consolidate to organize %d stale notes", staleCount))
+	}
+	noEmbeddings := totalNotes - embeddedCount
+	if noEmbeddings > 0 {
+		recs = append(recs, fmt.Sprintf("%d notes have no embeddings -- run reindex()", noEmbeddings))
+	}
+	if neverAccessedCount > 0 {
+		recs = append(recs, fmt.Sprintf("Consider reviewing %d never-accessed notes", neverAccessedCount))
+	}
+	if knowledgeCount == 0 && totalNotes >= 5 {
+		recs = append(recs, "Run mem_consolidate to create knowledge summaries")
+	}
+
+	if len(recs) > 0 {
+		fmt.Fprintf(&b, "\n--- Recommendations ---\n")
+		for _, r := range recs {
+			fmt.Fprintf(&b, "- %s\n", r)
+		}
+	}
+
+	return textResult(b.String()), nil, nil
+}
+
+func handleMemForget(ctx context.Context, req *mcp.CallToolRequest, input memForgetInput) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(input.Path) == "" {
+		return errorResult("Error: path is required."), nil, nil
+	}
+	if !checkWriteRateLimit() {
+		return errorResult("Error: too many write operations. Try again in a minute."), nil, nil
+	}
+
+	// Validate the path exists in the database
+	notes, err := db.GetNoteByPath(input.Path)
+	if err != nil || len(notes) == 0 {
+		return errorResult(fmt.Sprintf("No note found at path: %s", input.Path)), nil, nil
+	}
+
+	affected, err := db.SuppressNote(input.Path)
+	if err != nil {
+		return errorResult(fmt.Sprintf("Error suppressing note: %v", err)), nil, nil
+	}
+	if affected == 0 {
+		return errorResult(fmt.Sprintf("No note found at path: %s", input.Path)), nil, nil
+	}
+
+	message := fmt.Sprintf("Suppressed: %s (%d chunks)", input.Path, affected)
+	if input.Reason != "" {
+		message += fmt.Sprintf("\nReason: %s", input.Reason)
+	}
+	message += "\nThe note still exists on disk but will not appear in search results."
+
+	return textResult(message), nil, nil
+}
+
+// --- MCP brief helpers ---
+
+func queryMCPBriefNotes(conn *sql.DB, query string, args ...interface{}) []mcpBriefNote {
+	rows, err := conn.Query(query, args...)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var notes []mcpBriefNote
+	for rows.Next() {
+		var n mcpBriefNote
+		if err := rows.Scan(&n.Path, &n.Title, &n.Text, &n.Modified, &n.ContentType, &n.Confidence); err != nil {
+			continue
+		}
+		notes = append(notes, n)
+	}
+	return notes
+}
+
+func queryMCPBriefNotesWithAccess(conn *sql.DB, query string, args ...interface{}) []mcpBriefNote {
+	rows, err := conn.Query(query, args...)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var notes []mcpBriefNote
+	for rows.Next() {
+		var n mcpBriefNote
+		if err := rows.Scan(&n.Path, &n.Title, &n.Text, &n.Confidence, &n.AccessCount); err != nil {
+			continue
+		}
+		notes = append(notes, n)
+	}
+	return notes
+}
+
+func buildMCPBriefPrompt(recent, sessions, decisions, highConf []mcpBriefNote) string {
+	var b strings.Builder
+
+	b.WriteString(`You are a briefing engine for a personal knowledge vault. Given the following vault contents, produce a concise orientation briefing.
+
+RULES:
+- Be extremely concise -- this is a briefing, not a report
+- Lead with what's most actionable RIGHT NOW
+- Flag any open decisions that need attention
+- Note any contradictions or conflicts between notes
+- Use bullet points, not paragraphs
+- Maximum 15 lines total
+- Do NOT add information beyond what's in the notes
+
+`)
+
+	b.WriteString("RECENT ACTIVITY:\n")
+	if len(recent) == 0 {
+		b.WriteString("(none)\n")
+	} else {
+		for _, n := range recent {
+			snippet := n.Text
+			if len(snippet) > 300 {
+				snippet = snippet[:300]
+			}
+			snippet = strings.ReplaceAll(snippet, "\n", " ")
+			fmt.Fprintf(&b, "- [%s] %s: %s\n", n.Path, n.Title, snippet)
+		}
+	}
+
+	b.WriteString("\nSESSIONS:\n")
+	if len(sessions) == 0 {
+		b.WriteString("(none)\n")
+	} else {
+		for _, n := range sessions {
+			snippet := n.Text
+			if len(snippet) > 300 {
+				snippet = snippet[:300]
+			}
+			snippet = strings.ReplaceAll(snippet, "\n", " ")
+			fmt.Fprintf(&b, "- [%s] %s: %s\n", n.Path, n.Title, snippet)
+		}
+	}
+
+	b.WriteString("\nOPEN DECISIONS:\n")
+	if len(decisions) == 0 {
+		b.WriteString("(none)\n")
+	} else {
+		for _, n := range decisions {
+			snippet := n.Text
+			if len(snippet) > 300 {
+				snippet = snippet[:300]
+			}
+			snippet = strings.ReplaceAll(snippet, "\n", " ")
+			fmt.Fprintf(&b, "- [%s] %s: %s\n", n.Path, n.Title, snippet)
+		}
+	}
+
+	b.WriteString("\nHIGH-CONFIDENCE KNOWLEDGE:\n")
+	if len(highConf) == 0 {
+		b.WriteString("(none)\n")
+	} else {
+		for _, n := range highConf {
+			snippet := n.Text
+			if len(snippet) > 300 {
+				snippet = snippet[:300]
+			}
+			snippet = strings.ReplaceAll(snippet, "\n", " ")
+			fmt.Fprintf(&b, "- [%s] %s (confidence: %.0f%%): %s\n", n.Path, n.Title, n.Confidence*100, snippet)
+		}
+	}
+
+	b.WriteString("\nProduce the briefing now.")
+
+	return b.String()
+}
+
+func computeMCPHealthScore(total, embedded, knowledge, recent, accessed int) int {
+	if total == 0 {
+		return 0
+	}
+	embedScore := float64(embedded) / float64(total) * 25.0
+	knowledgeScore := float64(knowledge) / float64(total) * 10.0 * 25.0
+	if knowledgeScore > 25.0 {
+		knowledgeScore = 25.0
+	}
+	freshnessScore := float64(recent) / float64(total) * 25.0
+	if freshnessScore > 25.0 {
+		freshnessScore = 25.0
+	}
+	usageScore := float64(accessed) / float64(total) * 25.0
+	score := int(embedScore + knowledgeScore + freshnessScore + usageScore)
+	if score > 100 {
+		score = 100
+	}
+	if score < 0 {
+		score = 0
+	}
+	return score
+}
+
+func healthLabel(score int) string {
+	switch {
+	case score >= 80:
+		return "Excellent"
+	case score >= 60:
+		return "Good"
+	case score >= 40:
+		return "Fair"
+	default:
+		return "Needs attention"
+	}
 }
 
 // Helpers

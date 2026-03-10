@@ -21,7 +21,7 @@ type DB struct {
 	ftsAvailable bool       // true if FTS5 module is available
 }
 
-const maxSchemaVersion = 7
+const maxSchemaVersion = 8
 
 // Open opens or creates the database at the configured path.
 func Open() (*DB, error) {
@@ -278,6 +278,7 @@ func (db *DB) migrate() error {
 		{5, db.migrateV5}, // multi-agent claims table
 		{6, db.migrateV6}, // knowledge graph tables
 		{7, db.migrateV7}, // hook activity logging metadata
+		{8, db.migrateV8}, // suppressed column for mem_forget
 	}
 	for _, m := range versionedMigrations {
 		if currentVersion < m.version {
@@ -575,4 +576,26 @@ func (db *DB) migrateV7() error {
 		return err
 	}
 	return nil
+}
+
+// migrateV8 adds the suppressed column for mem_forget.
+// SAFETY: col name and def are compile-time string constants.
+func (db *DB) migrateV8() error {
+	if !db.hasColumn("vault_notes", "suppressed") {
+		if _, err := db.conn.Exec(`ALTER TABLE vault_notes ADD COLUMN suppressed INTEGER DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SuppressNote marks a note as suppressed so it is excluded from normal search.
+func (db *DB) SuppressNote(path string) (int64, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	res, err := db.conn.Exec("UPDATE vault_notes SET suppressed = 1 WHERE path = ?", path)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }

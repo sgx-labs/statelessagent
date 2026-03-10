@@ -60,6 +60,7 @@ func (db *DB) VectorSearch(queryVec []float32, opts SearchOptions) ([]SearchResu
 		JOIN vault_notes n ON n.id = v.note_id
 		WHERE v.embedding MATCH ? AND k = ?
 			AND UPPER(n.path) NOT LIKE '_PRIVATE/%%'
+			AND COALESCE(n.suppressed, 0) = 0
 		ORDER BY v.distance`,
 		vecData, fetchK,
 	)
@@ -238,6 +239,7 @@ func (db *DB) VectorSearchRaw(queryVec []float32, fetchK int) ([]RawSearchResult
 		JOIN vault_notes n ON n.id = v.note_id
 		WHERE v.embedding MATCH ? AND k = ?
 			AND UPPER(n.path) NOT LIKE '_PRIVATE/%%'
+			AND COALESCE(n.suppressed, 0) = 0
 		ORDER BY v.distance`,
 		vecData, fetchK,
 	)
@@ -313,7 +315,8 @@ func (db *DB) KeywordSearch(terms []string, limit int) ([]RawSearchResult, error
 			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified,
 			n.access_count
 		FROM vault_notes n
-		WHERE n.chunk_id = 0 AND UPPER(n.path) NOT LIKE '_PRIVATE/%%' AND EXISTS (
+		WHERE n.chunk_id = 0 AND UPPER(n.path) NOT LIKE '_PRIVATE/%%'
+			AND COALESCE(n.suppressed, 0) = 0 AND EXISTS (
 			SELECT 1 FROM vault_notes n2
 			WHERE n2.path = n.path AND (%s)
 		)
@@ -397,7 +400,8 @@ func (db *DB) ContentTermSearch(terms []string, minTerms int, limit int) ([]RawS
 			n.access_count
 		FROM vault_notes n
 		JOIN note_coverage nc ON n.path = nc.path
-		WHERE n.chunk_id = 0 AND UPPER(n.path) NOT LIKE '_PRIVATE/%%' AND nc.cov >= ?
+		WHERE n.chunk_id = 0 AND UPPER(n.path) NOT LIKE '_PRIVATE/%%'
+			AND COALESCE(n.suppressed, 0) = 0 AND nc.cov >= ?
 		ORDER BY nc.cov DESC,
 			CAST(nc.chunk_freq * nc.chunk_freq AS REAL) / nc.chunk_count DESC,
 			n.modified DESC
@@ -469,7 +473,8 @@ func (db *DB) KeywordSearchTitleMatch(terms []string, minMatches int, limit int,
 			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified,
 			n.access_count
 		FROM vault_notes n
-		WHERE n.chunk_id = 0 AND UPPER(n.path) NOT LIKE '_PRIVATE/%%' AND (%s) >= ?
+		WHERE n.chunk_id = 0 AND UPPER(n.path) NOT LIKE '_PRIVATE/%%'
+			AND COALESCE(n.suppressed, 0) = 0 AND (%s) >= ?
 		ORDER BY (%s) DESC, n.modified DESC
 		LIMIT ?`,
 		scoreExpr, scoreExpr)
@@ -728,6 +733,7 @@ func (db *DB) FuzzyTitleSearch(terms []string, limit int) ([]RawSearchResult, er
 			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified,
 			n.access_count
 		FROM vault_notes n WHERE n.chunk_id = 0 AND UPPER(n.path) NOT LIKE '_PRIVATE/%'
+			AND COALESCE(n.suppressed, 0) = 0
 		ORDER BY n.modified DESC
 		LIMIT ?`, scanLimit)
 	if err != nil {
@@ -931,6 +937,7 @@ func (db *DB) FTS5Search(query string, opts SearchOptions) ([]SearchResult, erro
 		FROM vault_notes_fts f
 		JOIN vault_notes n ON n.id = f.rowid
 		WHERE vault_notes_fts MATCH ? AND UPPER(n.path) NOT LIKE '_PRIVATE/%%'
+			AND COALESCE(n.suppressed, 0) = 0
 		ORDER BY bm25(vault_notes_fts) ASC
 		LIMIT ?`,
 		ftsQuery, opts.TopK*3,
