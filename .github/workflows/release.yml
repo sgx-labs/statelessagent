@@ -34,6 +34,13 @@ jobs:
             goarch: amd64
             suffix: windows-amd64.exe
             cc: zig
+            zig_target: x86_64-windows-gnu
+          - os: ubuntu-latest
+            goos: windows
+            goarch: arm64
+            suffix: windows-arm64.exe
+            cc: zig
+            zig_target: aarch64-windows-gnu
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -72,8 +79,8 @@ jobs:
           CGO_ENABLED: '1'
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          CC: "zig cc -target x86_64-windows-gnu"
-          CXX: "zig c++ -target x86_64-windows-gnu"
+          CC: "zig cc -target ${{ matrix.zig_target }}"
+          CXX: "zig c++ -target ${{ matrix.zig_target }}"
           CGO_CFLAGS: "-I${{ github.workspace }}/cgo-headers -fno-sanitize=undefined"
         run: |
           go build -ldflags "-s -w -X main.Version=${{ github.ref_name }}" \
@@ -102,6 +109,7 @@ jobs:
             same-linux-amd64/same-linux-amd64 \
             same-linux-arm64/same-linux-arm64 \
             same-windows-amd64.exe/same-windows-amd64.exe \
+            same-windows-arm64.exe/same-windows-arm64.exe \
             | sed 's|[^ ]*/||' > sha256sums.txt
 
       - name: Create GitHub Release
@@ -113,6 +121,7 @@ jobs:
             artifacts/same-linux-amd64/same-linux-amd64
             artifacts/same-linux-arm64/same-linux-arm64
             artifacts/same-windows-amd64.exe/same-windows-amd64.exe
+            artifacts/same-windows-arm64.exe/same-windows-arm64.exe
             artifacts/sha256sums.txt
 
   npm-publish:
