@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -294,15 +295,13 @@ func runUpdate(force bool) error {
 	// Replace the binary
 	fmt.Printf("  Installing...")
 
-	// On Windows, we need to rename the old binary first
+	// On Windows, we need to rename the old binary first (can't overwrite a running exe).
 	if goos == "windows" {
-		oldPath := execPath + ".old"
-		if err := os.Remove(oldPath); err != nil && !os.IsNotExist(err) {
-			removeTempFile(tmpPath)
-			fmt.Printf(" %sfailed%s\n", cli.Red, cli.Reset)
-			return fmt.Errorf("prepare backup path: %w", err)
-		}
-		if err := os.Rename(execPath, oldPath); err != nil {
+		backupPath := prepareWindowsBackup(execPath)
+		if backupPath == "" {
+			// All backup attempts failed — proceed without backup.
+			fmt.Fprintf(os.Stderr, "same: warning: could not create backup of current binary; proceeding without backup\n")
+		} else if err := os.Rename(execPath, backupPath); err != nil {
 			removeTempFile(tmpPath)
 			fmt.Printf(" %sfailed%s\n", cli.Red, cli.Reset)
 			return fmt.Errorf("backup old binary: %w", err)
@@ -326,6 +325,34 @@ func runUpdate(force bool) error {
 
 	cli.Footer()
 	return nil
+}
+
+// prepareWindowsBackup finds a usable backup path for the old binary on Windows.
+// It tries ".old" first, then ".old.1" through ".old.9", then a timestamped name.
+// Returns the path to use, or "" if all attempts fail (caller should skip backup).
+func prepareWindowsBackup(execPath string) string {
+	// Try the standard .old path first.
+	oldPath := execPath + ".old"
+	if err := os.Remove(oldPath); err == nil || os.IsNotExist(err) {
+		return oldPath
+	}
+
+	// .old file exists and can't be removed (locked). Try numbered alternatives.
+	for i := 1; i <= 9; i++ {
+		candidate := execPath + ".old." + strconv.Itoa(i)
+		if err := os.Remove(candidate); err == nil || os.IsNotExist(err) {
+			return candidate
+		}
+	}
+
+	// Try a timestamped name as last resort.
+	candidate := execPath + ".old." + strconv.FormatInt(time.Now().UnixNano(), 10)
+	if err := os.Remove(candidate); err == nil || os.IsNotExist(err) {
+		return candidate
+	}
+
+	// Everything failed — caller will proceed without backup.
+	return ""
 }
 
 func findReleaseAssetURL(assets []struct {

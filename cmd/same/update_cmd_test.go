@@ -72,6 +72,54 @@ func TestRemoveTempFile_IgnoresMissingFile(t *testing.T) {
 	removeTempFile(path)
 }
 
+func TestPrepareWindowsBackup_NoExistingOld(t *testing.T) {
+	tmpDir := t.TempDir()
+	execPath := filepath.Join(tmpDir, "same.exe")
+
+	got := prepareWindowsBackup(execPath)
+	if got != execPath+".old" {
+		t.Fatalf("expected %q, got %q", execPath+".old", got)
+	}
+}
+
+func TestPrepareWindowsBackup_RemovesExistingOld(t *testing.T) {
+	tmpDir := t.TempDir()
+	execPath := filepath.Join(tmpDir, "same.exe")
+	oldPath := execPath + ".old"
+	if err := os.WriteFile(oldPath, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := prepareWindowsBackup(execPath)
+	if got != oldPath {
+		t.Fatalf("expected %q, got %q", oldPath, got)
+	}
+	// The .old file should have been removed.
+	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
+		t.Fatalf("expected .old to be removed, stat err=%v", err)
+	}
+}
+
+func TestPrepareWindowsBackup_FallsBackToNumbered(t *testing.T) {
+	tmpDir := t.TempDir()
+	execPath := filepath.Join(tmpDir, "same.exe")
+
+	// Create a non-empty directory at .old so os.Remove fails (not a "not exist" error).
+	oldPath := execPath + ".old"
+	if err := os.Mkdir(oldPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(oldPath, "blocker"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := prepareWindowsBackup(execPath)
+	expected := execPath + ".old.1"
+	if got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
 type rtFunc func(req *http.Request) (*http.Response, error)
 
 func (f rtFunc) RoundTrip(req *http.Request) (*http.Response, error) {
