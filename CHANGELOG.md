@@ -4,14 +4,26 @@
 
 ### Added
 
+- `same tips` command with vault hygiene, security, and model selection guidance
+- `same graph enable` / `same graph disable` commands to toggle graph mode without editing config files
+- Automatic container environment detection (Docker, Kubernetes, Codespaces, Gitpod) — surfaces in status and doctor output
+- Graceful Ctrl+C cancellation during reindex and init — first press stops cleanly with partial progress, second press force-quits (Mac, Linux, Windows)
+- Human-readable error messages for common embedding failures: connection refused, timeout, auth errors, dimension mismatches
+- Graph LLM recommendation surfaced across `init`, `demo`, `status`, `doctor`, and `tips` when a capable model is detected but graph mode is off
 - Thinking model compatibility: `stripThinkingTokens()` utility strips `<think>`, `<reasoning>`, `<reflection>` tags from LLM responses
 - Graph extraction: `[graph] model` config key and `SAME_GRAPH_MODEL` env var for choosing a non-thinking model
 - Graph extraction: `--abort-on-error` flag (continue-on-error is now the default)
 - Graph extraction: Ollama structured output with JSON schema for more reliable parsing
 - Dockerfile: Multi-stage build, non-root user, OCI labels
+- Command aliases: `same s` (search), `same st` (status), `same vault ls` (vault list)
+- Port-in-use detection for `same web`
+- Platform shown in `same version` output
 
 ### Fixed
 
+- Windows self-update no longer fails when a stale `.old` backup file is locked from a previous update — uses fallback rename chain
+- Migration failure upgrading from v0.9.1 to v0.10.0 — `entry_kind` index no longer created before the column exists
+- `same graph stats` now reads from config.toml instead of only checking the environment variable
 - Graph LLM extraction now works with thinking/reasoning models (DeepSeek-R1, QwQ, etc.)
 - `same ask`, demo, and tutorial commands no longer display thinking tokens
 - Ollama and OpenAI response paths strip thinking tags at the transport layer
@@ -20,7 +32,18 @@
 
 ### Changed
 
+- Demo rewritten with 5 realistic sample notes and a narrative arc (search, decisions, handoff recall) — transitions into init with a single prompt
+- Init onboarding redesigned: detects project language, AI tools, and git state; adds teaching moments during directory creation; suggests seed vaults based on project type
+- `install.sh` messaging updated to honestly communicate Ollama's role in semantic search
+- Output consistency polish: standardized checkmarks, hint capitalization, footer formatting
 - README overhauled: conversion-focused, 270 lines, collapsible reference sections
+
+### Performance
+
+- Batch embedding requests: Ollama switched from `/api/embeddings` to `/api/embed`, OpenAI batching added — 50 chunks per request instead of 1
+- SQLite pragmas: 64 MB page cache, 256 MB mmap, temp_store in memory
+- Covering index added for incremental reindex hash comparison
+- ReindexLite parallelized with 4-worker goroutine pool (was sequential)
 
 ## v0.9.1 — Cross-Platform CI and Extraction Reliability
 

@@ -1,45 +1,58 @@
+version: "2"
 run:
-  timeout: 5m
   build-tags:
     - cgo
-
 linters:
   enable:
-    - errcheck
-    - govet
-    - staticcheck
-    - unused
-    - ineffassign
-    - gosimple
-    - typecheck
     - misspell
-    - gofmt
-    - goimports
   disable:
     - depguard
     - exhaustive
     - wrapcheck
-
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-    exclude-functions:
-      - fmt.Fprintf
-      - fmt.Printf
-      - fmt.Println
-      - (io.Closer).Close
-  misspell:
-    locale: US
-  goimports:
-    local-prefixes: github.com/sgx-labs/statelessagent
-
+  settings:
+    errcheck:
+      check-type-assertions: true
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Printf
+        - fmt.Println
+        - (io.Closer).Close
+    misspell:
+      locale: US
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+        path: _test\.go
+      - linters:
+          - staticcheck
+        text: "ST1005:"
+        path: internal/embedding/
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-    - path: internal/web/static\.go
-      linters:
-        - goimports
   max-issues-per-linter: 50
   max-same-issues: 10
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/sgx-labs/statelessagent
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      - internal/web/static\.go
