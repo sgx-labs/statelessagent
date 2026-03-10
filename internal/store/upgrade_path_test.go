@@ -139,3 +139,105 @@ func createLegacyV5Fixture(path string) error {
 
 	return nil
 }
+
+// TestOpenPath_MigratesV6WithSessionLog reproduces the v0.9.1→v0.10.0 upgrade bug
+// where session_log exists but lacks entry_kind. The initial CREATE INDEX on
+// entry_kind must not run before migrateV7 adds the column.
+func TestOpenPath_MigratesV6WithSessionLog(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "legacy-v6-session.db")
+	if err := createLegacyV6WithSessionLogFixture(dbPath); err != nil {
+		t.Fatalf("create legacy fixture: %v", err)
+	}
+
+	db, err := OpenPath(dbPath)
+	if err != nil {
+		t.Fatalf("OpenPath upgrade from v6 with session_log: %v", err)
+	}
+	defer db.Close()
+
+	if got := db.SchemaVersion(); got != 7 {
+		t.Fatalf("schema version = %d, want 7", got)
+	}
+
+	// Verify entry_kind column exists and the index works.
+	var count int
+	if err := db.Conn().QueryRow(
+		`SELECT COUNT(*) FROM session_log WHERE entry_kind = 'session'`,
+	).Scan(&count); err != nil {
+		t.Fatalf("query entry_kind: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("session count = %d, want 1", count)
+	}
+}
+
+// createLegacyV6WithSessionLogFixture creates a v6 database that includes a
+// session_log table with only the pre-v7 columns (no entry_kind). This is the
+// exact state a v0.9.1 user has before upgrading to v0.10.0.
+func createLegacyV6WithSessionLogFixture(path string) error {
+	conn, err := sql.Open("sqlite3", path)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	stmts := []string{
+		`CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+		`CREATE TABLE vault_notes (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			path TEXT NOT NULL, title TEXT NOT NULL,
+			tags TEXT DEFAULT '[]', domain TEXT DEFAULT '', workstream TEXT DEFAULT '',
+			agent TEXT, chunk_id INTEGER NOT NULL, chunk_heading TEXT NOT NULL,
+			text TEXT NOT NULL, modified REAL NOT NULL, content_hash TEXT NOT NULL,
+			content_type TEXT DEFAULT 'note', review_by TEXT DEFAULT '',
+			confidence REAL DEFAULT 0.5, access_count INTEGER DEFAULT 0
+		)`,
+		`CREATE INDEX idx_vault_notes_path ON vault_notes(path)`,
+		// Pre-v7 session_log: no entry_kind, hook_timestamp, etc.
+		`CREATE TABLE session_log (
+			session_id TEXT PRIMARY KEY,
+			started_at TEXT NOT NULL,
+			ended_at TEXT NOT NULL,
+			handoff_path TEXT DEFAULT '',
+			machine TEXT DEFAULT '',
+			files_changed TEXT DEFAULT '[]',
+			summary TEXT DEFAULT ''
+		)`,
+		`CREATE TABLE claims (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			path TEXT NOT NULL, agent TEXT NOT NULL, type TEXT NOT NULL,
+			claimed_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+		)`,
+		// Graph tables (v6 already ran)
+		`CREATE TABLE graph_nodes (
+			id INTEGER PRIMARY KEY, type TEXT NOT NULL, name TEXT NOT NULL,
+			note_id INTEGER, properties TEXT DEFAULT '{}',
+			created_at INTEGER NOT NULL DEFAULT (unixepoch())
+		)`,
+		`CREATE UNIQUE INDEX idx_graph_nodes_type_name ON graph_nodes(type, name)`,
+		`CREATE TABLE graph_edges (
+			id INTEGER PRIMARY KEY, source_id INTEGER NOT NULL,
+			target_id INTEGER NOT NULL, relationship TEXT NOT NULL,
+			weight REAL DEFAULT 1.0, properties TEXT DEFAULT '{}',
+			created_at INTEGER NOT NULL DEFAULT (unixepoch())
+		)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := conn.Exec(stmt); err != nil {
+			return err
+		}
+	}
+
+	if _, err := conn.Exec(`INSERT INTO schema_meta (key, value) VALUES ('schema_version', '6')`); err != nil {
+		return err
+	}
+	// Insert a session row to verify it survives migration.
+	if _, err := conn.Exec(`
+		INSERT INTO session_log (session_id, started_at, ended_at)
+		VALUES ('sess-001', '2025-01-01T00:00:00Z', '2025-01-01T01:00:00Z')
+	`); err != nil {
+		return err
+	}
+
+	return nil
+}

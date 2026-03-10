@@ -180,8 +180,10 @@ func (db *DB) migrate() error {
 			detail TEXT DEFAULT '',
 			hook_session_id TEXT DEFAULT ''
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_session_log_entry_kind_time ON session_log(entry_kind, hook_timestamp DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_session_log_hook_session ON session_log(hook_session_id)`,
+		// NOTE: session_log indexes on entry_kind and hook_session_id are created
+		// in migrateV7 after the columns are added via ALTER TABLE. Creating them
+		// here would fail on upgrades from pre-v7 databases where session_log
+		// exists but lacks those columns.
 
 		`CREATE TABLE IF NOT EXISTS context_usage (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
