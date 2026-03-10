@@ -1,6 +1,7 @@
 package seed
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -218,12 +219,12 @@ func Install(opts InstallOptions) (*InstallResult, error) {
 			fmt.Printf("\r  Indexing [%s] %d/%d", bar, current, total)
 		}
 
-		stats, err := indexer.ReindexWithProgress(db, true, progress)
+		stats, err := indexer.ReindexWithProgress(context.Background(), db, true, progress)
 		if err != nil {
 			// Try lite mode if Ollama isn't available
 			errMsg := strings.ToLower(err.Error())
 			if strings.Contains(errMsg, "ollama") || strings.Contains(errMsg, "connection") || strings.Contains(errMsg, "refused") {
-				stats, err = indexer.ReindexLite(db, true, progress)
+				stats, err = indexer.ReindexLite(context.Background(), db, true, progress)
 				if err != nil {
 					return nil, fmt.Errorf("index seed: %w", err)
 				}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -94,7 +95,7 @@ func newTutorialState() (*tutorialState, error) {
 		if cleanErr := os.RemoveAll(dir); cleanErr != nil {
 			fmt.Fprintf(os.Stderr, "same: warning: failed to clean up tutorial directory %q: %v\n", dir, cleanErr)
 		}
-		return nil, fmt.Errorf("open database: %w", err)
+		return nil, dbOpenError(err)
 	}
 
 	return &tutorialState{dir: dir, db: db, dbPath: dbPath, origVault: origVault}, nil
@@ -123,7 +124,7 @@ func (ts *tutorialState) indexAll() (*indexer.Stats, error) {
 	if err != nil {
 		// Embedding provider failed — fall back to lite mode
 		fmt.Fprintf(os.Stderr, "  %s[fallback: %v]%s\n", cli.Dim, err, cli.Reset)
-		stats, err = indexer.ReindexLite(ts.db, true, nil)
+		stats, err = indexer.ReindexLite(context.Background(), ts.db, true, nil)
 		if err != nil {
 			return nil, err
 		}

@@ -87,11 +87,12 @@ func TestNewOllamaProvider_CustomModel(t *testing.T) {
 
 func TestGetEmbedding_Success(t *testing.T) {
 	server := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := ollamaEmbeddingResponse{
-			Embedding: make([]float32, 768),
+		vec := make([]float32, 768)
+		for i := range vec {
+			vec[i] = float32(i) * 0.001
 		}
-		for i := range resp.Embedding {
-			resp.Embedding[i] = float32(i) * 0.001
+		resp := ollamaEmbedResponse{
+			Embeddings: [][]float32{vec},
 		}
 		json.NewEncoder(w).Encode(resp)
 	}))
@@ -152,8 +153,8 @@ func TestGetEmbedding_5xxRetries(t *testing.T) {
 		for i := range vec {
 			vec[i] = float32(i+1) * 0.001
 		}
-		resp := ollamaEmbeddingResponse{
-			Embedding: vec,
+		resp := ollamaEmbedResponse{
+			Embeddings: [][]float32{vec},
 		}
 		json.NewEncoder(w).Encode(resp)
 	}))
@@ -180,7 +181,7 @@ func TestGetEmbedding_5xxRetries(t *testing.T) {
 
 func TestGetEmbedding_EmptyEmbedding(t *testing.T) {
 	server := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := ollamaEmbeddingResponse{Embedding: nil}
+		resp := ollamaEmbedResponse{Embeddings: nil}
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
@@ -202,12 +203,16 @@ func TestGetEmbedding_500WithLongText_Truncates(t *testing.T) {
 	attempts := 0
 	server := newLocalHTTPServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
-		var req ollamaEmbeddingRequest
+		var req ollamaEmbedRequest
 		json.NewDecoder(r.Body).Decode(&req)
 
-		// Simulate context overflow: reject prompts > 8000 chars, accept shorter.
+		// Simulate context overflow: reject inputs > 8000 chars, accept shorter.
 		// GetEmbedding truncation halves the text on 500, so 10000 -> 5000 -> succeeds.
-		if len(req.Prompt) > 8000 {
+		inputText := ""
+		if len(req.Input) > 0 {
+			inputText = req.Input[0]
+		}
+		if len(inputText) > 8000 {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("context too long"))
 			return
@@ -218,8 +223,8 @@ func TestGetEmbedding_500WithLongText_Truncates(t *testing.T) {
 		for i := range vec {
 			vec[i] = float32(i+1) * 0.001
 		}
-		resp := ollamaEmbeddingResponse{
-			Embedding: vec,
+		resp := ollamaEmbedResponse{
+			Embeddings: [][]float32{vec},
 		}
 		json.NewEncoder(w).Encode(resp)
 	}))

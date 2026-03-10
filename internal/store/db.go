@@ -40,6 +40,25 @@ func OpenPath(path string) (*DB, error) {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 
+	// Performance pragmas: these are set per-connection and significantly
+	// reduce latency for both reads and writes.
+	// - cache_size=-64000: 64MB page cache (default is ~2MB). Keeps hot
+	//   pages in memory, reducing disk I/O for repeated searches.
+	// - mmap_size=268435456: 256MB memory-mapped I/O. Lets the OS page
+	//   cache serve reads without going through SQLite's pager.
+	// - temp_store=MEMORY: temp tables/indexes in RAM instead of disk.
+	//   Speeds up ORDER BY, GROUP BY, and CTEs used in search queries.
+	for _, pragma := range []string{
+		"PRAGMA cache_size = -64000",
+		"PRAGMA mmap_size = 268435456",
+		"PRAGMA temp_store = MEMORY",
+	} {
+		if _, err := conn.Exec(pragma); err != nil {
+			conn.Close()
+			return nil, fmt.Errorf("set %s: %w", pragma, err)
+		}
+	}
+
 	// Verify sqlite-vec is loaded
 	var vecVersion string
 	if err := conn.QueryRow("SELECT vec_version()").Scan(&vecVersion); err != nil {
@@ -62,6 +81,9 @@ func OpenMemory() (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Match on-disk performance pragmas for realistic test behavior.
+	conn.Exec("PRAGMA temp_store = MEMORY") //nolint:errcheck
 
 	db := &DB{conn: conn}
 	if err := db.migrate(); err != nil {
@@ -153,8 +175,12 @@ func (db *DB) migrate() error {
 		// Composite indexes for common search query patterns:
 		// FuzzyTitleSearch, KeywordSearch, RecentNotes all filter on chunk_id=0 and sort by modified DESC.
 		`CREATE INDEX IF NOT EXISTS idx_vault_notes_chunk0_modified ON vault_notes(chunk_id, modified DESC)`,
-		// GetContentHashes needs DISTINCT path, content_hash — covering index avoids full table scan.
+		// GetContentHashes needs path + content_hash WHERE chunk_id=0 — covering index
+		// enables an index-only scan without touching the main table.
 		`CREATE INDEX IF NOT EXISTS idx_vault_notes_path_hash ON vault_notes(path, content_hash)`,
+		// Covering index for GetContentHashes: chunk_id filter + path,content_hash projection.
+		// Avoids table lookups during incremental reindex hash comparison.
+		`CREATE INDEX IF NOT EXISTS idx_vault_notes_chunk0_path_hash ON vault_notes(chunk_id, path, content_hash)`,
 
 		fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS vault_notes_vec USING vec0(
 			note_id INTEGER PRIMARY KEY,
@@ -479,13 +505,12 @@ func (db *DB) CheckEmbeddingMeta(provider, model string, dims int) error {
 
 	// Check for dimension mismatch (most critical — causes garbage results)
 	if hasDims && dims > 0 && storedDims > 0 && storedDims != dims {
-		return fmt.Errorf("embedding dimensions changed from %d to %d — run 'same reindex --force' to rebuild", storedDims, dims)
+		return fmt.Errorf("embedding dimensions changed: your embedding model changed. Run 'same reindex --force' to rebuild the index")
 	}
 
 	// Check for provider/model mismatch
 	if hasProvider && hasModel && (storedProvider != provider || storedModel != model) {
-		return fmt.Errorf("embedding model changed from %s/%s to %s/%s — run 'same reindex --force' to rebuild",
-			storedProvider, storedModel, provider, model)
+		return fmt.Errorf("embedding model changed: your embedding model changed. Run 'same reindex --force' to rebuild the index")
 	}
 
 	return nil

@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -23,6 +24,9 @@ import (
 // Version is set by cmd/same to record which SAME version performed the reindex.
 var Version string
 
+// ErrCancelled is returned when indexing is cancelled via context.
+var ErrCancelled = errors.New("indexing cancelled")
+
 // Stats holds reindex statistics.
 type Stats struct {
 	TotalFiles       int    `json:"total_files"`
@@ -32,6 +36,7 @@ type Stats struct {
 	NotesInIndex     int    `json:"total_notes_in_index"`
 	ChunksInIndex    int    `json:"total_chunks_in_index"`
 	Timestamp        string `json:"timestamp"`
+	Cancelled        bool   `json:"cancelled,omitempty"`
 }
 
 // ProgressFunc is called during indexing to report progress.
@@ -52,11 +57,12 @@ var errNoEmbeddingsForFile = errors.New("no embeddings generated for file")
 
 // Reindex walks the vault, builds records, embeds them, and stores in the database.
 func Reindex(db *store.DB, force bool) (*Stats, error) {
-	return ReindexWithProgress(db, force, nil)
+	return ReindexWithProgress(context.Background(), db, force, nil)
 }
 
-// ReindexWithProgress is like Reindex but accepts an optional progress callback.
-func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stats, error) {
+// ReindexWithProgress is like Reindex but accepts a context for cancellation
+// and an optional progress callback.
+func ReindexWithProgress(ctx context.Context, db *store.DB, force bool, progress ProgressFunc) (*Stats, error) {
 	vaultPath := config.VaultPath()
 	ec := config.EmbeddingProviderConfig()
 	provCfg := embedding.ProviderConfig{
@@ -162,7 +168,7 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 	// embedding errors across the whole vault before lite fallback kicks in.
 	if len(work) > 0 {
 		if err := preflightEmbeddingProvider(embedClient); err != nil {
-			return nil, fmt.Errorf("embedding backend unavailable: %w", err)
+			return nil, embedding.HumanizeError(fmt.Errorf("embedding backend unavailable: %w", err))
 		}
 	}
 
@@ -177,6 +183,13 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 		go func() {
 			defer wg.Done()
 			for w := range workCh {
+				// Check for cancellation before processing
+				select {
+				case <-ctx.Done():
+					resultCh <- embResult{Path: w.relPath, Err: ctx.Err()}
+					continue
+				default:
+				}
 				records, embeddings, content, err := buildRecordsWithContent(w.path, w.relPath, vaultPath, embedClient, w.content)
 				resultCh <- embResult{
 					Records:    records,
@@ -189,8 +202,14 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 		}()
 	}
 
+	// Send work items, stopping early on cancellation
+sendLoop:
 	for _, w := range work {
-		workCh <- w
+		select {
+		case <-ctx.Done():
+			break sendLoop
+		case workCh <- w:
+		}
 	}
 	close(workCh)
 
@@ -200,10 +219,20 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 	}()
 
 	// Collect results and insert
+	cancelled := false
 	embeddingFileFailures := 0
 	for result := range resultCh {
+		// Check for cancellation
+		if ctx.Err() != nil {
+			if !cancelled {
+				cancelled = true
+				stats.Cancelled = true
+			}
+			// Drain remaining results without processing
+			continue
+		}
 		if result.Err != nil {
-			fmt.Fprintf(os.Stderr, "  [ERROR] %s: %v\n", result.Path, result.Err)
+			fmt.Fprintf(os.Stderr, "  [ERROR] %s: %v\n", result.Path, embedding.HumanizeError(result.Err))
 			if errors.Is(result.Err, errNoEmbeddingsForFile) {
 				embeddingFileFailures++
 			}
@@ -248,6 +277,15 @@ func ReindexWithProgress(db *store.DB, force bool, progress ProgressFunc) (*Stat
 			fmt.Fprintf(os.Stderr, "  [%d/%d] Indexed: %s (%d chunks)\n",
 				processed, stats.TotalFiles, result.Path, len(result.Records))
 		}
+	}
+
+	// If cancelled, return partial stats
+	if cancelled {
+		noteCount, _ := db.NoteCount()
+		chunkCount, _ := db.ChunkCount()
+		stats.NotesInIndex = noteCount
+		stats.ChunksInIndex = chunkCount
+		return stats, ErrCancelled
 	}
 
 	// Update final counts
@@ -506,46 +544,85 @@ func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient em
 		chunks = []Chunk{{Heading: "(full)", Text: body}}
 	}
 
-	var records []store.NoteRecord
-	var embeddings [][]float32
-	embedFailures := 0
-
+	// Collect all embed texts for batch embedding
+	embedTexts := make([]string, len(chunks))
 	for i, chunk := range chunks {
 		embedText := title + "\n" + chunk.Text
 		if len(embedText) > config.MaxEmbedChars {
 			embedText = embedText[:config.MaxEmbedChars]
 		}
+		embedTexts[i] = embedText
+	}
 
-		vec, err := embedClient.GetDocumentEmbedding(embedText)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  [WARN] Failed to embed %s chunk %d: %v\n", relPath, i, err)
-			embedFailures++
-			continue
+	// Batch embed all chunks at once
+	allVecs, batchErr := embedClient.GetDocumentEmbeddings(embedTexts)
+
+	var records []store.NoteRecord
+	var embeddings [][]float32
+	embedFailures := 0
+
+	if batchErr != nil {
+		// Batch failed — fall back to individual embedding per chunk
+		fmt.Fprintf(os.Stderr, "  [WARN] Batch embed failed for %s, falling back to sequential: %v\n", relPath, batchErr)
+		for i, chunk := range chunks {
+			vec, err := embedClient.GetDocumentEmbedding(embedTexts[i])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  [WARN] Failed to embed %s chunk %d: %v\n", relPath, i, err)
+				embedFailures++
+				continue
+			}
+
+			text := chunk.Text
+			if len(text) > 10000 {
+				text = text[:10000]
+			}
+
+			records = append(records, store.NoteRecord{
+				Path:         relPath,
+				Title:        title,
+				Tags:         string(tagsJSON),
+				Domain:       meta.Domain,
+				Workstream:   meta.Workstream,
+				Agent:        strings.TrimSpace(meta.Agent),
+				ChunkID:      i,
+				ChunkHeading: chunk.Heading,
+				Text:         text,
+				Modified:     mtime,
+				ContentHash:  contentHash,
+				ContentType:  contentType,
+				ReviewBy:     reviewBy,
+				Confidence:   confidence,
+				AccessCount:  0,
+			})
+			embeddings = append(embeddings, vec)
 		}
+	} else {
+		// Batch succeeded — map vectors back to records
+		for i, chunk := range chunks {
+			text := chunk.Text
+			if len(text) > 10000 {
+				text = text[:10000]
+			}
 
-		text := chunk.Text
-		if len(text) > 10000 {
-			text = text[:10000]
+			records = append(records, store.NoteRecord{
+				Path:         relPath,
+				Title:        title,
+				Tags:         string(tagsJSON),
+				Domain:       meta.Domain,
+				Workstream:   meta.Workstream,
+				Agent:        strings.TrimSpace(meta.Agent),
+				ChunkID:      i,
+				ChunkHeading: chunk.Heading,
+				Text:         text,
+				Modified:     mtime,
+				ContentHash:  contentHash,
+				ContentType:  contentType,
+				ReviewBy:     reviewBy,
+				Confidence:   confidence,
+				AccessCount:  0,
+			})
+			embeddings = append(embeddings, allVecs[i])
 		}
-
-		records = append(records, store.NoteRecord{
-			Path:         relPath,
-			Title:        title,
-			Tags:         string(tagsJSON),
-			Domain:       meta.Domain,
-			Workstream:   meta.Workstream,
-			Agent:        strings.TrimSpace(meta.Agent),
-			ChunkID:      i,
-			ChunkHeading: chunk.Heading,
-			Text:         text,
-			Modified:     mtime,
-			ContentHash:  contentHash,
-			ContentType:  contentType,
-			ReviewBy:     reviewBy,
-			Confidence:   confidence,
-			AccessCount:  0,
-		})
-		embeddings = append(embeddings, vec)
 	}
 
 	if len(chunks) > 0 && len(records) == 0 && embedFailures == len(chunks) {
@@ -601,9 +678,19 @@ func sha256Hash(s string) string {
 	return fmt.Sprintf("%x", h)
 }
 
+// liteResult holds the result of parsing a single file for lite indexing.
+type liteResult struct {
+	Records []store.NoteRecord
+	Content []byte
+	RelPath string
+	Err     error
+}
+
 // ReindexLite indexes vault notes WITHOUT generating embeddings (FTS5-only mode).
 // Used when Ollama is unavailable. Notes are parsed, chunked, and stored for keyword search.
-func ReindexLite(db *store.DB, force bool, progress ProgressFunc) (*Stats, error) {
+// Uses a worker pool (4 goroutines) for parallel file I/O and parsing, matching
+// the concurrency model of the full Reindex function.
+func ReindexLite(ctx context.Context, db *store.DB, force bool, progress ProgressFunc) (*Stats, error) {
 	vaultPath := config.VaultPath()
 	mdFiles := walkVault(vaultPath)
 	stats := &Stats{
@@ -626,7 +713,13 @@ func ReindexLite(db *store.DB, force bool, progress ProgressFunc) (*Stats, error
 		}
 	}
 
-	for i, fp := range mdFiles {
+	// Build work queue, filtering unchanged files (same as full Reindex).
+	type fileWork struct {
+		path    string
+		relPath string
+	}
+	var work []fileWork
+	for _, fp := range mdFiles {
 		relPath := relativePath(fp, vaultPath)
 
 		if !force {
@@ -638,52 +731,118 @@ func ReindexLite(db *store.DB, force bool, progress ProgressFunc) (*Stats, error
 			hash := sha256Hash(string(content))
 			if existing, ok := existingHashes[relPath]; ok && existing == hash {
 				stats.SkippedUnchanged++
-				if progress != nil {
-					progress(i+1, stats.TotalFiles, relPath)
+				continue
+			}
+		}
+
+		work = append(work, fileWork{path: fp, relPath: relPath})
+	}
+
+	// Process files with a worker pool (4 goroutines) for parallel file
+	// I/O and markdown parsing. DB writes remain serial (SQLite constraint).
+	const numWorkers = 4
+	workCh := make(chan fileWork, len(work))
+	resultCh := make(chan liteResult, len(work))
+
+	var wg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for w := range workCh {
+				select {
+				case <-ctx.Done():
+					resultCh <- liteResult{RelPath: w.relPath, Err: ctx.Err()}
+					continue
+				default:
 				}
-				continue
+				records, content, err := buildRecordsLite(w.path, w.relPath, vaultPath)
+				resultCh <- liteResult{
+					Records: records,
+					Content: content,
+					RelPath: w.relPath,
+					Err:     err,
+				}
 			}
-		}
+		}()
+	}
 
-		if !force {
-			if err := db.DeleteByPath(relPath); err != nil {
-				fmt.Fprintf(os.Stderr, "  [ERROR] delete %s: %v\n", relPath, err)
-				stats.Errors++
-				continue
+	// Send work items
+sendLoop:
+	for _, w := range work {
+		select {
+		case <-ctx.Done():
+			break sendLoop
+		case workCh <- w:
+		}
+	}
+	close(workCh)
+
+	go func() {
+		wg.Wait()
+		close(resultCh)
+	}()
+
+	// Collect results and insert (serial DB writes)
+	cancelled := false
+	graphDB := graph.NewDB(db.Conn())
+	extractor := graph.NewExtractor(graphDB)
+
+	for result := range resultCh {
+		if ctx.Err() != nil {
+			if !cancelled {
+				cancelled = true
+				stats.Cancelled = true
 			}
+			continue
 		}
-
-		records, content, err := buildRecordsLite(fp, relPath, vaultPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  [ERROR] %s: %v\n", relPath, err)
+		if result.Err != nil {
+			fmt.Fprintf(os.Stderr, "  [ERROR] %s: %v\n", result.RelPath, result.Err)
 			stats.Errors++
 			continue
 		}
 
-		if len(records) > 0 {
-			insertedIDs, err := db.BulkInsertNotesLite(records)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "  [ERROR] storing %s: %v\n", relPath, err)
+		if len(result.Records) == 0 {
+			continue
+		}
+
+		if !force {
+			if err := db.DeleteByPath(result.RelPath); err != nil {
+				fmt.Fprintf(os.Stderr, "  [ERROR] delete %s: %v\n", result.RelPath, err)
 				stats.Errors++
 				continue
 			}
+		}
 
-			// Graph Extraction
-			graphDB := graph.NewDB(db.Conn())
-			extractor := graph.NewExtractor(graphDB)
-			if rootID, ok := insertedIDs[relPath]; ok {
-				agent := ""
-				if len(records) > 0 {
-					agent = records[0].Agent
-				}
-				_ = extractor.ExtractFromNote(rootID, relPath, string(content), agent)
+		insertedIDs, err := db.BulkInsertNotesLite(result.Records)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  [ERROR] storing %s: %v\n", result.RelPath, err)
+			stats.Errors++
+			continue
+		}
+
+		// Graph Extraction
+		if rootID, ok := insertedIDs[result.RelPath]; ok {
+			agent := ""
+			if len(result.Records) > 0 {
+				agent = result.Records[0].Agent
 			}
+			_ = extractor.ExtractFromNote(rootID, result.RelPath, string(result.Content), agent)
 		}
 
 		stats.NewlyIndexed++
+		processed := stats.NewlyIndexed + stats.SkippedUnchanged + stats.Errors
 		if progress != nil {
-			progress(i+1, stats.TotalFiles, relPath)
+			progress(processed, stats.TotalFiles, result.RelPath)
 		}
+	}
+
+	if cancelled {
+		noteCount, _ := db.NoteCount()
+		chunkCount, _ := db.ChunkCount()
+		stats.NotesInIndex = noteCount
+		stats.ChunksInIndex = chunkCount
+		return stats, ErrCancelled
 	}
 
 	noteCount, _ := db.NoteCount()

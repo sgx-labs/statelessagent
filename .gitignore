@@ -29,6 +29,7 @@ data/
 
 # Sensitive patterns
 .scripts/.blocklist
+_PRIVATE/
 
 # OS
 .DS_Store

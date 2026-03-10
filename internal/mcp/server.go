@@ -449,7 +449,7 @@ func handleReindex(ctx context.Context, req *mcp.CallToolRequest, input reindexI
 			strings.Contains(errMsg, "no embeddings generated") ||
 			strings.Contains(errMsg, "keyword-only mode") ||
 			strings.Contains(errMsg, `provider is "none"`) {
-			stats, err = indexer.ReindexLite(db, input.Force, nil)
+			stats, err = indexer.ReindexLite(context.Background(), db, input.Force, nil)
 			if err != nil {
 				return errorResult(fmt.Sprintf("Reindex failed (keyword-only fallback): %v", err)), nil, nil
 			}

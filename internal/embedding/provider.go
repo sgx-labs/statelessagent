@@ -23,6 +23,10 @@ type Provider interface {
 	// GetDocumentEmbedding returns an embedding optimized for document storage.
 	GetDocumentEmbedding(text string) ([]float32, error)
 
+	// GetDocumentEmbeddings returns embeddings for multiple texts in a batch.
+	// Providers that support native batching should override this for efficiency.
+	GetDocumentEmbeddings(texts []string) ([][]float32, error)
+
 	// GetQueryEmbedding returns an embedding optimized for search queries.
 	GetQueryEmbedding(text string) ([]float32, error)
 
@@ -67,7 +71,7 @@ func NewProvider(cfg ProviderConfig) (Provider, error) {
 // Returns an error describing the problem, or nil if valid.
 func validateEmbedding(vec []float32, expectedDims int) error {
 	if expectedDims > 0 && len(vec) != expectedDims {
-		return fmt.Errorf("embedding dimension mismatch: expected %d, got %d", expectedDims, len(vec))
+		return fmt.Errorf("embedding dimension mismatch: your embedding model changed. Run 'same reindex --force' to rebuild the index")
 	}
 	// Check for all-zero vector (indicates provider returned garbage)
 	allZero := true

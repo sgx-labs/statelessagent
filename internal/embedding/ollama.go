@@ -63,6 +63,20 @@ func (p *OllamaProvider) Name() string    { return "ollama" }
 func (p *OllamaProvider) Model() string   { return p.model }
 func (p *OllamaProvider) Dimensions() int { return p.dims }
 
+// ollamaBatchSize is the maximum number of texts per /api/embed request.
+// Keeps memory usage reasonable for large vaults.
+const ollamaBatchSize = 50
+
+type ollamaEmbedRequest struct {
+	Model string   `json:"model"`
+	Input []string `json:"input"`
+}
+
+type ollamaEmbedResponse struct {
+	Embeddings [][]float32 `json:"embeddings"`
+}
+
+// Legacy single-prompt types kept for reference/compat.
 type ollamaEmbeddingRequest struct {
 	Model  string `json:"model"`
 	Prompt string `json:"prompt"`
@@ -144,7 +158,6 @@ func (p *OllamaProvider) GetEmbedding(text string, purpose string) ([]float32, e
 	for attempt := 0; attempt < ollamaMaxRetries; attempt++ {
 		if attempt > 0 {
 			delay := time.Duration(attempt) * ollamaRetryBase
-			// Include classified reason for better debugging
 			reason := ""
 			if he, ok := lastErr.(*httpError); ok && he.Reason != "" {
 				reason = fmt.Sprintf(" [%s]", he.Reason)
@@ -154,9 +167,12 @@ func (p *OllamaProvider) GetEmbedding(text string, purpose string) ([]float32, e
 			time.Sleep(delay)
 		}
 
-		result, err := p.doEmbedRequest(prompt)
+		results, err := p.doBatchEmbedRequest([]string{prompt})
 		if err == nil {
-			return result, nil
+			if len(results) == 0 || len(results[0]) == 0 {
+				return nil, fmt.Errorf("empty embedding returned")
+			}
+			return results[0], nil
 		}
 
 		// If 500 with long text, try truncation instead of retry
@@ -172,21 +188,21 @@ func (p *OllamaProvider) GetEmbedding(text string, purpose string) ([]float32, e
 
 		lastErr = err
 	}
-	return nil, fmt.Errorf("ollama request failed after %d attempts: %w", ollamaMaxRetries, lastErr)
+	return nil, humanizeHTTPError(fmt.Errorf("ollama request failed after %d attempts: %w", ollamaMaxRetries, lastErr))
 }
 
-// doEmbedRequest performs a single embedding HTTP request.
-func (p *OllamaProvider) doEmbedRequest(prompt string) ([]float32, error) {
-	body, err := json.Marshal(ollamaEmbeddingRequest{
-		Model:  p.model,
-		Prompt: prompt,
+// doBatchEmbedRequest sends a batch of texts to the /api/embed endpoint.
+func (p *OllamaProvider) doBatchEmbedRequest(inputs []string) ([][]float32, error) {
+	body, err := json.Marshal(ollamaEmbedRequest{
+		Model: p.model,
+		Input: inputs,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
 	resp, err := p.httpClient.Post(
-		strings.TrimRight(p.baseURL, "/")+"/api/embeddings",
+		strings.TrimRight(p.baseURL, "/")+"/api/embed",
 		"application/json",
 		bytes.NewReader(body),
 	)
@@ -201,25 +217,84 @@ func (p *OllamaProvider) doEmbedRequest(prompt string) ([]float32, error) {
 		return nil, &httpError{StatusCode: resp.StatusCode, Body: string(respBody)}
 	}
 
-	var result ollamaEmbeddingResponse
+	var result ollamaEmbedResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
-	if len(result.Embedding) == 0 {
-		return nil, fmt.Errorf("empty embedding returned")
+	if len(result.Embeddings) != len(inputs) {
+		return nil, fmt.Errorf("expected %d embeddings, got %d", len(inputs), len(result.Embeddings))
 	}
 
-	// Validate dimension and zero-vector (E4, E5)
-	if err := validateEmbedding(result.Embedding, p.dims); err != nil {
-		return nil, err
+	for i, emb := range result.Embeddings {
+		if err := validateEmbedding(emb, p.dims); err != nil {
+			return nil, fmt.Errorf("embedding %d: %w", i, err)
+		}
 	}
 
-	return result.Embedding, nil
+	return result.Embeddings, nil
 }
 
 func (p *OllamaProvider) GetDocumentEmbedding(text string) ([]float32, error) {
 	return p.GetEmbedding(text, "document")
+}
+
+// GetDocumentEmbeddings returns embeddings for multiple texts using batch requests.
+// Texts are split into batches of ollamaBatchSize and sent to the /api/embed endpoint.
+func (p *OllamaProvider) GetDocumentEmbeddings(texts []string) ([][]float32, error) {
+	if len(texts) == 0 {
+		return nil, nil
+	}
+
+	// Prepend document prefix to each text
+	prefixed := make([]string, len(texts))
+	for i, t := range texts {
+		prefixed[i] = "search_document: " + t
+	}
+
+	allEmbeddings := make([][]float32, 0, len(texts))
+
+	for start := 0; start < len(prefixed); start += ollamaBatchSize {
+		end := start + ollamaBatchSize
+		if end > len(prefixed) {
+			end = len(prefixed)
+		}
+		batch := prefixed[start:end]
+
+		var lastErr error
+		var results [][]float32
+		for attempt := 0; attempt < ollamaMaxRetries; attempt++ {
+			if attempt > 0 {
+				delay := time.Duration(attempt) * ollamaRetryBase
+				reason := ""
+				if he, ok := lastErr.(*httpError); ok && he.Reason != "" {
+					reason = fmt.Sprintf(" [%s]", he.Reason)
+				}
+				fmt.Fprintf(os.Stderr, "same: ollama batch request failed%s, retrying in %s... (attempt %d/%d)\n",
+					reason, delay, attempt+1, ollamaMaxRetries)
+				time.Sleep(delay)
+			}
+
+			var err error
+			results, err = p.doBatchEmbedRequest(batch)
+			if err == nil {
+				break
+			}
+
+			if he, ok := err.(*httpError); ok && !he.isRetryable() {
+				return nil, err
+			}
+			lastErr = err
+			results = nil
+		}
+		if results == nil {
+			return nil, humanizeHTTPError(fmt.Errorf("ollama batch request failed after %d attempts: %w", ollamaMaxRetries, lastErr))
+		}
+
+		allEmbeddings = append(allEmbeddings, results...)
+	}
+
+	return allEmbeddings, nil
 }
 
 func (p *OllamaProvider) GetQueryEmbedding(text string) ([]float32, error) {

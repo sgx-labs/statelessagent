@@ -32,6 +32,18 @@ func (m *mockEmbedProvider) GetDocumentEmbedding(text string) ([]float32, error)
 	return m.GetEmbedding(text, "document")
 }
 
+func (m *mockEmbedProvider) GetDocumentEmbeddings(texts []string) ([][]float32, error) {
+	results := make([][]float32, len(texts))
+	for i, t := range texts {
+		vec, err := m.GetDocumentEmbedding(t)
+		if err != nil {
+			return nil, err
+		}
+		results[i] = vec
+	}
+	return results, nil
+}
+
 func (m *mockEmbedProvider) GetQueryEmbedding(text string) ([]float32, error) {
 	return m.GetEmbedding(text, "query")
 }

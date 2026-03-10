@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,7 +35,7 @@ func TestReindexLite_SkipsPrivateDirectoryContent(t *testing.T) {
 	}
 	defer db.Close()
 
-	if _, err := ReindexLite(db, true, nil); err != nil {
+	if _, err := ReindexLite(context.Background(), db, true, nil); err != nil {
 		t.Fatalf("reindex lite: %v", err)
 	}
 

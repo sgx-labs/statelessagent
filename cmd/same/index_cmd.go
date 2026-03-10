@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -57,6 +61,25 @@ func runReindex(force bool, verbose bool) error {
 	}
 	defer db.Close()
 
+	// Set up context with signal handling for graceful cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		select {
+		case <-sigCh:
+			fmt.Fprintf(os.Stderr, "\n  Stopping... press Ctrl+C again to force quit\n")
+			cancel()
+			// Wait for second signal to force quit
+			<-sigCh
+			os.Exit(1)
+		case <-ctx.Done():
+		}
+	}()
+	defer signal.Stop(sigCh)
+
 	var progress indexer.ProgressFunc
 	if verbose {
 		progress = func(current, total int, path string) {
@@ -64,9 +87,11 @@ func runReindex(force bool, verbose bool) error {
 		}
 	}
 
+	fmt.Printf("  Graph extraction: %s\n", graphModeSummary(config.GraphLLMMode()))
+
 	indexer.Version = Version
-	stats, err := indexer.ReindexWithProgress(db, force, progress)
-	if err != nil {
+	stats, err := indexer.ReindexWithProgress(ctx, db, force, progress)
+	if err != nil && !errors.Is(err, indexer.ErrCancelled) {
 		errMsg := strings.ToLower(err.Error())
 		if strings.Contains(errMsg, "ollama") ||
 			strings.Contains(errMsg, "connection") ||
@@ -78,8 +103,8 @@ func runReindex(force bool, verbose bool) error {
 			// Embedding unavailable/disabled — offer lite mode
 			fmt.Fprintf(os.Stderr, "  Embedding backend unavailable or disabled — indexing with keyword search only.\n")
 			fmt.Fprintf(os.Stderr, "  Configure an embedding provider (ollama/openai/openai-compatible) and run 'same reindex' again for semantic search.\n\n")
-			stats, err = indexer.ReindexLite(db, force, progress)
-			if err != nil {
+			stats, err = indexer.ReindexLite(ctx, db, force, progress)
+			if err != nil && !errors.Is(err, indexer.ErrCancelled) {
 				return err
 			}
 		} else {
@@ -88,15 +113,22 @@ func runReindex(force bool, verbose bool) error {
 	}
 
 	fmt.Println()
-	fmt.Printf("  %sReindex complete%s\n\n", cli.Bold, cli.Reset)
-	fmt.Printf("  Files scanned:   %d\n", stats.TotalFiles)
-	fmt.Printf("  Newly indexed:   %d\n", stats.NewlyIndexed)
-	fmt.Printf("  Unchanged:       %d\n", stats.SkippedUnchanged)
-	if stats.Errors > 0 {
-		fmt.Printf("  Errors:          %s%d%s\n", cli.Yellow, stats.Errors, cli.Reset)
+	if stats != nil && stats.Cancelled {
+		fmt.Printf("  %sReindex cancelled by user. %d of %d notes indexed.%s\n\n",
+			cli.Yellow, stats.NewlyIndexed, stats.TotalFiles, cli.Reset)
+	} else {
+		fmt.Printf("  %sReindex complete%s\n\n", cli.Bold, cli.Reset)
 	}
-	fmt.Printf("  Notes in index:  %d\n", stats.NotesInIndex)
-	fmt.Printf("  Chunks in index: %d\n", stats.ChunksInIndex)
+	if stats != nil {
+		fmt.Printf("  Files scanned:   %d\n", stats.TotalFiles)
+		fmt.Printf("  Newly indexed:   %d\n", stats.NewlyIndexed)
+		fmt.Printf("  Unchanged:       %d\n", stats.SkippedUnchanged)
+		if stats.Errors > 0 {
+			fmt.Printf("  Errors:          %s%d%s\n", cli.Yellow, stats.Errors, cli.Reset)
+		}
+		fmt.Printf("  Notes in index:  %d\n", stats.NotesInIndex)
+		fmt.Printf("  Chunks in index: %d\n", stats.ChunksInIndex)
+	}
 	searchMode := "keyword-only"
 	if db.HasVectors() {
 		searchMode = "semantic"

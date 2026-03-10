@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +21,10 @@ func (f failingEmbeddingProvider) GetEmbedding(text string, purpose string) ([]f
 }
 
 func (f failingEmbeddingProvider) GetDocumentEmbedding(text string) ([]float32, error) {
+	return nil, fmt.Errorf("embedding backend unavailable")
+}
+
+func (f failingEmbeddingProvider) GetDocumentEmbeddings(texts []string) ([][]float32, error) {
 	return nil, fmt.Errorf("embedding backend unavailable")
 }
 
@@ -47,6 +52,14 @@ func (okEmbeddingProvider) GetEmbedding(text string, purpose string) ([]float32,
 
 func (okEmbeddingProvider) GetDocumentEmbedding(text string) ([]float32, error) {
 	return []float32{0.1, 0.2, 0.3}, nil
+}
+
+func (okEmbeddingProvider) GetDocumentEmbeddings(texts []string) ([][]float32, error) {
+	results := make([][]float32, len(texts))
+	for i := range texts {
+		results[i] = []float32{0.1, 0.2, 0.3}
+	}
+	return results, nil
 }
 
 func (okEmbeddingProvider) GetQueryEmbedding(text string) ([]float32, error) {
@@ -901,7 +914,7 @@ Second test note with more content.
 	}
 	defer db.Close()
 
-	stats, err := ReindexLite(db, true, nil)
+	stats, err := ReindexLite(context.Background(), db, true, nil)
 	if err != nil {
 		t.Fatalf("ReindexLite: %v", err)
 	}
@@ -950,7 +963,7 @@ func TestReindexLiteIncremental(t *testing.T) {
 	defer db.Close()
 
 	// First indexing (force)
-	stats1, err := ReindexLite(db, true, nil)
+	stats1, err := ReindexLite(context.Background(), db, true, nil)
 	if err != nil {
 		t.Fatalf("first ReindexLite: %v", err)
 	}
@@ -959,7 +972,7 @@ func TestReindexLiteIncremental(t *testing.T) {
 	}
 
 	// Second indexing (incremental, no changes) — should skip both
-	stats2, err := ReindexLite(db, false, nil)
+	stats2, err := ReindexLite(context.Background(), db, false, nil)
 	if err != nil {
 		t.Fatalf("second ReindexLite: %v", err)
 	}
@@ -973,7 +986,7 @@ func TestReindexLiteIncremental(t *testing.T) {
 	// Modify one note and re-index
 	writeTestNote(t, vaultDir, "note1.md", "Updated content.\n")
 
-	stats3, err := ReindexLite(db, false, nil)
+	stats3, err := ReindexLite(context.Background(), db, false, nil)
 	if err != nil {
 		t.Fatalf("third ReindexLite: %v", err)
 	}
@@ -1004,7 +1017,7 @@ func TestReindexLiteWithProgress(t *testing.T) {
 		}
 	}
 
-	_, err = ReindexLite(db, true, progress)
+	_, err = ReindexLite(context.Background(), db, true, progress)
 	if err != nil {
 		t.Fatalf("ReindexLite: %v", err)
 	}
@@ -1026,7 +1039,7 @@ func TestReindexLiteSkipsPrivateDir(t *testing.T) {
 	}
 	defer db.Close()
 
-	stats, err := ReindexLite(db, true, nil)
+	stats, err := ReindexLite(context.Background(), db, true, nil)
 	if err != nil {
 		t.Fatalf("ReindexLite: %v", err)
 	}
@@ -1049,7 +1062,7 @@ func TestReindexLiteSetsMetadata(t *testing.T) {
 	Version = "test-version"
 	defer func() { Version = "" }()
 
-	_, err = ReindexLite(db, true, nil)
+	_, err = ReindexLite(context.Background(), db, true, nil)
 	if err != nil {
 		t.Fatalf("ReindexLite: %v", err)
 	}
@@ -1089,7 +1102,7 @@ func TestReindexLiteEmptyVault(t *testing.T) {
 	}
 	defer db.Close()
 
-	stats, err := ReindexLite(db, true, nil)
+	stats, err := ReindexLite(context.Background(), db, true, nil)
 	if err != nil {
 		t.Fatalf("ReindexLite: %v", err)
 	}
