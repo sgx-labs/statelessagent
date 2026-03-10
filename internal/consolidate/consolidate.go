@@ -23,6 +23,7 @@ type EmbedProvider interface {
 // Result holds the output of a consolidation run.
 type Result struct {
 	GroupsFound    int
+	GroupsSkipped  int
 	NotesProcessed int
 	NotesCreated   int
 	ConflictsFound int
@@ -123,6 +124,7 @@ func (e *Engine) Run(dryRun bool) (*Result, error) {
 		g, err := e.consolidateGroup(group)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "same: consolidate: group %d: LLM error: %v (skipping)\n", i+1, err)
+			result.GroupsSkipped++
 			continue
 		}
 
@@ -161,6 +163,7 @@ func (e *Engine) loadNotes() ([]NoteData, error) {
 		WHERE chunk_id = 0
 		  AND path NOT LIKE '_PRIVATE/%'
 		  AND path NOT LIKE 'knowledge/%'
+		  AND COALESCE(suppressed, 0) = 0
 		ORDER BY modified DESC`)
 	if err != nil {
 		return nil, err

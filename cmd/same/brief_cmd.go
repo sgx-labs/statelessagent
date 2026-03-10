@@ -67,8 +67,8 @@ func runBrief(maxItems int) error {
 	// Check if vault is empty
 	noteCount, _ := db.NoteCount()
 	if noteCount == 0 {
-		fmt.Printf("\n  Your vault is empty. Run %ssame store%s or %ssame demo%s to add some notes.\n\n",
-			cli.Bold, cli.Reset, cli.Bold, cli.Reset)
+		fmt.Printf("\n  Your vault is empty. Add markdown files to your vault directory, or run %ssame seed install%s for starter content.\n\n",
+			cli.Bold, cli.Reset)
 		return nil
 	}
 
@@ -78,7 +78,7 @@ func runBrief(maxItems int) error {
 	recentNotes := queryBriefNotes(conn,
 		`SELECT path, title, text, modified, content_type, confidence
 		 FROM vault_notes
-		 WHERE chunk_id = 0 AND path NOT LIKE '_PRIVATE/%'
+		 WHERE chunk_id = 0 AND path NOT LIKE '_PRIVATE/%' AND COALESCE(suppressed, 0) = 0
 		 ORDER BY modified DESC
 		 LIMIT 20`)
 
@@ -86,6 +86,7 @@ func runBrief(maxItems int) error {
 		`SELECT path, title, text, modified, content_type, confidence
 		 FROM vault_notes
 		 WHERE chunk_id = 0 AND (content_type = 'session' OR path LIKE 'sessions/%' OR path LIKE '%session%')
+			AND COALESCE(suppressed, 0) = 0
 		 ORDER BY modified DESC
 		 LIMIT ?`, maxItems)
 
@@ -93,6 +94,7 @@ func runBrief(maxItems int) error {
 		`SELECT path, title, text, modified, content_type, confidence
 		 FROM vault_notes
 		 WHERE chunk_id = 0 AND (content_type = 'decision' OR path LIKE '%decision%')
+			AND COALESCE(suppressed, 0) = 0
 		 ORDER BY modified DESC
 		 LIMIT ?`, maxItems)
 
@@ -100,6 +102,7 @@ func runBrief(maxItems int) error {
 		`SELECT path, title, text, confidence, access_count
 		 FROM vault_notes
 		 WHERE chunk_id = 0 AND confidence > 0.7 AND path NOT LIKE '_PRIVATE/%'
+			AND COALESCE(suppressed, 0) = 0
 		 ORDER BY confidence DESC, access_count DESC
 		 LIMIT 10`)
 
@@ -150,7 +153,11 @@ func runBrief(maxItems int) error {
 	// 6. Generate briefing
 	answer, err := chat.Generate(model, prompt)
 	if err != nil {
-		return fmt.Errorf("generate briefing: %w", err)
+		fmt.Fprintf(os.Stderr, "\n  %sTip: check that your LLM is running. For Ollama: ollama serve%s\n", cli.Dim, cli.Reset)
+		return userError(
+			"Could not generate briefing",
+			fmt.Sprintf("LLM error: %v", err),
+		)
 	}
 
 	// 7. Display formatted output

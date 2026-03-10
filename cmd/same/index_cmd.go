@@ -57,7 +57,7 @@ func migrateCmd() *cobra.Command {
 func runReindex(force bool, verbose bool) error {
 	db, err := store.Open()
 	if err != nil {
-		return config.ErrNoDatabase
+		return userError("No SAME vault found", "Run 'same init' first.")
 	}
 	defer db.Close()
 

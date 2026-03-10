@@ -197,6 +197,8 @@ func runUpdate(force bool) error {
 		assetName = "same-linux-arm64"
 	case goos == "windows" && goarch == "amd64":
 		assetName = "same-windows-amd64.exe"
+	case goos == "windows" && goarch == "arm64":
+		assetName = "same-windows-arm64.exe"
 	default:
 		return fmt.Errorf("unsupported platform: %s/%s", goos, goarch)
 	}

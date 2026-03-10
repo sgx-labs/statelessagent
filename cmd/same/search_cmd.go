@@ -361,7 +361,10 @@ func runRelated(notePath string, topK int, jsonOut bool, verbose bool) error {
 	// Check for embedding model/dimension mismatch
 	client, err := newEmbedProvider()
 	if err != nil {
-		return fmt.Errorf("embedding provider: %w", err)
+		return userError(
+			"Finding related notes requires embeddings",
+			"Configure an embedding provider (ollama/openai/openai-compatible) and run 'same reindex'.",
+		)
 	}
 	if mismatchErr := db.CheckEmbeddingMeta(client.Name(), client.Model(), client.Dimensions()); mismatchErr != nil {
 		return embedding.HumanizeError(mismatchErr)

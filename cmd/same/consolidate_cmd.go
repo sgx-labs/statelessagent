@@ -58,6 +58,13 @@ func runConsolidate(dryRun bool, threshold float64) error {
 	}
 	defer db.Close()
 
+	// 1b. Check if vault is empty before attempting LLM setup
+	noteCount, _ := db.NoteCount()
+	if noteCount == 0 {
+		fmt.Printf("\n  Your vault is empty. Add some notes first.\n\n")
+		return nil
+	}
+
 	// 2. Create LLM client
 	chat, err := llm.NewClient()
 	if err != nil {
@@ -177,7 +184,13 @@ func printConsolidateResult(result *consolidate.Result) {
 
 	// Summary
 	fmt.Printf("\n  %s── Summary ───────────────────────────────%s\n", cli.Cyan, cli.Reset)
-	fmt.Printf("\n  %d groups consolidated\n", result.GroupsFound)
+	consolidated := result.GroupsFound - result.GroupsSkipped
+	if result.GroupsSkipped > 0 {
+		fmt.Printf("\n  %d groups found, %d consolidated (%d skipped)\n", result.GroupsFound, consolidated, result.GroupsSkipped)
+		fmt.Fprintf(os.Stderr, "\n  %sTip: consolidate requires a running LLM. Run 'ollama serve' or configure your LLM provider.%s\n", cli.Dim, cli.Reset)
+	} else {
+		fmt.Printf("\n  %d groups consolidated\n", consolidated)
+	}
 	fmt.Printf("  %d facts extracted\n", result.FactsExtracted)
 	if result.ConflictsFound == 1 {
 		fmt.Printf("  1 conflict resolved\n")

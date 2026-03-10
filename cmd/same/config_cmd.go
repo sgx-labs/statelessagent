@@ -155,6 +155,10 @@ func setupSubCmd() *cobra.Command {
 			fmt.Println("    recent_activity       View recently modified notes")
 			fmt.Println("    reindex               Re-index the vault")
 			fmt.Println("    index_stats           Index statistics and health")
+			fmt.Println("    mem_consolidate       Consolidate related notes (experimental)")
+			fmt.Println("    mem_brief             Get an orientation briefing (experimental)")
+			fmt.Println("    mem_health            Check vault health score (experimental)")
+			fmt.Println("    mem_forget            Suppress a memory from search (experimental)")
 			return nil
 		},
 	}

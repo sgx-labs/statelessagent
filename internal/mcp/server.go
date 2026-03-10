@@ -75,7 +75,7 @@ func Serve() error {
 
 	db, err = store.Open()
 	if err != nil {
-		return fmt.Errorf("open database: %w", err)
+		return fmt.Errorf("SAME vault not initialized. Run 'same init' in your project directory first. (details: %v)", err)
 	}
 	defer db.Close()
 
@@ -247,7 +247,7 @@ func registerTools(server *mcp.Server) {
 	// mem_forget (autonomous memory management)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mem_forget",
-		Description: "Suppress a memory so it won't be surfaced in normal search. The note is not deleted -- it's marked as suppressed and will only appear if explicitly requested. Use this for outdated, incorrect, or irrelevant memories.\n\nArgs:\n  path: Path of the note to suppress (required)\n  reason: Why this memory is being suppressed (optional)\n\nReturns confirmation of suppression. (experimental)",
+		Description: "Suppress a memory so it won't be surfaced in normal search. The note is not deleted -- it's marked as suppressed and will only appear if explicitly requested. Use this for outdated, incorrect, or irrelevant memories. This is not easily reversible: there is no mem_restore tool.\n\nArgs:\n  path: Path of the note to suppress (required)\n  reason: Why this memory is being suppressed (optional)\n\nReturns confirmation of suppression. (experimental)",
 		Annotations: writeNonDestructive,
 	}, handleMemForget)
 }
@@ -1018,6 +1018,11 @@ func handleMemConsolidate(ctx context.Context, req *mcp.CallToolRequest, input m
 		return errorResult("Error: too many write operations. Try again in a minute."), nil, nil
 	}
 
+	noteCount, _ := db.NoteCount()
+	if noteCount == 0 {
+		return textResult("Your vault is empty. Store some notes first before consolidating."), nil, nil
+	}
+
 	chat, err := llm.NewClient()
 	if err != nil {
 		return errorResult("Consolidation requires an LLM provider. Run 'same init' to configure one, or set SAME_CHAT_PROVIDER."), nil, nil
@@ -1360,6 +1365,7 @@ func handleMemForget(ctx context.Context, req *mcp.CallToolRequest, input memFor
 		message += fmt.Sprintf("\nReason: %s", input.Reason)
 	}
 	message += "\nThe note still exists on disk but will not appear in search results."
+	message += "\nNote: There is currently no mem_restore tool. To reverse this, manually set suppressed=0 in the database."
 
 	return textResult(message), nil, nil
 }

@@ -49,17 +49,23 @@ func runHealth() error {
 	}
 	defer db.Close()
 
-	// Total notes (chunk_id=0 to deduplicate chunks)
+	// Total notes (chunk_id=0 to deduplicate chunks, excluding suppressed)
 	var totalNotes int
 	if err := db.Conn().QueryRow(
-		`SELECT COUNT(*) FROM vault_notes WHERE chunk_id = 0`,
+		`SELECT COUNT(*) FROM vault_notes WHERE chunk_id = 0 AND COALESCE(suppressed, 0) = 0`,
 	).Scan(&totalNotes); err != nil {
 		return fmt.Errorf("query notes: %w", err)
 	}
 
+	// Suppressed notes (counted separately)
+	var suppressedCount int
+	_ = db.Conn().QueryRow(
+		`SELECT COUNT(*) FROM vault_notes WHERE chunk_id = 0 AND COALESCE(suppressed, 0) = 1`,
+	).Scan(&suppressedCount)
+
 	if totalNotes == 0 {
-		fmt.Printf("\n  Your vault is empty. Run %ssame store%s or %ssame demo%s to get started.\n\n",
-			cli.Bold, cli.Reset, cli.Bold, cli.Reset)
+		fmt.Printf("\n  Your vault is empty. Add markdown files to your vault directory, or run %ssame seed install%s for starter content.\n\n",
+			cli.Bold, cli.Reset)
 		return nil
 	}
 
@@ -68,7 +74,7 @@ func runHealth() error {
 	err = db.Conn().QueryRow(
 		`SELECT COUNT(DISTINCT vn.id) FROM vault_notes vn
 		 INNER JOIN vault_notes_vec vnv ON vn.id = vnv.note_id
-		 WHERE vn.chunk_id = 0`,
+		 WHERE vn.chunk_id = 0 AND COALESCE(vn.suppressed, 0) = 0`,
 	).Scan(&embeddedCount)
 	if err != nil {
 		// vault_notes_vec might not exist if no embeddings configured
@@ -83,7 +89,7 @@ func runHealth() error {
 	var contentTypes []contentTypeStat
 	ctRows, err := db.Conn().Query(
 		`SELECT COALESCE(content_type, 'note') as ct, COUNT(*)
-		 FROM vault_notes WHERE chunk_id = 0
+		 FROM vault_notes WHERE chunk_id = 0 AND COALESCE(suppressed, 0) = 0
 		 GROUP BY ct ORDER BY COUNT(*) DESC`,
 	)
 	if err == nil {
@@ -99,7 +105,7 @@ func runHealth() error {
 	// Average confidence
 	var avgConfidence sql.NullFloat64
 	_ = db.Conn().QueryRow(
-		`SELECT AVG(confidence) FROM vault_notes WHERE chunk_id = 0 AND confidence > 0`,
+		`SELECT AVG(confidence) FROM vault_notes WHERE chunk_id = 0 AND confidence > 0 AND COALESCE(suppressed, 0) = 0`,
 	).Scan(&avgConfidence)
 
 	// Stale notes (older than 30 days, never accessed)
@@ -108,7 +114,7 @@ func runHealth() error {
 	_ = db.Conn().QueryRow(
 		`SELECT COUNT(*) FROM vault_notes
 		 WHERE chunk_id = 0 AND access_count = 0
-		 AND modified < ?`,
+		 AND modified < ? AND COALESCE(suppressed, 0) = 0`,
 		thirtyDaysAgo,
 	).Scan(&staleCount)
 
@@ -122,7 +128,7 @@ func runHealth() error {
 	var topNotes []topNote
 	topRows, err := db.Conn().Query(
 		`SELECT path, title, access_count, confidence
-		 FROM vault_notes WHERE chunk_id = 0
+		 FROM vault_notes WHERE chunk_id = 0 AND COALESCE(suppressed, 0) = 0
 		 ORDER BY access_count DESC LIMIT 5`,
 	)
 	if err == nil {
@@ -138,7 +144,7 @@ func runHealth() error {
 	// Vault age (oldest note)
 	var oldestModified sql.NullFloat64
 	_ = db.Conn().QueryRow(
-		`SELECT MIN(modified) FROM vault_notes WHERE chunk_id = 0`,
+		`SELECT MIN(modified) FROM vault_notes WHERE chunk_id = 0 AND COALESCE(suppressed, 0) = 0`,
 	).Scan(&oldestModified)
 
 	// Recent activity (notes modified in last 7 days)
@@ -146,7 +152,7 @@ func runHealth() error {
 	var recentCount int
 	_ = db.Conn().QueryRow(
 		`SELECT COUNT(*) FROM vault_notes
-		 WHERE chunk_id = 0 AND modified > ?`,
+		 WHERE chunk_id = 0 AND modified > ? AND COALESCE(suppressed, 0) = 0`,
 		sevenDaysAgo,
 	).Scan(&recentCount)
 
@@ -154,21 +160,22 @@ func runHealth() error {
 	var knowledgeCount int
 	_ = db.Conn().QueryRow(
 		`SELECT COUNT(*) FROM vault_notes
-		 WHERE chunk_id = 0 AND (path LIKE 'knowledge/%' OR content_type = 'knowledge')`,
+		 WHERE chunk_id = 0 AND (path LIKE 'knowledge/%' OR content_type = 'knowledge')
+		 AND COALESCE(suppressed, 0) = 0`,
 	).Scan(&knowledgeCount)
 
 	// Notes with at least one access
 	var accessedCount int
 	_ = db.Conn().QueryRow(
 		`SELECT COUNT(*) FROM vault_notes
-		 WHERE chunk_id = 0 AND access_count > 0`,
+		 WHERE chunk_id = 0 AND access_count > 0 AND COALESCE(suppressed, 0) = 0`,
 	).Scan(&accessedCount)
 
 	// Never accessed count
 	var neverAccessedCount int
 	_ = db.Conn().QueryRow(
 		`SELECT COUNT(*) FROM vault_notes
-		 WHERE chunk_id = 0 AND access_count = 0`,
+		 WHERE chunk_id = 0 AND access_count = 0 AND COALESCE(suppressed, 0) = 0`,
 	).Scan(&neverAccessedCount)
 
 	// Compute health score (0-100)
@@ -185,7 +192,7 @@ func runHealth() error {
 	// Last active (most recent modification)
 	var newestModified sql.NullFloat64
 	_ = db.Conn().QueryRow(
-		`SELECT MAX(modified) FROM vault_notes WHERE chunk_id = 0`,
+		`SELECT MAX(modified) FROM vault_notes WHERE chunk_id = 0 AND COALESCE(suppressed, 0) = 0`,
 	).Scan(&newestModified)
 	lastActive := ""
 	if newestModified.Valid && newestModified.Float64 > 0 {
@@ -218,6 +225,9 @@ func runHealth() error {
 		fmt.Printf("  %-14s %d %s\n", "Knowledge:", knowledgeCount, label)
 	} else {
 		fmt.Printf("  %-14s %s0%s\n", "Knowledge:", cli.Dim, cli.Reset)
+	}
+	if suppressedCount > 0 {
+		fmt.Printf("  %-14s %d\n", "Suppressed:", suppressedCount)
 	}
 	if vaultAge != "" {
 		fmt.Printf("  %-14s %s\n", "Vault age:", vaultAge)
