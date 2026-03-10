@@ -305,6 +305,9 @@ func handleSearchNotes(ctx context.Context, req *mcp.CallToolRequest, input sear
 		return errorResult("No results found. The index may be empty — try running reindex() first."), nil, nil
 	}
 
+	// Reconsolidation: increment access counts for surfaced notes (fire-and-forget).
+	incrementAccessCounts(results)
+
 	data, _ := json.MarshalIndent(results, "", "  ")
 	return textResult(string(data)), nil, nil
 }
@@ -349,6 +352,9 @@ func handleSearchNotesFiltered(ctx context.Context, req *mcp.CallToolRequest, in
 	if len(results) == 0 {
 		return errorResult("No results found matching the filters."), nil, nil
 	}
+
+	// Reconsolidation: increment access counts for surfaced notes (fire-and-forget).
+	incrementAccessCounts(results)
 
 	data, _ := json.MarshalIndent(results, "", "  ")
 	return textResult(string(data)), nil, nil
@@ -419,6 +425,9 @@ func handleFindSimilar(ctx context.Context, req *mcp.CallToolRequest, input simi
 	if len(results) == 0 {
 		return errorResult(fmt.Sprintf("No similar notes found for: %s.", input.Path)), nil, nil
 	}
+
+	// Reconsolidation: increment access counts for surfaced notes (fire-and-forget).
+	incrementAccessCounts(results)
 
 	data, _ := json.MarshalIndent(results, "", "  ")
 	return textResult(string(data)), nil, nil
@@ -943,6 +952,16 @@ func handleSearchAcrossVaults(ctx context.Context, req *mcp.CallToolRequest, inp
 		return errorResult(fmt.Sprintf("No results found across %d vault(s).", len(vaultDBPaths))), nil, nil
 	}
 
+	// Reconsolidation: increment access counts for results from the current vault (fire-and-forget).
+	// Results from other vaults are not incremented since those DBs are already closed.
+	if len(results) > 0 {
+		var localPaths []string
+		for _, r := range results {
+			localPaths = append(localPaths, r.Path)
+		}
+		_ = db.IncrementAccessCount(localPaths)
+	}
+
 	data, _ := json.MarshalIndent(results, "", "  ")
 	return textResult(string(data)), nil, nil
 }
@@ -971,6 +990,20 @@ func errorResult(text string) *mcp.CallToolResult {
 			&mcp.TextContent{Text: text},
 		},
 	}
+}
+
+// incrementAccessCounts increments the access_count for all surfaced search
+// results. Called fire-and-forget after search results are returned so that
+// frequently-useful notes strengthen over time (reconsolidation).
+func incrementAccessCounts(results []store.SearchResult) {
+	if len(results) == 0 || db == nil {
+		return
+	}
+	paths := make([]string, len(results))
+	for i, r := range results {
+		paths[i] = r.Path
+	}
+	_ = db.IncrementAccessCount(paths)
 }
 
 // sanitizeResultSnippets neutralizes XML-like tags in search result snippets

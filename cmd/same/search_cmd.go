@@ -212,6 +212,15 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 		}
 	}
 
+	// Reconsolidation: increment access counts for surfaced notes (fire-and-forget).
+	if len(results) > 0 {
+		paths := make([]string, len(results))
+		for i, r := range results {
+			paths[i] = r.Path
+		}
+		_ = db.IncrementAccessCount(paths)
+	}
+
 	return nil
 }
 

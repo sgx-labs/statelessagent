@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strings"
@@ -53,7 +54,8 @@ func (db *DB) VectorSearch(queryVec []float32, opts SearchOptions) ([]SearchResu
 
 	rows, err := db.conn.Query(`
 		SELECT v.distance, n.id, n.path, n.title, n.chunk_heading, n.text,
-			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified
+			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified,
+			n.access_count
 		FROM vault_notes_vec v
 		JOIN vault_notes n ON n.id = v.note_id
 		WHERE v.embedding MATCH ? AND k = ?
@@ -80,6 +82,7 @@ func (db *DB) VectorSearch(queryVec []float32, opts SearchOptions) ([]SearchResu
 		contentType string
 		confidence  float64
 		modified    float64
+		accessCount int
 	}
 
 	var raw []rawResult
@@ -88,6 +91,7 @@ func (db *DB) VectorSearch(queryVec []float32, opts SearchOptions) ([]SearchResu
 		if err := rows.Scan(
 			&r.distance, &r.id, &r.path, &r.title, &r.heading, &r.text,
 			&r.domain, &r.workstream, &r.agent, &r.tags, &r.contentType, &r.confidence, &r.modified,
+			&r.accessCount,
 		); err != nil {
 			return nil, err
 		}
@@ -165,6 +169,17 @@ func (db *DB) VectorSearch(queryVec []float32, opts SearchOptions) ([]SearchResu
 		// results score low while still differentiating within a result set.
 		score := 0.7*absScore + 0.3*relScore
 
+		// Reconsolidation boost: frequently-accessed notes get a small score
+		// bump. Log1p provides diminishing returns so access_count doesn't
+		// dominate over actual similarity.
+		if r.accessCount > 0 {
+			accessBoost := math.Log1p(float64(r.accessCount)) * 0.02
+			score += accessBoost
+			if score > 1.0 {
+				score = 1.0
+			}
+		}
+
 		snippet := r.text
 		if len(snippet) > 500 {
 			snippet = snippet[:500]
@@ -205,6 +220,7 @@ type RawSearchResult struct {
 	ContentType string
 	Confidence  float64
 	Modified    float64
+	AccessCount int
 }
 
 // VectorSearchRaw performs a raw vector search without score normalization.
@@ -216,7 +232,8 @@ func (db *DB) VectorSearchRaw(queryVec []float32, fetchK int) ([]RawSearchResult
 
 	rows, err := db.conn.Query(`
 		SELECT v.distance, n.id, n.path, n.title, n.chunk_heading, n.text,
-			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified
+			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified,
+			n.access_count
 		FROM vault_notes_vec v
 		JOIN vault_notes n ON n.id = v.note_id
 		WHERE v.embedding MATCH ? AND k = ?
@@ -235,6 +252,7 @@ func (db *DB) VectorSearchRaw(queryVec []float32, fetchK int) ([]RawSearchResult
 		if err := rows.Scan(
 			&r.Distance, &r.NoteID, &r.Path, &r.Title, &r.Heading, &r.Text,
 			&r.Domain, &r.Workstream, &r.Agent, &r.Tags, &r.ContentType, &r.Confidence, &r.Modified,
+			&r.AccessCount,
 		); err != nil {
 			return nil, err
 		}
@@ -292,7 +310,8 @@ func (db *DB) KeywordSearch(terms []string, limit int) ([]RawSearchResult, error
 	// short-circuit once it finds the first matching chunk for each path.
 	query := fmt.Sprintf(`
 		SELECT 0 as distance, n.id, n.path, n.title, n.chunk_heading, n.text,
-			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified
+			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified,
+			n.access_count
 		FROM vault_notes n
 		WHERE n.chunk_id = 0 AND UPPER(n.path) NOT LIKE '_PRIVATE/%%' AND EXISTS (
 			SELECT 1 FROM vault_notes n2
@@ -316,6 +335,7 @@ func (db *DB) KeywordSearch(terms []string, limit int) ([]RawSearchResult, error
 		if err := rows.Scan(
 			&r.Distance, &r.NoteID, &r.Path, &r.Title, &r.Heading, &r.Text,
 			&r.Domain, &r.Workstream, &r.Agent, &r.Tags, &r.ContentType, &r.Confidence, &r.Modified,
+			&r.AccessCount,
 		); err != nil {
 			return nil, err
 		}
@@ -373,7 +393,8 @@ func (db *DB) ContentTermSearch(terms []string, minTerms int, limit int) ([]RawS
 			GROUP BY n2.path
 		)
 		SELECT 0 as distance, n.id, n.path, n.title, n.chunk_heading, n.text,
-			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified
+			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified,
+			n.access_count
 		FROM vault_notes n
 		JOIN note_coverage nc ON n.path = nc.path
 		WHERE n.chunk_id = 0 AND UPPER(n.path) NOT LIKE '_PRIVATE/%%' AND nc.cov >= ?
@@ -395,6 +416,7 @@ func (db *DB) ContentTermSearch(terms []string, minTerms int, limit int) ([]RawS
 		if err := rows.Scan(
 			&r.Distance, &r.NoteID, &r.Path, &r.Title, &r.Heading, &r.Text,
 			&r.Domain, &r.Workstream, &r.Agent, &r.Tags, &r.ContentType, &r.Confidence, &r.Modified,
+			&r.AccessCount,
 		); err != nil {
 			return nil, err
 		}
@@ -444,7 +466,8 @@ func (db *DB) KeywordSearchTitleMatch(terms []string, minMatches int, limit int,
 
 	query := fmt.Sprintf(`
 		SELECT 0 as distance, n.id, n.path, n.title, n.chunk_heading, n.text,
-			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified
+			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified,
+			n.access_count
 		FROM vault_notes n
 		WHERE n.chunk_id = 0 AND UPPER(n.path) NOT LIKE '_PRIVATE/%%' AND (%s) >= ?
 		ORDER BY (%s) DESC, n.modified DESC
@@ -463,6 +486,7 @@ func (db *DB) KeywordSearchTitleMatch(terms []string, minMatches int, limit int,
 		if err := rows.Scan(
 			&r.Distance, &r.NoteID, &r.Path, &r.Title, &r.Heading, &r.Text,
 			&r.Domain, &r.Workstream, &r.Agent, &r.Tags, &r.ContentType, &r.Confidence, &r.Modified,
+			&r.AccessCount,
 		); err != nil {
 			return nil, err
 		}
@@ -701,7 +725,8 @@ func (db *DB) FuzzyTitleSearch(terms []string, limit int) ([]RawSearchResult, er
 	}
 	rows, err := db.conn.Query(`
 		SELECT 0 as distance, n.id, n.path, n.title, n.chunk_heading, n.text,
-			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified
+			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified,
+			n.access_count
 		FROM vault_notes n WHERE n.chunk_id = 0 AND UPPER(n.path) NOT LIKE '_PRIVATE/%'
 		ORDER BY n.modified DESC
 		LIMIT ?`, scanLimit)
@@ -716,6 +741,7 @@ func (db *DB) FuzzyTitleSearch(terms []string, limit int) ([]RawSearchResult, er
 		if err := rows.Scan(
 			&r.Distance, &r.NoteID, &r.Path, &r.Title, &r.Heading, &r.Text,
 			&r.Domain, &r.Workstream, &r.Agent, &r.Tags, &r.ContentType, &r.Confidence, &r.Modified,
+			&r.AccessCount,
 		); err != nil {
 			continue
 		}
@@ -900,7 +926,8 @@ func (db *DB) FTS5Search(query string, opts SearchOptions) ([]SearchResult, erro
 
 	rows, err := db.conn.Query(`
 		SELECT n.path, n.title, n.chunk_heading, n.text,
-			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified
+			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence, n.modified,
+			n.access_count
 		FROM vault_notes_fts f
 		JOIN vault_notes n ON n.id = f.rowid
 		WHERE vault_notes_fts MATCH ? AND UPPER(n.path) NOT LIKE '_PRIVATE/%%'
@@ -918,9 +945,11 @@ func (db *DB) FTS5Search(query string, opts SearchOptions) ([]SearchResult, erro
 	for rows.Next() {
 		var r SearchResult
 		var modified float64
+		var accessCount int
 		if err := rows.Scan(
 			&r.Path, &r.Title, &r.ChunkHeading, &r.Snippet,
 			&r.Domain, &r.Workstream, &r.Agent, &r.Tags, &r.ContentType, &r.Confidence, &modified,
+			&accessCount,
 		); err != nil {
 			continue
 		}
@@ -934,6 +963,14 @@ func (db *DB) FTS5Search(query string, opts SearchOptions) ([]SearchResult, erro
 			r.Snippet = r.Snippet[:500]
 		}
 		r.Score = 0.5 // FTS results get a baseline score
+		// Reconsolidation boost for frequently-accessed notes
+		if accessCount > 0 {
+			accessBoost := math.Log1p(float64(accessCount)) * 0.02
+			r.Score += accessBoost
+			if r.Score > 1.0 {
+				r.Score = 1.0
+			}
+		}
 		r.Distance = 0
 
 		// Apply metadata filters

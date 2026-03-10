@@ -159,6 +159,7 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 	addGrouped("search",
 		searchCmd(),
 		askCmd(),
+		briefCmd(),
 		relatedCmd(),
 		webCmd(),
 	)
@@ -170,11 +171,13 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 		importCmd(),
 		vaultCmd(),
 		graphCmd(),
+		consolidateCmd(),
 	)
 
 	addGrouped("diagnostics",
 		statusCmd(),
 		doctorCmd(),
+		healthCmd(),
 		logCmd(),
 		hooksCmd(),
 	)
