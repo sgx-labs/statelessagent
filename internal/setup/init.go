@@ -25,6 +25,7 @@ import (
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/embedding"
 	"github.com/sgx-labs/statelessagent/internal/indexer"
+	"github.com/sgx-labs/statelessagent/internal/llm"
 	"github.com/sgx-labs/statelessagent/internal/seed"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
@@ -396,6 +397,10 @@ func RunInit(opts InitOptions) error {
 		return err
 	}
 
+	// Offer graph LLM extraction (after config exists, before integrations)
+	graphLLMEnabled := offerGraphLLM(vaultPath, embedProvider, providerReady, opts.Yes)
+	_ = graphLLMEnabled // used in post-init summary
+
 	// Handle .gitignore
 	handleGitignore(vaultPath, opts.Yes)
 
@@ -524,6 +529,10 @@ func RunInit(opts InitOptions) error {
 		cli.Cyan, cli.Reset)
 	fmt.Printf("    %ssame web%s                     Open the dashboard\n",
 		cli.Cyan, cli.Reset)
+	if !graphLLMEnabled && config.GraphLLMMode() == "off" {
+		fmt.Printf("    %ssame graph enable%s            Richer knowledge graph extraction\n",
+			cli.Cyan, cli.Reset)
+	}
 	fmt.Println()
 	fmt.Printf("  Your AI will automatically use SAME via MCP.\n")
 	fmt.Println()
@@ -1043,6 +1052,60 @@ func offerProviderChoice(ollamaDetected bool) string {
 		return "none"
 	}
 	return options[n-1].name
+}
+
+// offerGraphLLM optionally prompts to enable graph LLM extraction when a
+// capable chat model is available. In --yes mode it prints a tip instead.
+// Returns true if graph LLM was enabled during this call.
+func offerGraphLLM(vaultPath, embedProvider string, providerReady, autoYes bool) bool {
+	// Only suggest if graph LLM is currently off
+	if config.GraphLLMMode() != "off" {
+		return true // already enabled
+	}
+
+	// Detect whether any chat model is reachable
+	chatAvailable := false
+	isLocal := false
+	client, err := llm.NewClient()
+	if err == nil {
+		model, modelErr := client.PickBestModel()
+		if modelErr == nil && strings.TrimSpace(model) != "" {
+			chatAvailable = true
+			isLocal = client.Provider() == "ollama"
+		}
+	}
+
+	if !chatAvailable {
+		return false // no model to recommend
+	}
+
+	if autoYes {
+		// Non-interactive: don't enable by default, just print a tip
+		fmt.Printf("\n  %sTip:%s Run %ssame graph enable%s for richer knowledge graph extraction.\n",
+			cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
+		return false
+	}
+
+	// Interactive prompt
+	fmt.Println()
+	fmt.Printf("  Graph extraction uses your model to find richer connections\n")
+	fmt.Printf("  between notes (decisions, dependencies, references).\n\n")
+	if confirm("  Enable graph LLM extraction?", true) {
+		mode := "on"
+		if isLocal {
+			mode = "local-only"
+		}
+		if err := config.SetGraphLLMMode(vaultPath, mode); err != nil {
+			fmt.Printf("  %s!%s Could not update config: %v\n", cli.Yellow, cli.Reset, err)
+			return false
+		}
+		fmt.Printf("  %s✓%s Graph LLM extraction enabled (%s)\n", cli.Green, cli.Reset, mode)
+		return true
+	}
+
+	fmt.Printf("  %sOK. Run %ssame graph enable%s%s anytime to turn it on.%s\n",
+		cli.Dim, cli.Cyan, cli.Reset, cli.Dim, cli.Reset)
+	return false
 }
 
 // checkOllama verifies Ollama is running and has the required model.

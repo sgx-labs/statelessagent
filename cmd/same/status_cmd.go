@@ -252,7 +252,11 @@ func runStatus(jsonOut bool) error {
 	}
 	fmt.Printf("  Embedding: %s\n", summarizeRuntime(embeddingStatus))
 	fmt.Printf("  Chat:      %s\n", summarizeRuntime(chatStatus))
-	fmt.Printf("  Graph LLM: %s\n", summarizeGraphRuntime(graphStatus))
+	graphLine := summarizeGraphRuntime(graphStatus)
+	if graphStatus.Mode == "off" && chatStatus.Status == "available" {
+		graphLine += fmt.Sprintf("  %s(run 'same graph enable' for richer extraction)%s", cli.Dim, cli.Reset)
+	}
+	fmt.Printf("  Graph LLM: %s\n", graphLine)
 	if graphStatus.Hint != "" {
 		fmt.Printf("  Graph hint:%s %s%s\n", cli.Dim, graphStatus.Hint, cli.Reset)
 	}

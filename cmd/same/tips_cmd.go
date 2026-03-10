@@ -142,6 +142,25 @@ func printModelTips() {
 	fmt.Printf("  %sLocal vs cloud%s\n", cli.Bold, cli.Reset)
 	fmt.Printf("  Local keeps everything on your machine.\n")
 	fmt.Printf("  Cloud is faster but sends text to a provider.\n")
+
+	cli.Section("Graph LLM Extraction")
+
+	fmt.Printf("  %sWhat it does%s\n", cli.Bold, cli.Reset)
+	fmt.Printf("  Finds relationships between notes using your LLM instead of\n")
+	fmt.Printf("  just regex. Discovers decisions, dependencies, and references\n")
+	fmt.Printf("  that pattern matching would miss.\n\n")
+
+	fmt.Printf("  %sHow to enable%s\n", cli.Bold, cli.Reset)
+	fmt.Printf("  %ssame graph enable%s              Use any available model\n", cli.Cyan, cli.Reset)
+	fmt.Printf("  %ssame graph enable --local-only%s  Restrict to local models only\n\n", cli.Cyan, cli.Reset)
+
+	fmt.Printf("  %sBest models%s\n", cli.Bold, cli.Reset)
+	fmt.Printf("  Larger models produce richer, more accurate graphs.\n")
+	fmt.Printf("  Smaller models (7B) still help but may miss subtle connections.\n\n")
+
+	fmt.Printf("  %sTradeoff%s\n", cli.Bold, cli.Reset)
+	fmt.Printf("  Slower indexing, better connections. Regex extraction is always\n")
+	fmt.Printf("  used as a baseline. LLM adds on top of what regex finds.\n")
 }
 
 func printTipsFooter() {

@@ -417,6 +417,25 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 		fmt.Printf("  %sInstall a model:%s ollama pull llama3.2\n", cli.Dim, cli.Reset)
 	}
 
+	// ── Graph LLM tip ───────────────────────────────────────────────────
+	if config.GraphLLMMode() == "off" {
+		// Only show if a chat model is available (don't suggest if they can't use it)
+		if chatErr == nil {
+			if model, _ := chatClient.PickBestModel(); model != "" {
+				fmt.Printf("\n  %sTip:%s %s'same graph enable'%s unlocks richer knowledge graph extraction.\n",
+					cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
+			}
+		} else {
+			// chatClient wasn't created above — try fresh
+			if c, e := llm.NewClient(); e == nil {
+				if m, _ := c.PickBestModel(); m != "" {
+					fmt.Printf("\n  %sTip:%s %s'same graph enable'%s unlocks richer knowledge graph extraction.\n",
+						cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
+				}
+			}
+		}
+	}
+
 	// ── Closing ─────────────────────────────────────────────────────────
 	fmt.Printf("\n  %s━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%s\n", cli.Cyan, cli.Reset)
 	fmt.Printf("\n  %sThat's SAME. Your AI remembers what you've built.%s\n\n", cli.Bold, cli.Reset)

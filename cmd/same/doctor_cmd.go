@@ -272,6 +272,12 @@ func runDoctor(jsonOut bool) error {
 		mode := config.GraphLLMMode()
 		switch mode {
 		case "off":
+			// Check if a capable model is available and hint at enabling
+			if client, err := llm.NewClient(); err == nil {
+				if model, modelErr := client.PickBestModel(); modelErr == nil && strings.TrimSpace(model) != "" {
+					return "off (run 'same graph enable' for richer connections)", nil
+				}
+			}
 			return "off (regex-only graph extraction)", nil
 		case "local-only":
 			client, err := llm.NewClientWithOptions(llm.Options{LocalOnly: true})
