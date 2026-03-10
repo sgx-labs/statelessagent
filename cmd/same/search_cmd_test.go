@@ -146,7 +146,7 @@ func TestRunSearch_NoResults_ManyNotes(t *testing.T) {
 	if runErr != nil {
 		t.Fatalf("runSearch: %v", runErr)
 	}
-	if !strings.Contains(out, "Try different terms") {
+	if !strings.Contains(out, "Try broader terms") {
 		t.Fatalf("expected many-notes hint, got: %s", out)
 	}
 }

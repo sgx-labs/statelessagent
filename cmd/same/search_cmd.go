@@ -158,7 +158,9 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 			fmt.Printf("  Add more markdown files and run %ssame reindex%s, or try %ssame seed list%s for starter content.\n\n",
 				cli.Bold, cli.Reset, cli.Bold, cli.Reset)
 		} else {
-			fmt.Printf("\n  No results found. Try different terms, or %ssame search --all%s to search all vaults.\n\n",
+			fmt.Printf("\n  No results found. Try broader terms, or run %ssame reindex%s to update your vault.\n",
+				cli.Bold, cli.Reset)
+			fmt.Printf("  You can also try %ssame search --all%s to search across all vaults.\n\n",
 				cli.Bold, cli.Reset)
 		}
 		return nil
@@ -325,11 +327,11 @@ func relatedCmd() *cobra.Command {
 		verbose bool
 	)
 	cmd := &cobra.Command{
-		Use:   "related [note-path]",
-		Short: "Find notes related to a given note",
-		Long:  "Find notes similar to a given note. SAME uses the note's embedding to find semantically related content in your vault.",
+		Use:     "related [note-path]",
+		Short:   "Find notes related to a given note",
+		Long:    "Find notes similar to a given note. SAME uses the note's embedding to find semantically related content in your vault.",
 		Example: `  same related "architecture.md"`,
-		Args:  cobra.ExactArgs(1),
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRelated(args[0], topK, jsonOut, verbose)
 		},

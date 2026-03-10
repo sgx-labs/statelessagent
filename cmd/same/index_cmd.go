@@ -91,7 +91,7 @@ func runReindex(force bool, verbose bool) error {
 
 	indexer.Version = Version
 	stats, err := indexer.ReindexWithProgress(ctx, db, force, progress)
-	if err != nil && !errors.Is(err, indexer.ErrCancelled) {
+	if err != nil && !errors.Is(err, indexer.ErrCanceled) {
 		errMsg := strings.ToLower(err.Error())
 		if strings.Contains(errMsg, "ollama") ||
 			strings.Contains(errMsg, "connection") ||
@@ -104,7 +104,7 @@ func runReindex(force bool, verbose bool) error {
 			fmt.Fprintf(os.Stderr, "  Embedding backend unavailable or disabled — indexing with keyword search only.\n")
 			fmt.Fprintf(os.Stderr, "  Configure an embedding provider (ollama/openai/openai-compatible) and run 'same reindex' again for semantic search.\n\n")
 			stats, err = indexer.ReindexLite(ctx, db, force, progress)
-			if err != nil && !errors.Is(err, indexer.ErrCancelled) {
+			if err != nil && !errors.Is(err, indexer.ErrCanceled) {
 				return err
 			}
 		} else {
@@ -113,8 +113,8 @@ func runReindex(force bool, verbose bool) error {
 	}
 
 	fmt.Println()
-	if stats != nil && stats.Cancelled {
-		fmt.Printf("  %sReindex cancelled by user. %d of %d notes indexed.%s\n\n",
+	if stats != nil && stats.Canceled {
+		fmt.Printf("  %sReindex canceled by user. %d of %d notes indexed.%s\n\n",
 			cli.Yellow, stats.NewlyIndexed, stats.TotalFiles, cli.Reset)
 	} else {
 		fmt.Printf("  %sReindex complete%s\n\n", cli.Bold, cli.Reset)

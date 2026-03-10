@@ -24,8 +24,8 @@ import (
 // Version is set by cmd/same to record which SAME version performed the reindex.
 var Version string
 
-// ErrCancelled is returned when indexing is cancelled via context.
-var ErrCancelled = errors.New("indexing cancelled")
+// ErrCanceled is returned when indexing is canceled via context.
+var ErrCanceled = errors.New("indexing canceled")
 
 // Stats holds reindex statistics.
 type Stats struct {
@@ -36,7 +36,7 @@ type Stats struct {
 	NotesInIndex     int    `json:"total_notes_in_index"`
 	ChunksInIndex    int    `json:"total_chunks_in_index"`
 	Timestamp        string `json:"timestamp"`
-	Cancelled        bool   `json:"cancelled,omitempty"`
+	Canceled         bool   `json:"canceled,omitempty"`
 }
 
 // ProgressFunc is called during indexing to report progress.
@@ -219,14 +219,14 @@ sendLoop:
 	}()
 
 	// Collect results and insert
-	cancelled := false
+	canceled := false
 	embeddingFileFailures := 0
 	for result := range resultCh {
 		// Check for cancellation
 		if ctx.Err() != nil {
-			if !cancelled {
-				cancelled = true
-				stats.Cancelled = true
+			if !canceled {
+				canceled = true
+				stats.Canceled = true
 			}
 			// Drain remaining results without processing
 			continue
@@ -279,13 +279,13 @@ sendLoop:
 		}
 	}
 
-	// If cancelled, return partial stats
-	if cancelled {
+	// If canceled, return partial stats
+	if canceled {
 		noteCount, _ := db.NoteCount()
 		chunkCount, _ := db.ChunkCount()
 		stats.NotesInIndex = noteCount
 		stats.ChunksInIndex = chunkCount
-		return stats, ErrCancelled
+		return stats, ErrCanceled
 	}
 
 	// Update final counts
@@ -784,15 +784,15 @@ sendLoop:
 	}()
 
 	// Collect results and insert (serial DB writes)
-	cancelled := false
+	canceled := false
 	graphDB := graph.NewDB(db.Conn())
 	extractor := graph.NewExtractor(graphDB)
 
 	for result := range resultCh {
 		if ctx.Err() != nil {
-			if !cancelled {
-				cancelled = true
-				stats.Cancelled = true
+			if !canceled {
+				canceled = true
+				stats.Canceled = true
 			}
 			continue
 		}
@@ -837,12 +837,12 @@ sendLoop:
 		}
 	}
 
-	if cancelled {
+	if canceled {
 		noteCount, _ := db.NoteCount()
 		chunkCount, _ := db.ChunkCount()
 		stats.NotesInIndex = noteCount
 		stats.ChunksInIndex = chunkCount
-		return stats, ErrCancelled
+		return stats, ErrCanceled
 	}
 
 	noteCount, _ := db.NoteCount()

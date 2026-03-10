@@ -127,11 +127,13 @@ func printModelTips() {
 
 	fmt.Printf("  %sHandoffs & decisions%s\n", cli.Bold, cli.Reset)
 	fmt.Printf("  Models with good instruction following:\n")
-	fmt.Printf("    - Claude Sonnet+, GPT-4+, Llama 3.1 70B+\n\n")
+	fmt.Printf("    - Claude Sonnet+, GPT-4+, Llama 3.1 8B+\n\n")
 
 	fmt.Printf("  %sGraph extraction%s\n", cli.Bold, cli.Reset)
-	fmt.Printf("  Larger models produce richer knowledge graphs:\n")
-	fmt.Printf("    - Claude Opus, GPT-4, Llama 3.3 70B\n\n")
+	fmt.Printf("  Smaller models (3B-8B) work for basic extraction.\n")
+	fmt.Printf("  Larger models produce richer, more accurate graphs:\n")
+	fmt.Printf("    - Good:  Claude Sonnet, GPT-4o-mini, Llama 3.2 3B+\n")
+	fmt.Printf("    - Best:  Claude Opus, GPT-4, Llama 3.3 70B\n\n")
 
 	fmt.Printf("  %sEmbeddings%s\n", cli.Bold, cli.Reset)
 	fmt.Printf("  %snomic-embed-text%s is the sweet spot of quality vs speed.\n",
@@ -164,7 +166,5 @@ func printModelTips() {
 }
 
 func printTipsFooter() {
-	fmt.Printf("\n  %sThese tips are also at statelessagent.com/docs/best-practices%s\n",
-		cli.Dim, cli.Reset)
 	cli.Footer()
 }

@@ -278,13 +278,14 @@ func RunInit(opts InitOptions) error {
 
 	providerReady := true
 
-	if embedProvider == "none" {
+	switch embedProvider {
+	case "none":
 		// Explicit keyword-only mode — skip Ollama entirely
 		cli.Section("Embeddings")
 		fmt.Printf("  %s✓%s Keyword-only mode (provider=none)\n", cli.Green, cli.Reset)
 		fmt.Printf("  %s  Semantic search disabled. Switch to ollama/openai/openai-compatible later and run 'same reindex' to upgrade.%s\n", cli.Dim, cli.Reset)
 		providerReady = false
-	} else if embedProvider == "openai" || embedProvider == "openai-compatible" {
+	case "openai", "openai-compatible":
 		// User has configured an alternate provider — skip Ollama check
 		cli.Section("Embeddings")
 		fmt.Printf("  %s✓%s Using %s provider\n", cli.Green, cli.Reset, embedProvider)
@@ -295,7 +296,7 @@ func RunInit(opts InitOptions) error {
 		if ec.BaseURL != "" && ec.BaseURL != "https://api.openai.com" {
 			fmt.Printf("  %s✓%s Endpoint: %s\n", cli.Green, cli.Reset, ec.BaseURL)
 		}
-	} else {
+	default:
 		cli.Section("Embeddings")
 		if opts.Yes {
 			// Non-interactive: try Ollama, warn if falling back to keyword-only
@@ -535,6 +536,8 @@ func RunInit(opts InitOptions) error {
 	}
 	fmt.Println()
 	fmt.Printf("  Your AI will automatically use SAME via MCP.\n")
+	fmt.Printf("\n  %sTip:%s Restart your editor (Claude Code, Cursor, etc.) to pick up the new MCP configuration.\n",
+		cli.Bold, cli.Reset)
 	fmt.Println()
 	fmt.Printf("  %sNew?%s %ssame tutorial%s  %s|%s  %sMore projects?%s %ssame init%s in any directory.\n",
 		cli.Bold, cli.Reset, cli.Cyan, cli.Reset,
@@ -993,7 +996,7 @@ func offerProviderChoice(ollamaDetected bool) string {
 	}
 	fmt.Printf("  %sChoose your embedding provider:%s\n\n", cli.Bold, cli.Reset)
 
-	ollamaLabel := "Ollama"
+	var ollamaLabel string
 	if ollamaDetected {
 		ollamaLabel = "Ollama (detected — local, private, recommended)"
 	} else {
@@ -1145,7 +1148,7 @@ func checkOllama() error {
 		fmt.Println("    - If you don't see it, open the Ollama app")
 		fmt.Println()
 		fmt.Println("  Need help? Join our Discord: https://discord.gg/9KfTkcGs7g")
-		return fmt.Errorf("Ollama not running. Start Ollama and try 'same init' again")
+		return fmt.Errorf("ollama not running: start Ollama and try 'same init' again")
 	}
 	defer resp.Body.Close()
 
@@ -1673,15 +1676,15 @@ func runIndex(vaultPath string, verbose, useEmbeddings bool) (*indexer.Stats, er
 	} else {
 		stats, err = indexer.ReindexLite(ctx, db, true, progress)
 	}
-	if err != nil && !errors.Is(err, indexer.ErrCancelled) {
+	if err != nil && !errors.Is(err, indexer.ErrCanceled) {
 		return nil, fmt.Errorf("indexing failed: %w", err)
 	}
 
 	if !verbose {
 		fmt.Println() // newline after progress bar
 	}
-	if stats != nil && stats.Cancelled {
-		fmt.Printf("\n  %sReindex cancelled by user. %d of %d notes indexed.%s\n",
+	if stats != nil && stats.Canceled {
+		fmt.Printf("\n  %sReindex canceled by user. %d of %d notes indexed.%s\n",
 			cli.Yellow, stats.NewlyIndexed, stats.TotalFiles, cli.Reset)
 	}
 	return stats, nil
@@ -1970,7 +1973,7 @@ func runTestSearch(vaultPath string) *store.SearchResult {
 
 // ProjectContext holds detected project characteristics.
 type ProjectContext struct {
-	Language    string   // e.g. "Go", "TypeScript", "Python"
+	Language   string   // e.g. "Go", "TypeScript", "Python"
 	LangFile   string   // e.g. "go.mod", "package.json"
 	AITools    []string // e.g. "Claude Code (.claude/)", "Cursor (.cursorrules)"
 	Docs       []string // e.g. "CLAUDE.md (2.9 KB)", "README.md (4.1 KB)"

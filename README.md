@@ -6,7 +6,7 @@
 [![Latest Release](https://img.shields.io/github/v/release/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent)
 [![MCP Tools](https://img.shields.io/badge/MCP_Tools-12-8A2BE2.svg)](#mcp-server)
-[![Discord](https://img.shields.io/discord/1468523556076785757?color=5865F2&label=Discord&logo=discord&logoColor=white)](https://discord.gg/Qg8AXavNWu)
+[![Discord](https://img.shields.io/discord/1468523556076785757?color=5865F2&label=Discord&logo=discord&logoColor=white)](https://discord.gg/9KfTkcGs7g)
 
 **Your AI forgets everything between sessions. SAME fixes that.**
 
@@ -17,10 +17,16 @@ One binary. Fully local. No cloud. No telemetry. Mac, Linux, Windows, Raspberry 
 ## Install
 
 ```bash
+# macOS / Linux
 curl -fsSL https://statelessagent.com/install.sh | bash
+
+# Windows (PowerShell)
+irm https://statelessagent.com/install.ps1 | iex
 ```
 
-Or via npm: `npm install -g @sgx-labs/same`
+Or via npm (all platforms): `npm install -g @sgx-labs/same`
+
+**Installed via npm?** Update with `npx same@latest` or `npm update -g @sgx-labs/same`.
 
 ## See It Work (30 seconds)
 
@@ -29,7 +35,7 @@ same demo
 ```
 
 ```
-Indexing 12 sample notes...
+Indexing 5 sample notes...
 Searching: "authentication decision"
 
   1. decisions/auth-strategy.md (score: 0.94)
@@ -147,6 +153,10 @@ Add to your MCP config (`.mcp.json`, Cursor settings, etc.):
 
 Switch between Claude Code and Cursor without losing context. Your memory travels with you.
 
+### Tool Compatibility
+
+**Claude Code** gets full automatic handoffs via hooks. **Cursor, Windsurf, Codex CLI, Gemini CLI** get full MCP tool access (search, save, decisions, graph) but handoffs need to be triggered manually. We're working on automatic handoff support for more editors.
+
 ## MCP Server
 
 | Tool | What it does |
@@ -255,18 +265,9 @@ Configuration priority (highest wins): CLI flags > Environment variables > Confi
 </details>
 
 <details>
-<summary><strong>Install Options</strong></summary>
+<summary><strong>More Install Options</strong></summary>
 
 ```bash
-# macOS / Linux
-curl -fsSL https://statelessagent.com/install.sh | bash
-
-# npm (all platforms)
-npm install -g @sgx-labs/same
-
-# Windows PowerShell
-irm https://statelessagent.com/install.ps1 | iex
-
 # Docker
 git clone --depth 1 https://github.com/sgx-labs/statelessagent.git
 cd statelessagent && docker build -t same .
@@ -331,7 +332,7 @@ All evaluation uses synthetic vault data. No user data used.
 - [Website](https://statelessagent.com)
 - [Telegram Bot Plugin](https://github.com/sgx-labs/same-telegram)
 - [SeedVaults](https://github.com/sgx-labs/seed-vaults)
-- [Discord](https://discord.gg/Qg8AXavNWu)
+- [Discord](https://discord.gg/9KfTkcGs7g)
 - [Changelog](CHANGELOG.md)
 
 ## Contributing
