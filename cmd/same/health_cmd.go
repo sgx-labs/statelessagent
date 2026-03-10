@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 func healthCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "health",
-		Short: "Check your vault's health",
+		Short: "Check your vault's health [experimental]",
 		Long: `Analyze your vault and report on its health.
 
 Health checks:
@@ -40,6 +41,8 @@ Examples:
 }
 
 func runHealth() error {
+	fmt.Fprintf(os.Stderr, "%s  This feature is experimental. Feedback welcome: https://github.com/sgx-labs/statelessagent/issues%s\n\n", cli.Dim, cli.Reset)
+
 	db, err := store.Open()
 	if err != nil {
 		return dbOpenError(err)

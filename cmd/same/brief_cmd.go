@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -18,7 +19,7 @@ func briefCmd() *cobra.Command {
 	var maxItems int
 	cmd := &cobra.Command{
 		Use:   "brief",
-		Short: "Get oriented — what matters right now",
+		Short: "Get oriented — what matters right now [experimental]",
 		Long: `Show a concise briefing of your current context.
 
 Brief analyzes your vault to surface:
@@ -54,6 +55,8 @@ type briefNote struct {
 }
 
 func runBrief(maxItems int) error {
+	fmt.Fprintf(os.Stderr, "%s  This feature is experimental. Feedback welcome: https://github.com/sgx-labs/statelessagent/issues%s\n\n", cli.Dim, cli.Reset)
+
 	// 1. Open database
 	db, err := store.Open()
 	if err != nil {

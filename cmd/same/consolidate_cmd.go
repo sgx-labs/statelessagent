@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -22,7 +23,7 @@ func consolidateCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "consolidate",
-		Short: "Extract and merge knowledge from your notes",
+		Short: "Extract and merge knowledge from your notes [experimental]",
 		Long: `Analyze your vault for related notes and consolidate them into structured knowledge.
 
 Consolidation:
@@ -48,6 +49,8 @@ Examples:
 }
 
 func runConsolidate(dryRun bool, threshold float64) error {
+	fmt.Fprintf(os.Stderr, "%s  This feature is experimental. Feedback welcome: https://github.com/sgx-labs/statelessagent/issues%s\n\n", cli.Dim, cli.Reset)
+
 	// 1. Open database
 	db, err := store.Open()
 	if err != nil {

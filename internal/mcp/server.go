@@ -226,28 +226,28 @@ func registerTools(server *mcp.Server) {
 	// mem_consolidate (autonomous memory management)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mem_consolidate",
-		Description: "Consolidate related notes in the vault. Merges duplicates, resolves contradictions, extracts key facts. Creates new knowledge files without modifying originals. Use this when the vault has many similar or overlapping notes.\n\nArgs:\n  dry_run: Preview what would be consolidated without writing files (default false)\n  threshold: Similarity threshold for grouping notes, 0.0-1.0 (default 0.75)\n\nReturns consolidation summary with groups found, facts extracted, and conflicts resolved.",
+		Description: "Consolidate related notes in the vault. Merges duplicates, resolves contradictions, extracts key facts. Creates new knowledge files without modifying originals. Use this when the vault has many similar or overlapping notes.\n\nArgs:\n  dry_run: Preview what would be consolidated without writing files (default false)\n  threshold: Similarity threshold for grouping notes, 0.0-1.0 (default 0.75)\n\nReturns consolidation summary with groups found, facts extracted, and conflicts resolved. (experimental)",
 		Annotations: writeDestructive,
 	}, handleMemConsolidate)
 
 	// mem_brief (autonomous memory management)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mem_brief",
-		Description: "Get an orientation briefing of what matters right now. Shows recent activity, open decisions, and key context. Use this at the start of a session to understand current project state.\n\nArgs:\n  max_items: Maximum items per section (default 5)\n\nReturns a concise briefing generated from vault contents.",
+		Description: "Get an orientation briefing of what matters right now. Shows recent activity, open decisions, and key context. Use this at the start of a session to understand current project state.\n\nArgs:\n  max_items: Maximum items per section (default 5)\n\nReturns a concise briefing generated from vault contents. (experimental)",
 		Annotations: readOnly,
 	}, handleMemBrief)
 
 	// mem_health (autonomous memory management)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mem_health",
-		Description: "Check the health of the memory vault. Returns a health score (0-100) and actionable recommendations. Use this to determine if the vault needs consolidation, reindexing, or cleanup.\n\nReturns health score, key metrics, and recommendations.",
+		Description: "Check the health of the memory vault. Returns a health score (0-100) and actionable recommendations. Use this to determine if the vault needs consolidation, reindexing, or cleanup.\n\nReturns health score, key metrics, and recommendations. (experimental)",
 		Annotations: readOnly,
 	}, handleMemHealth)
 
 	// mem_forget (autonomous memory management)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mem_forget",
-		Description: "Suppress a memory so it won't be surfaced in normal search. The note is not deleted -- it's marked as suppressed and will only appear if explicitly requested. Use this for outdated, incorrect, or irrelevant memories.\n\nArgs:\n  path: Path of the note to suppress (required)\n  reason: Why this memory is being suppressed (optional)\n\nReturns confirmation of suppression.",
+		Description: "Suppress a memory so it won't be surfaced in normal search. The note is not deleted -- it's marked as suppressed and will only appear if explicitly requested. Use this for outdated, incorrect, or irrelevant memories.\n\nArgs:\n  path: Path of the note to suppress (required)\n  reason: Why this memory is being suppressed (optional)\n\nReturns confirmation of suppression. (experimental)",
 		Annotations: writeNonDestructive,
 	}, handleMemForget)
 }

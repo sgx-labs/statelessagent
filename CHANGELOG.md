@@ -18,6 +18,13 @@
 - Command aliases: `same s` (search), `same st` (status), `same vault ls` (vault list)
 - Port-in-use detection for `same web`
 - Platform shown in `same version` output
+- `same consolidate` command: merge related notes into structured knowledge using LLM [experimental]
+- `same brief` command: orientation briefing of what matters right now [experimental]
+- `same health` command: vault health score with actionable recommendations [experimental]
+- MCP tools: `mem_consolidate`, `mem_brief`, `mem_health`, `mem_forget` for autonomous memory management
+- Note suppression: `mem_forget` MCP tool marks notes as suppressed (hidden from search, not deleted)
+- Reconsolidation dynamics: frequently accessed notes rank higher in search results
+- Windows ARM64 release binary
 
 ### Fixed
 
@@ -37,6 +44,9 @@
 - `install.sh` messaging updated to honestly communicate Ollama's role in semantic search
 - Output consistency polish: standardized checkmarks, hint capitalization, footer formatting
 - README overhauled: conversion-focused, 270 lines, collapsible reference sections
+- Search results now factor in access frequency (subtle log-scaled boost)
+- Schema migration v8: adds `suppressed` column to vault_notes
+- All search paths filter suppressed notes by default
 
 ### Performance
 
