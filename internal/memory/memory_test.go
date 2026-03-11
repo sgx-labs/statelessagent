@@ -159,9 +159,9 @@ func TestComputeRecencyScore_AllPermanentTypes(t *testing.T) {
 
 func TestComputeConfidence_UnknownType(t *testing.T) {
 	now := float64(time.Now().Unix())
-	score := ComputeConfidence("unknown_type", now, 0, false)
+	score := ComputeConfidence("unknown_type", now, 0, false, "unknown")
 	// default baseline is 0.5 (same as "note")
-	noteScore := ComputeConfidence("note", now, 0, false)
+	noteScore := ComputeConfidence("note", now, 0, false, "unknown")
 	if score != noteScore {
 		t.Errorf("unknown type should use default baseline like 'note': got %.3f, want %.3f", score, noteScore)
 	}
@@ -169,7 +169,7 @@ func TestComputeConfidence_UnknownType(t *testing.T) {
 
 func TestComputeConfidence_HighAccessCount(t *testing.T) {
 	now := float64(time.Now().Unix())
-	score := ComputeConfidence("note", now, 10000, false)
+	score := ComputeConfidence("note", now, 10000, false, "unknown")
 	// Access boost is capped at 0.15
 	if score > 1.0 {
 		t.Errorf("confidence should never exceed 1.0, got %.3f", score)

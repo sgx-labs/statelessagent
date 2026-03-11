@@ -38,29 +38,66 @@ func TestComputeConfidence(t *testing.T) {
 	now := float64(time.Now().Unix())
 
 	// Decision should have high confidence
-	score := ComputeConfidence("decision", now, 0, false)
+	score := ComputeConfidence("decision", now, 0, false, "unknown")
 	if score < 0.7 {
 		t.Errorf("decision confidence should be high, got %.3f", score)
 	}
 
 	// Note should have moderate confidence
-	score = ComputeConfidence("note", now, 0, false)
+	score = ComputeConfidence("note", now, 0, false, "unknown")
 	if score < 0.4 || score > 0.7 {
 		t.Errorf("note confidence should be moderate, got %.3f", score)
 	}
 
 	// Access boost should increase confidence
-	scoreNoAccess := ComputeConfidence("note", now, 0, false)
-	scoreWithAccess := ComputeConfidence("note", now, 100, false)
+	scoreNoAccess := ComputeConfidence("note", now, 0, false, "unknown")
+	scoreWithAccess := ComputeConfidence("note", now, 100, false, "unknown")
 	if scoreWithAccess <= scoreNoAccess {
 		t.Errorf("access boost should increase confidence: %f vs %f", scoreNoAccess, scoreWithAccess)
 	}
 
 	// Review-by boost
-	scoreNoReview := ComputeConfidence("note", now, 0, false)
-	scoreWithReview := ComputeConfidence("note", now, 0, true)
+	scoreNoReview := ComputeConfidence("note", now, 0, false, "unknown")
+	scoreWithReview := ComputeConfidence("note", now, 0, true, "unknown")
 	if scoreWithReview <= scoreNoReview {
 		t.Errorf("review boost should increase confidence: %f vs %f", scoreNoReview, scoreWithReview)
+	}
+}
+
+func TestComputeConfidence_TrustPenalty(t *testing.T) {
+	now := float64(time.Now().Unix())
+
+	validated := ComputeConfidence("decision", now, 0, false, "validated")
+	unknown := ComputeConfidence("decision", now, 0, false, "unknown")
+	stale := ComputeConfidence("decision", now, 0, false, "stale")
+	contradicted := ComputeConfidence("decision", now, 0, false, "contradicted")
+
+	if validated != unknown {
+		t.Errorf("validated and unknown should be equal: %.3f vs %.3f", validated, unknown)
+	}
+	if stale >= validated {
+		t.Errorf("stale should be less than validated: %.3f vs %.3f", stale, validated)
+	}
+	if contradicted >= stale {
+		t.Errorf("contradicted should be less than stale: %.3f vs %.3f", contradicted, stale)
+	}
+}
+
+func TestTrustMultiplier(t *testing.T) {
+	if TrustMultiplier("validated") != 1.0 {
+		t.Error("validated should be 1.0")
+	}
+	if TrustMultiplier("unknown") != 1.0 {
+		t.Error("unknown should be 1.0")
+	}
+	if TrustMultiplier("stale") != 0.75 {
+		t.Error("stale should be 0.75")
+	}
+	if TrustMultiplier("contradicted") != 0.4 {
+		t.Error("contradicted should be 0.4")
+	}
+	if TrustMultiplier("nonexistent") != 1.0 {
+		t.Error("unrecognized state should default to 1.0")
 	}
 }
 

@@ -676,6 +676,7 @@ func makeScored(r store.RawSearchResult, comp, sem float64) scored {
 		title:       r.Title,
 		contentType: r.ContentType,
 		confidence:  r.Confidence,
+		trustState:  r.TrustState,
 		snippet:     snippet,
 		composite:   comp,
 		semantic:    sem,

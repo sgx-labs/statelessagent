@@ -557,7 +557,7 @@ func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient em
 
 	contentType := memory.InferContentType(relPath, meta.ContentType, meta.Tags)
 	reviewBy := strings.TrimSpace(meta.ReviewBy)
-	confidence := memory.ComputeConfidence(contentType, mtime, 0, reviewBy != "")
+	confidence := memory.ComputeConfidence(contentType, mtime, 0, reviewBy != "", "unknown")
 
 	// Determine chunks
 	var chunks []Chunk
@@ -961,7 +961,7 @@ func buildRecordsLite(filePath, relPath, vaultPath string) ([]store.NoteRecord, 
 
 	contentType := memory.InferContentType(relPath, meta.ContentType, meta.Tags)
 	reviewBy := strings.TrimSpace(meta.ReviewBy)
-	confidence := memory.ComputeConfidence(contentType, mtime, 0, reviewBy != "")
+	confidence := memory.ComputeConfidence(contentType, mtime, 0, reviewBy != "", "unknown")
 
 	var chunks []Chunk
 	if len(body) > config.ChunkTokenThreshold {

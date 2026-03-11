@@ -54,8 +54,27 @@ func ComputeRecencyScore(modifiedEpoch float64, contentType string) float64 {
 	return math.Pow(0.5, ageDays / *decayDaysPtr)
 }
 
+// Trust multipliers applied to confidence scores based on provenance state.
+// validated/unknown = neutral (1.0), stale = 25% penalty, contradicted = 60% penalty.
+var trustMultipliers = map[string]float64{
+	"validated":    1.0,
+	"unknown":      1.0,
+	"stale":        0.75,
+	"contradicted": 0.4,
+}
+
+// TrustMultiplier returns the confidence multiplier for a given trust state.
+func TrustMultiplier(trustState string) float64 {
+	if m, ok := trustMultipliers[trustState]; ok {
+		return m
+	}
+	return 1.0
+}
+
 // ComputeConfidence computes a base confidence score (0.0-1.0) for a note.
-func ComputeConfidence(contentType string, modifiedEpoch float64, accessCount int, hasReviewBy bool) float64 {
+// trustState adjusts the score based on provenance: stale/contradicted notes
+// are penalized, validated/unknown are neutral.
+func ComputeConfidence(contentType string, modifiedEpoch float64, accessCount int, hasReviewBy bool, trustState string) float64 {
 	baseline, ok := typeBaselines[contentType]
 	if !ok {
 		baseline = 0.5
@@ -73,6 +92,7 @@ func ComputeConfidence(contentType string, modifiedEpoch float64, accessCount in
 	}
 
 	confidence := 0.5*baseline + 0.35*recency + accessBoost + reviewBoost
+	confidence *= TrustMultiplier(trustState)
 	return round3(math.Min(1.0, math.Max(0.0, confidence)))
 }
 

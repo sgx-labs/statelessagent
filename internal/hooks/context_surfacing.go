@@ -56,6 +56,7 @@ type scored struct {
 	title          string
 	contentType    string
 	confidence     float64
+	trustState     string
 	snippet        string
 	composite      float64
 	semantic       float64
@@ -317,15 +318,20 @@ Suggested actions for the user:
 			}
 		}
 
+		trustTag := ""
+		if ts := candidates[i].trustState; ts == "stale" || ts == "contradicted" {
+			trustTag = fmt.Sprintf(", trust: %s", ts)
+		}
+
 		var entry string
 		if snippet != "" {
-			entry = fmt.Sprintf("**%s** (%s, score: %.3f)\n%s\n%s",
+			entry = fmt.Sprintf("**%s** (%s, score: %.3f%s)\n%s\n%s",
 				candidates[i].title, candidates[i].contentType, candidates[i].composite,
-				candidates[i].path, snippet)
+				trustTag, candidates[i].path, snippet)
 		} else {
-			entry = fmt.Sprintf("**%s** (%s, score: %.3f)\n%s",
+			entry = fmt.Sprintf("**%s** (%s, score: %.3f%s)\n%s",
 				candidates[i].title, candidates[i].contentType, candidates[i].composite,
-				candidates[i].path)
+				trustTag, candidates[i].path)
 		}
 		entryTokens := memory.EstimateTokens(entry)
 
