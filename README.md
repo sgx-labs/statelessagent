@@ -5,7 +5,7 @@
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](https://go.dev)
 [![Latest Release](https://img.shields.io/github/v/release/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent)
-[![MCP Tools](https://img.shields.io/badge/MCP_Tools-16-8A2BE2.svg)](#mcp-server)
+[![MCP Tools](https://img.shields.io/badge/MCP_Tools-17-8A2BE2.svg)](#mcp-server)
 [![Discord](https://img.shields.io/discord/1468523556076785757?color=5865F2&label=Discord&logo=discord&logoColor=white)](https://discord.gg/9KfTkcGs7g)
 
 **Your AI forgets everything between sessions. SAME fixes that.**
@@ -72,7 +72,7 @@ same search "authentication decision"
 
 - **Your AI remembers everything** -- Decisions, handoffs, and context survive across sessions. Close your terminal, switch projects, come back tomorrow. Nothing gets lost.
 
-- **Memory integrity** -- Tracks provenance (where notes came from), detects when source files change, and flags stale knowledge. `same health` shows trust state across your vault.
+- **Memory integrity** -- Tracks provenance (where notes came from), detects when source files change, and flags stale knowledge. Stale notes rank lower in search automatically. `same health` shows trust state across your vault.
 
 - **Works with your tools** -- 17 MCP tools for Claude Code, Cursor, Windsurf, or any MCP client. Search, save decisions, create handoffs without leaving your editor.
 

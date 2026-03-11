@@ -14,6 +14,24 @@
 - Reindex serializes graph extraction after embeddings (fixes Ollama timeout on constrained machines)
 - Fixed `NewClientWithURL` timeout (10s → 120s) for production Ollama usage
 
+### Trust-Aware Retrieval
+
+- Trust penalty in search scoring — stale notes rank 25% lower, contradicted notes 60% lower. Validated and unknown notes are unaffected.
+- `trust_state` field returned on all search results (vector, keyword, hybrid, FTS5, federated) — MCP clients and agents can caveat answers based on trust
+- Context surfacing tags stale/contradicted notes visibly in injected context so agents know when retrieved knowledge may be outdated
+- Graph 1-hop expansion — top vector results are expanded through graph edges to surface related notes (decisions, references, dependencies). Max 2 supplemental results at 60% dampened score.
+
+### Kaizen
+
+- `same kaizen` command for continuous improvement tracking — log friction, bugs, and ideas as you work
+- `save_kaizen` MCP tool for agent-driven improvement logging with provenance tracking
+- Kaizen items shown in `same health` recommendations
+
+### Crash Resilience
+
+- PreCompact hook wired for session checkpointing — handoff notes are saved before context compaction, not just on session stop
+- Separate debounce (2min) for checkpoint vs full handoff (5min)
+
 ### Added
 
 - `same tips` command with vault hygiene, security, and model selection guidance
