@@ -57,22 +57,27 @@ func SetupMCP(vaultPath string) error {
 		return fmt.Errorf("write .mcp.json: %w", err)
 	}
 
-	fmt.Println("  → .mcp.json (MCP server registered with 12 tools)")
+	fmt.Println("  → .mcp.json (MCP server registered with 17 tools)")
 	fmt.Println()
 	fmt.Println("  Available tools:")
 	tools := []struct{ name, desc string }{
 		{"search_notes", "Search your knowledge base"},
 		{"search_notes_filtered", "Search with domain/tag filters"},
+		{"search_across_vaults", "Search across all vaults"},
 		{"get_note", "Read full note content"},
 		{"find_similar_notes", "Find related notes by topic"},
-		{"save_note", "Create or update a note"},
-		{"save_decision", "Log a project decision"},
-		{"create_handoff", "Write a session handoff"},
 		{"get_session_context", "Get orientation for a new session"},
 		{"recent_activity", "See recently modified notes"},
+		{"save_note", "Create or update a note (with provenance)"},
+		{"save_decision", "Log a project decision"},
+		{"create_handoff", "Write a session handoff"},
+		{"save_kaizen", "Log improvement items with provenance"},
 		{"reindex", "Rebuild the search index"},
 		{"index_stats", "Check index health and size"},
-		{"search_across_vaults", "Search across all vaults"},
+		{"mem_consolidate", "Consolidate related notes via LLM"},
+		{"mem_brief", "Generate orientation briefing"},
+		{"mem_health", "Vault health with trust analysis"},
+		{"mem_forget", "Suppress a note from search results"},
 	}
 	for _, t := range tools {
 		fmt.Printf("    %-24s %s\n", t.name, t.desc)

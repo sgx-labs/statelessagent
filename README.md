@@ -114,6 +114,7 @@ Your markdown notes get embedded and stored in SQLite. When your AI starts a ses
 |-------------|-----------|
 | Re-explain everything each session | AI picks up where you left off |
 | "Didn't we decide to use JWT?" | Decision surfaces automatically |
+| "Is this note still accurate?" | Trust state flags stale knowledge |
 | Close terminal = context lost | Handoff recovers the session |
 | Copy-paste notes into chat | `same ask` with source citations |
 | Context compacted mid-task | Pinned notes survive compaction |
@@ -179,6 +180,7 @@ Switch between Claude Code and Cursor without losing context. Your memory travel
 | `mem_brief` | Generate orientation briefing |
 | `mem_health` | Vault health with trust analysis |
 | `mem_forget` | Suppress a note from search results |
+| `save_kaizen` | Log improvement items with provenance |
 
 ## SeedVaults
 
@@ -314,7 +316,8 @@ Start with `same doctor` -- it runs 19 checks and tells you what's wrong.
 | Offline | Full | Not default | With local models | Yes |
 | Cloud required | No | Default yes | No | No |
 | Telemetry | None | Default ON | Yes | None |
-| MCP tools | 16 | 9 | Client only | No |
+| MCP tools | 17 | 9 | Client only | No |
+| Memory integrity | Provenance + trust | No | No | No |
 | Knowledge graph | Built-in | Requires Neo4j | No | No |
 | Cross-tool memory | Yes | API only | No | Claude only |
 | Runs on Pi | Yes (~12MB) | No | No | Yes |

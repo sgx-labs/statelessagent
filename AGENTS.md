@@ -114,7 +114,7 @@ internal/
     indexer.go            # Main indexer, reindex, single-file index
     chunker.go            # Markdown chunking by heading
     frontmatter.go        # YAML frontmatter parser
-  mcp/                 # MCP server — 12 tools (search, write, session mgmt)
+  mcp/                 # MCP server — 17 tools (search, write, session mgmt)
     server.go             # Tool registration, handlers, helpers
     git.go                # Git context collection for session context
   memory/              # Decision/handoff extraction, budget reports

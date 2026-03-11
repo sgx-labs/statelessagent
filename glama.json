@@ -2,7 +2,7 @@
   "$schema": "https://glama.ai/mcp/schemas/server.json",
   "maintainers": ["sgx-labs"],
   "name": "SAME - Stateless Agent Memory Engine",
-  "description": "Persistent memory for AI coding agents. Local-first SQLite + vector search. 12 MCP tools for semantic search, note management, decision tracking, and session handoffs. Works with Claude Code, Cursor, Windsurf, and any MCP client.",
+  "description": "Persistent memory for AI coding agents. Local-first SQLite + vector search. 17 MCP tools for semantic search, note management, decision tracking, session handoffs, and memory integrity. Works with Claude Code, Cursor, Windsurf, and any MCP client.",
   "keywords": ["memory", "knowledge-management", "ai-agents", "semantic-search", "vector-search", "sqlite", "mcp", "claude-code", "cursor", "obsidian", "markdown", "knowledge-base", "context", "rag"],
   "tools": [
     {
@@ -34,16 +34,8 @@
       "description": "List recently modified notes to stay aware of vault changes"
     },
     {
-      "name": "reindex",
-      "description": "Re-scan and re-index the vault after external changes"
-    },
-    {
-      "name": "index_stats",
-      "description": "Get index health metrics: note count, chunk count, last indexed, database size"
-    },
-    {
       "name": "save_note",
-      "description": "Create or update a markdown note with automatic indexing"
+      "description": "Create or update a markdown note with automatic indexing and provenance tracking"
     },
     {
       "name": "save_decision",
@@ -52,6 +44,34 @@
     {
       "name": "create_handoff",
       "description": "Write a session handoff note for seamless multi-session continuity"
+    },
+    {
+      "name": "save_kaizen",
+      "description": "Log improvement items (friction, bugs, ideas) with provenance tracking"
+    },
+    {
+      "name": "reindex",
+      "description": "Re-scan and re-index the vault after external changes"
+    },
+    {
+      "name": "index_stats",
+      "description": "Get index health metrics: note count, chunk count, last indexed, database size"
+    },
+    {
+      "name": "mem_consolidate",
+      "description": "Consolidate related notes into knowledge summaries via LLM"
+    },
+    {
+      "name": "mem_brief",
+      "description": "Generate an AI-powered orientation briefing from vault contents"
+    },
+    {
+      "name": "mem_health",
+      "description": "Vault health score with trust state and provenance analysis"
+    },
+    {
+      "name": "mem_forget",
+      "description": "Suppress a note from search results without deleting it"
     }
   ]
 }
