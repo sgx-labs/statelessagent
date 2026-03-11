@@ -34,7 +34,7 @@ func TestLLMExtraction(t *testing.T) {
 	ext := NewExtractor(db)
 	ext.SetLLM(client, "test-model")
 
-	err := ext.ExtractFromNote(1, "test.md", "We use Redis for caching.", "AgentX")
+	_, err := ext.ExtractFromNote(1, "test.md", "We use Redis for caching.", "AgentX")
 	if err != nil {
 		t.Fatalf("ExtractFromNote: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestLLMExtraction_Failure(t *testing.T) {
 	ext.SetLLM(client, "test-model")
 
 	// Should return error
-	err := ext.ExtractFromNote(1, "fail.md", "content", "")
+	_, err := ext.ExtractFromNote(1, "fail.md", "content", "")
 	if err == nil {
 		t.Error("expected error when LLM fails")
 	}
@@ -108,7 +108,7 @@ func TestLLMExtraction_InvalidJSON(t *testing.T) {
 	ext := NewExtractor(db)
 	ext.SetLLM(client, "test-model")
 
-	err := ext.ExtractFromNote(1, "invalid.md", "content", "")
+	_, err := ext.ExtractFromNote(1, "invalid.md", "content", "")
 	if err == nil {
 		t.Error("expected error on invalid JSON")
 	}
@@ -202,7 +202,7 @@ Let me structure this as JSON.
 	ext := NewExtractor(db)
 	ext.SetLLM(client, "deepseek-r1")
 
-	err := ext.ExtractFromNote(1, "thinking.md", "We use Redis for caching.", "")
+	_, err := ext.ExtractFromNote(1, "thinking.md", "We use Redis for caching.", "")
 	if err != nil {
 		t.Fatalf("ExtractFromNote with thinking model: %v", err)
 	}

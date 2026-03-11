@@ -26,6 +26,14 @@ var (
 	rePlaceholderToken = regexp.MustCompile(`(^|[^a-z0-9])(vault_path|yyyy|mm|dd)([^a-z0-9]|$)`)
 )
 
+// DiscoveredSource represents a source path discovered during graph extraction.
+// The caller (typically the indexer) can use these to record provenance via
+// db.RecordSources without giving the graph extractor direct store access.
+type DiscoveredSource struct {
+	SourcePath string
+	SourceType string // "file" or "note"
+}
+
 type Extractor struct {
 	db  *DB
 	llm *LLMExtractor
@@ -41,7 +49,9 @@ func (e *Extractor) SetLLM(client LLMClient, model string) {
 }
 
 // ExtractFromNote processes a single note and creates graph nodes/edges.
-func (e *Extractor) ExtractFromNote(noteID int64, path, content, agent string) error {
+// It returns a list of discovered source paths (files/notes referenced by this note)
+// that the caller can use to record provenance via db.RecordSources.
+func (e *Extractor) ExtractFromNote(noteID int64, path, content, agent string) ([]DiscoveredSource, error) {
 	// 1. Ensure note node exists
 	noteNode := &Node{
 		Type:   NodeNote,
@@ -50,24 +60,25 @@ func (e *Extractor) ExtractFromNote(noteID int64, path, content, agent string) e
 	}
 	nID, err := e.db.UpsertNode(noteNode)
 	if err != nil {
-		return fmt.Errorf("upsert note node: %w", err)
+		return nil, fmt.Errorf("upsert note node: %w", err)
 	}
 
 	// 2. Extract file references (Regex)
-	if err := e.extractRegex(path, nID, content); err != nil {
-		return err
+	discovered, err := e.extractRegex(path, nID, content)
+	if err != nil {
+		return nil, err
 	}
 
 	// 3. Agent
 	if agent != "" {
 		if err := e.linkAgent(nID, agent); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	// 4. Decisions (Regex)
 	if err := e.extractDecisionsRegex(nID, content); err != nil {
-		return err
+		return nil, err
 	}
 
 	// 5. LLM Extraction (if enabled)
@@ -75,14 +86,14 @@ func (e *Extractor) ExtractFromNote(noteID int64, path, content, agent string) e
 		if err := e.extractLLM(nID, content); err != nil {
 			// Log error but don't fail the whole extraction?
 			// For now, let's return error so caller knows.
-			return fmt.Errorf("llm extraction: %w", err)
+			return nil, fmt.Errorf("llm extraction: %w", err)
 		}
 	}
 
-	return nil
+	return discovered, nil
 }
 
-func (e *Extractor) extractRegex(notePath string, nID int64, content string) error {
+func (e *Extractor) extractRegex(notePath string, nID int64, content string) ([]DiscoveredSource, error) {
 	files := make(map[string]bool)
 
 	// Find all Go files
@@ -99,6 +110,8 @@ func (e *Extractor) extractRegex(notePath string, nID int64, content string) err
 		}
 	}
 
+	var discovered []DiscoveredSource
+
 	for rawPath := range files {
 		fPath, ok := normalizeGraphReferencePath(notePath, rawPath)
 		if !ok {
@@ -106,10 +119,18 @@ func (e *Extractor) extractRegex(notePath string, nID int64, content string) err
 		}
 
 		nodeType := NodeFile
+		sourceType := "file"
 		if strings.HasSuffix(strings.ToLower(fPath), ".md") {
 			// Markdown links represent note-to-note knowledge paths.
 			nodeType = NodeNote
+			sourceType = "note"
 		}
+
+		// Track discovered source for provenance recording by the caller
+		discovered = append(discovered, DiscoveredSource{
+			SourcePath: fPath,
+			SourceType: sourceType,
+		})
 
 		// Create file node
 		fNode := &Node{
@@ -118,7 +139,7 @@ func (e *Extractor) extractRegex(notePath string, nID int64, content string) err
 		}
 		fID, err := e.db.UpsertNode(fNode)
 		if err != nil {
-			return fmt.Errorf("upsert file node: %w", err)
+			return nil, fmt.Errorf("upsert file node: %w", err)
 		}
 
 		// Create "references" edge: Note -> File
@@ -128,10 +149,10 @@ func (e *Extractor) extractRegex(notePath string, nID int64, content string) err
 			Relationship: RelReferences,
 		}
 		if _, err := e.db.UpsertEdge(edge); err != nil {
-			return fmt.Errorf("upsert file edge: %w", err)
+			return nil, fmt.Errorf("upsert file edge: %w", err)
 		}
 	}
-	return nil
+	return discovered, nil
 }
 
 func normalizeGraphReferencePath(notePath, candidate string) (string, bool) {

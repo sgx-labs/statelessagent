@@ -4,12 +4,14 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/sgx-labs/statelessagent/internal/cli"
+	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
@@ -178,8 +180,46 @@ func runHealth() error {
 		 WHERE chunk_id = 0 AND access_count = 0 AND COALESCE(suppressed, 0) = 0`,
 	).Scan(&neverAccessedCount)
 
+	// Trust / Provenance: check source divergence
+	vaultPath := config.VaultPath()
+	diverged, _ := db.CheckSourceDivergence(vaultPath)
+
+	// Update trust states based on divergence results
+	var stalePaths, validatedPaths []string
+	divergedByNote := make(map[string]store.DivergenceResult) // first diverged source per note
+	for _, d := range diverged {
+		if _, seen := divergedByNote[d.NotePath]; !seen {
+			divergedByNote[d.NotePath] = d
+			stalePaths = append(stalePaths, d.NotePath)
+		}
+	}
+	// Find validated notes: notes with sources that are NOT diverged
+	allSourcedPaths, _ := db.GetNotesWithSources()
+	staleSet := make(map[string]bool, len(stalePaths))
+	for _, p := range stalePaths {
+		staleSet[p] = true
+	}
+	for _, p := range allSourcedPaths {
+		if !staleSet[p] {
+			validatedPaths = append(validatedPaths, p)
+		}
+	}
+
+	if len(stalePaths) > 0 {
+		_ = db.UpdateTrustState(stalePaths, "stale")
+	}
+	if len(validatedPaths) > 0 {
+		_ = db.UpdateTrustState(validatedPaths, "validated")
+	}
+
+	trustSummaryPtr, _ := db.GetTrustStateSummary()
+	trustSummary := store.TrustSummary{}
+	if trustSummaryPtr != nil {
+		trustSummary = *trustSummaryPtr
+	}
+
 	// Compute health score (0-100)
-	score := computeHealthScore(totalNotes, embeddedCount, knowledgeCount, recentCount, accessedCount)
+	score := computeHealthScore(totalNotes, embeddedCount, knowledgeCount, recentCount, accessedCount, trustSummary)
 
 	// Vault age string
 	vaultAge := ""
@@ -255,6 +295,47 @@ func runHealth() error {
 		fmt.Printf("  %-20s %.2f\n", "Avg confidence:", avgConfidence.Float64)
 	}
 
+	// Trust / Provenance
+	cli.Section("Trust")
+
+	validatedLabel := fmt.Sprintf("%d notes", trustSummary.Validated)
+	if trustSummary.Validated > 0 {
+		validatedLabel += " (sources unchanged)"
+	}
+	staleLabel := fmt.Sprintf("%d notes", trustSummary.Stale)
+	if trustSummary.Stale > 0 {
+		staleLabel += " (source files modified since capture)"
+	}
+	unknownLabel := fmt.Sprintf("%d notes", trustSummary.Unknown)
+	if trustSummary.Unknown > 0 {
+		unknownLabel += " (no provenance recorded)"
+	}
+
+	fmt.Printf("  %-14s %s%s%s\n", "Validated:", cli.Green, validatedLabel, cli.Reset)
+	fmt.Printf("  %-14s %s%s%s\n", "Stale:", cli.Yellow, staleLabel, cli.Reset)
+	fmt.Printf("  %-14s %s%s%s\n", "Unknown:", cli.Dim, unknownLabel, cli.Reset)
+
+	// Show up to 5 stale notes with details
+	if len(stalePaths) > 0 {
+		fmt.Println()
+		fmt.Printf("  %sStale notes:%s\n", cli.Bold, cli.Reset)
+		shown := 0
+		for _, notePath := range stalePaths {
+			if shown >= 5 {
+				break
+			}
+			d := divergedByNote[notePath]
+			sourceBase := filepath.Base(d.SourcePath)
+			capturedAt := time.Unix(d.CapturedAt, 0)
+			ago := time.Since(capturedAt)
+			agoStr := relativeTimeStr(ago)
+			fmt.Printf("    %s%-30s%s %s%s— %s changed %s%s\n",
+				cli.Yellow, notePath, cli.Reset,
+				cli.Dim, "", sourceBase, agoStr, cli.Reset)
+			shown++
+		}
+	}
+
 	// Top notes (only show notes that have been accessed)
 	hasAccessed := false
 	for _, n := range topNotes {
@@ -301,6 +382,9 @@ func runHealth() error {
 	if knowledgeCount == 0 && totalNotes >= 5 {
 		recs = append(recs, "Run 'same consolidate' to create knowledge summaries")
 	}
+	if trustSummary.Stale > 0 {
+		recs = append(recs, fmt.Sprintf("%d notes have stale sources — review or re-capture them", trustSummary.Stale))
+	}
 
 	if len(recs) > 0 {
 		cli.Section("Recommendations")
@@ -315,34 +399,45 @@ func runHealth() error {
 
 // computeHealthScore calculates a 0-100 health score from vault metrics.
 //
-//   - Embedding coverage: (embedded/total) * 25 points
-//   - Knowledge ratio: min(knowledge/total * 10, 25) points
-//   - Freshness: (recent_7day/total) * 25 points (capped at 25)
-//   - Usage: (accessed/total) * 25 points
-func computeHealthScore(total, embedded, knowledge, recent, accessed int) int {
+//   - Embedding coverage: (embedded/total) * 20 points
+//   - Knowledge ratio: min(knowledge/total * 10, 20) points
+//   - Freshness: (recent_7day/total) * 20 points (capped at 20)
+//   - Usage: (accessed/total) * 20 points
+//   - Trust: (validated / (validated + stale)) * 20 points (20/20 if no sources tracked)
+func computeHealthScore(total, embedded, knowledge, recent, accessed int, trust store.TrustSummary) int {
 	if total == 0 {
 		return 0
 	}
 
-	// Embedding coverage: 0-25 points
-	embedScore := float64(embedded) / float64(total) * 25.0
+	// Embedding coverage: 0-20 points
+	embedScore := float64(embedded) / float64(total) * 20.0
 
-	// Knowledge ratio: 0-25 points
-	knowledgeScore := float64(knowledge) / float64(total) * 10.0 * 25.0
-	if knowledgeScore > 25.0 {
-		knowledgeScore = 25.0
+	// Knowledge ratio: 0-20 points
+	knowledgeScore := float64(knowledge) / float64(total) * 10.0 * 20.0
+	if knowledgeScore > 20.0 {
+		knowledgeScore = 20.0
 	}
 
-	// Freshness: 0-25 points
-	freshnessScore := float64(recent) / float64(total) * 25.0
-	if freshnessScore > 25.0 {
-		freshnessScore = 25.0
+	// Freshness: 0-20 points
+	freshnessScore := float64(recent) / float64(total) * 20.0
+	if freshnessScore > 20.0 {
+		freshnessScore = 20.0
 	}
 
-	// Usage: 0-25 points
-	usageScore := float64(accessed) / float64(total) * 25.0
+	// Usage: 0-20 points
+	usageScore := float64(accessed) / float64(total) * 20.0
 
-	score := int(embedScore + knowledgeScore + freshnessScore + usageScore)
+	// Trust: 0-20 points
+	// If no sources are tracked (all unknown), don't penalize — score at 20/20
+	var trustScore float64
+	tracked := trust.Validated + trust.Stale
+	if tracked == 0 {
+		trustScore = 20.0
+	} else {
+		trustScore = float64(trust.Validated) / float64(tracked) * 20.0
+	}
+
+	score := int(embedScore + knowledgeScore + freshnessScore + usageScore + trustScore)
 	if score > 100 {
 		score = 100
 	}
@@ -378,4 +473,23 @@ func healthBar(score int) string {
 		color = cli.Yellow
 	}
 	return fmt.Sprintf("%s%d/100 %s %s%s", color, score, bar, label, cli.Reset)
+}
+
+// relativeTimeStr formats a duration as a human-readable relative time string.
+func relativeTimeStr(d time.Duration) string {
+	hours := int(d.Hours())
+	if hours < 1 {
+		return "just now"
+	}
+	if hours < 24 {
+		if hours == 1 {
+			return "1 hour ago"
+		}
+		return fmt.Sprintf("%d hours ago", hours)
+	}
+	days := hours / 24
+	if days == 1 {
+		return "yesterday"
+	}
+	return fmt.Sprintf("%d days ago", days)
 }

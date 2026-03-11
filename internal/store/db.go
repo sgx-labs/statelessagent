@@ -21,7 +21,7 @@ type DB struct {
 	ftsAvailable bool       // true if FTS5 module is available
 }
 
-const maxSchemaVersion = 8
+const maxSchemaVersion = 9
 
 // Open opens or creates the database at the configured path.
 func Open() (*DB, error) {
@@ -279,6 +279,7 @@ func (db *DB) migrate() error {
 		{6, db.migrateV6}, // knowledge graph tables
 		{7, db.migrateV7}, // hook activity logging metadata
 		{8, db.migrateV8}, // suppressed column for mem_forget
+		{9, db.migrateV9}, // provenance tracking (note_sources + trust_state)
 	}
 	for _, m := range versionedMigrations {
 		if currentVersion < m.version {
@@ -583,6 +584,34 @@ func (db *DB) migrateV7() error {
 func (db *DB) migrateV8() error {
 	if !db.hasColumn("vault_notes", "suppressed") {
 		if _, err := db.conn.Exec(`ALTER TABLE vault_notes ADD COLUMN suppressed INTEGER DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// migrateV9 creates the note_sources table for provenance tracking and adds
+// the trust_state column to vault_notes.
+func (db *DB) migrateV9() error {
+	if _, err := db.conn.Exec(`CREATE TABLE IF NOT EXISTS note_sources (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		note_path TEXT NOT NULL,
+		source_path TEXT NOT NULL,
+		source_type TEXT NOT NULL DEFAULT 'file',
+		source_hash TEXT DEFAULT '',
+		captured_at INTEGER NOT NULL DEFAULT (unixepoch()),
+		UNIQUE(note_path, source_path)
+	)`); err != nil {
+		return err
+	}
+	if _, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_note_sources_note_path ON note_sources(note_path)`); err != nil {
+		return err
+	}
+	if _, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_note_sources_source_path ON note_sources(source_path)`); err != nil {
+		return err
+	}
+	if !db.hasColumn("vault_notes", "trust_state") {
+		if _, err := db.conn.Exec(`ALTER TABLE vault_notes ADD COLUMN trust_state TEXT DEFAULT 'unknown'`); err != nil {
 			return err
 		}
 	}

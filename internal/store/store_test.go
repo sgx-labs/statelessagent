@@ -442,10 +442,10 @@ func TestSchemaVersion(t *testing.T) {
 	}
 	defer db.Close()
 
-	// After migrate(), version should be 8 (through suppressed column migration).
+	// After migrate(), version should be 9 (through provenance tracking migration).
 	v := db.SchemaVersion()
-	if v != 8 {
-		t.Errorf("expected schema version 8, got %d", v)
+	if v != 9 {
+		t.Errorf("expected schema version 9, got %d", v)
 	}
 }
 

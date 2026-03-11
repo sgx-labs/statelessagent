@@ -3,6 +3,7 @@ package mcp
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -184,7 +185,7 @@ func registerTools(server *mcp.Server) {
 	// save_note (write-side)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "save_note",
-		Description: "Create or update a markdown note in the vault. The note is written to disk and indexed automatically.\n\nArgs:\n  path: Relative path within the vault (e.g. 'decisions/auth-approach.md')\n  content: Markdown content to write\n  append: If true, append to existing file instead of overwriting (default false)\n  agent: Optional writer attribution stored in frontmatter (e.g. 'codex')\n\nReturns confirmation with the saved path.",
+		Description: "Create or update a markdown note in the vault. The note is written to disk and indexed automatically.\n\nOptionally specify source files to enable provenance tracking — SAME will flag this note as stale if sources change.\n\nArgs:\n  path: Relative path within the vault (e.g. 'decisions/auth-approach.md')\n  content: Markdown content to write\n  append: If true, append to existing file instead of overwriting (default false)\n  agent: Optional writer attribution stored in frontmatter (e.g. 'codex')\n  sources: File paths that this note was derived from (optional)\n\nReturns confirmation with the saved path.",
 		Annotations: writeDestructive,
 	}, handleSaveNote)
 
@@ -282,10 +283,11 @@ type reindexInput struct {
 }
 
 type saveNoteInput struct {
-	Path    string `json:"path" jsonschema:"Relative path within the vault (e.g. decisions/auth.md)"`
-	Content string `json:"content" jsonschema:"Markdown content to write"`
-	Append  bool   `json:"append" jsonschema:"Append to existing file instead of overwriting"`
-	Agent   string `json:"agent,omitempty" jsonschema:"Optional writer attribution (e.g. codex)"`
+	Path    string   `json:"path" jsonschema:"Relative path within the vault (e.g. decisions/auth.md)"`
+	Content string   `json:"content" jsonschema:"Markdown content to write"`
+	Append  bool     `json:"append" jsonschema:"Append to existing file instead of overwriting"`
+	Agent   string   `json:"agent,omitempty" jsonschema:"Optional writer attribution (e.g. codex)"`
+	Sources []string `json:"sources,omitempty" jsonschema:"File paths that this note was derived from or references. SAME tracks these to detect when source material changes, flagging the note as potentially stale."`
 }
 
 type saveDecisionInput struct {
@@ -633,6 +635,10 @@ func handleSaveNote(ctx context.Context, req *mcp.CallToolRequest, input saveNot
 		return textResult(fmt.Sprintf("Saved: %s (index update failed — run reindex to fix)", input.Path)), nil, nil
 	}
 
+	// Record provenance sources if provided by the caller.
+	// Don't fail the save if source recording fails — log a warning and continue.
+	recordProvenanceSources(relPath, input.Sources)
+
 	message := fmt.Sprintf("Saved: %s", input.Path)
 	if agent != "" {
 		if readClaims, claimErr := db.GetActiveReadClaimsForPath(relPath, agent); claimErr == nil && len(readClaims) > 0 {
@@ -648,6 +654,101 @@ func handleSaveNote(ctx context.Context, req *mcp.CallToolRequest, input saveNot
 		}
 	}
 	return textResult(message), nil, nil
+}
+
+// recordProvenanceSources records explicitly-provided source files and
+// recently-injected context notes as provenance for the saved note.
+func recordProvenanceSources(notePath string, explicitSources []string) {
+	var sources []store.NoteSource
+
+	// 1. Record explicitly provided source file paths.
+	for _, srcPath := range explicitSources {
+		srcPath = strings.TrimSpace(srcPath)
+		if srcPath == "" {
+			continue
+		}
+		hash := ""
+		fullPath := filepath.Join(vaultRoot, srcPath)
+		if content, err := os.ReadFile(fullPath); err == nil {
+			h := sha256.Sum256(content)
+			hash = fmt.Sprintf("%x", h)
+		}
+		sources = append(sources, store.NoteSource{
+			SourcePath: srcPath,
+			SourceType: "file",
+			SourceHash: hash,
+		})
+	}
+
+	// 2. Auto-detect recently injected note paths from context_usage (last 60s).
+	// These are notes that were surfaced to the agent shortly before this save,
+	// indicating the saved note is likely derived from them.
+	if recentPaths, err := getRecentInjectedNotePaths(60); err == nil {
+		seen := make(map[string]bool, len(sources))
+		for _, s := range sources {
+			seen[s.SourcePath] = true
+		}
+		for _, p := range recentPaths {
+			if seen[p] || p == notePath {
+				continue
+			}
+			hash := ""
+			fullPath := filepath.Join(vaultRoot, p)
+			if content, err := os.ReadFile(fullPath); err == nil {
+				h := sha256.Sum256(content)
+				hash = fmt.Sprintf("%x", h)
+			}
+			sources = append(sources, store.NoteSource{
+				SourcePath: p,
+				SourceType: "note",
+				SourceHash: hash,
+			})
+		}
+	}
+
+	if len(sources) == 0 {
+		return
+	}
+
+	if err := db.RecordSources(notePath, sources); err != nil {
+		fmt.Fprintf(os.Stderr, "same: warning: failed to record provenance sources for %s: %v\n", notePath, err)
+	}
+}
+
+// getRecentInjectedNotePaths returns note paths (.md files) that were injected
+// into agent context within the last `seconds` seconds.
+func getRecentInjectedNotePaths(seconds int) ([]string, error) {
+	rows, err := db.Conn().Query(
+		`SELECT injected_paths FROM context_usage
+		 WHERE timestamp > datetime('now', ?)
+		 ORDER BY timestamp DESC`,
+		fmt.Sprintf("-%d seconds", seconds),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	seen := make(map[string]bool)
+	var paths []string
+	for rows.Next() {
+		var pathsJSON string
+		if err := rows.Scan(&pathsJSON); err != nil {
+			continue
+		}
+		var injected []string
+		if err := json.Unmarshal([]byte(pathsJSON), &injected); err != nil {
+			continue
+		}
+		for _, p := range injected {
+			p = strings.TrimSpace(p)
+			if p != "" && strings.HasSuffix(strings.ToLower(p), ".md") && !seen[p] {
+				seen[p] = true
+				paths = append(paths, p)
+			}
+		}
+	}
+	return paths, rows.Err()
 }
 
 func handleSaveDecision(ctx context.Context, req *mcp.CallToolRequest, input saveDecisionInput) (*mcp.CallToolResult, any, error) {

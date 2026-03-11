@@ -265,8 +265,10 @@ sendLoop:
 			if len(result.Records) > 0 {
 				agent = result.Records[0].Agent
 			}
-			// Best effort extraction
-			_ = extractor.ExtractFromNote(rootID, result.Path, string(result.Content), agent)
+			// Best effort extraction; record discovered sources for provenance
+			if discovered, err := extractor.ExtractFromNote(rootID, result.Path, string(result.Content), agent); err == nil {
+				recordDiscoveredSources(db, result.Path, vaultPath, discovered)
+			}
 		}
 
 		stats.NewlyIndexed++
@@ -436,7 +438,9 @@ func IndexSingleFile(database *store.DB, filePath, relPath, vaultPath string, em
 		if len(records) > 0 {
 			agent = records[0].Agent
 		}
-		_ = extractor.ExtractFromNote(rootID, relPath, string(content), agent)
+		if discovered, extractErr := extractor.ExtractFromNote(rootID, relPath, string(content), agent); extractErr == nil {
+			recordDiscoveredSources(database, relPath, vaultPath, discovered)
+		}
 	}
 
 	// Rebuild FTS for the updated content
@@ -472,7 +476,9 @@ func IndexSingleFileLite(database *store.DB, filePath, relPath, vaultPath string
 		if len(records) > 0 {
 			agent = records[0].Agent
 		}
-		_ = extractor.ExtractFromNote(rootID, relPath, string(content), agent)
+		if discovered, extractErr := extractor.ExtractFromNote(rootID, relPath, string(content), agent); extractErr == nil {
+			recordDiscoveredSources(database, relPath, vaultPath, discovered)
+		}
 	}
 
 	_ = database.RebuildFTS()
@@ -678,6 +684,32 @@ func sha256Hash(s string) string {
 	return fmt.Sprintf("%x", h)
 }
 
+// recordDiscoveredSources records graph-extracted source references as provenance.
+// Best-effort: errors are logged but don't propagate.
+func recordDiscoveredSources(database *store.DB, notePath, vaultPath string, discovered []graph.DiscoveredSource) {
+	if len(discovered) == 0 {
+		return
+	}
+	var sources []store.NoteSource
+	for _, d := range discovered {
+		hash := ""
+		if d.SourceType == "file" || d.SourceType == "note" {
+			fullPath := filepath.Join(vaultPath, d.SourcePath)
+			if content, err := os.ReadFile(fullPath); err == nil {
+				hash = sha256Hash(string(content))
+			}
+		}
+		sources = append(sources, store.NoteSource{
+			SourcePath: d.SourcePath,
+			SourceType: d.SourceType,
+			SourceHash: hash,
+		})
+	}
+	if err := database.RecordSources(notePath, sources); err != nil {
+		fmt.Fprintf(os.Stderr, "  [WARN] record discovered sources for %s: %v\n", notePath, err)
+	}
+}
+
 // liteResult holds the result of parsing a single file for lite indexing.
 type liteResult struct {
 	Records []store.NoteRecord
@@ -827,7 +859,9 @@ sendLoop:
 			if len(result.Records) > 0 {
 				agent = result.Records[0].Agent
 			}
-			_ = extractor.ExtractFromNote(rootID, result.RelPath, string(result.Content), agent)
+			if discovered, extractErr := extractor.ExtractFromNote(rootID, result.RelPath, string(result.Content), agent); extractErr == nil {
+				recordDiscoveredSources(db, result.RelPath, vaultPath, discovered)
+			}
 		}
 
 		stats.NewlyIndexed++
