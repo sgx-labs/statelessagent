@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/sgx-labs/statelessagent/internal/graph"
 	"github.com/sgx-labs/statelessagent/internal/memory"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
@@ -344,6 +345,10 @@ func standardSearch(db *store.DB, queryVec []float32) []scored {
 		return nil
 	}
 
+	// Graph 1-hop expansion: for top vector results, find graph neighbors
+	// that are note-type nodes and add them as supplemental results.
+	candidates = expandFromGraph(db, candidates, seen)
+
 	// Near-dedup: collapse versioned copies in the same directory.
 	candidates = nearDedup(candidates, titleTerms)
 
@@ -682,6 +687,85 @@ func makeScored(r store.RawSearchResult, comp, sem float64) scored {
 		semantic:    sem,
 		distance:    r.Distance,
 	}
+}
+
+// expandFromGraph performs 1-hop graph expansion on the top vector results.
+// For each of the top-2 candidates that have a graph node, it finds neighbor
+// nodes that link to vault notes and adds them as supplemental results with
+// dampened scores. Max 2 graph-expanded results total.
+func expandFromGraph(db *store.DB, candidates []scored, seen map[string]bool) []scored {
+	if len(candidates) == 0 {
+		return candidates
+	}
+
+	gdb := graph.NewDB(db.Conn())
+
+	// Only expand from top-2 vector results
+	expandFrom := candidates
+	if len(expandFrom) > 2 {
+		expandFrom = expandFrom[:2]
+	}
+
+	var expanded []scored
+	for _, c := range expandFrom {
+		if len(expanded) >= 2 {
+			break
+		}
+
+		// Find the graph node for this note by path
+		node, err := gdb.FindNode(graph.NodeNote, c.path)
+		if err != nil {
+			continue // no graph node for this note
+		}
+
+		neighbors, err := gdb.GetNeighbors(node.ID, "", "both")
+		if err != nil || len(neighbors) == 0 {
+			continue
+		}
+
+		for _, n := range neighbors {
+			if len(expanded) >= 2 {
+				break
+			}
+			if n.NoteID == nil {
+				continue // not linked to a vault note
+			}
+
+			// Look up the note by path (graph node name = note path for note-type nodes)
+			notePath := n.Name
+			if seen[notePath] || shouldSkipPath(notePath) {
+				continue
+			}
+
+			records, err := db.GetNoteByPath(notePath)
+			if err != nil || len(records) == 0 {
+				continue
+			}
+
+			rec := records[0] // chunk_id=0 is the root chunk
+			seen[notePath] = true
+
+			snippet := rec.Text
+			if len(snippet) > 500 {
+				snippet = snippet[:500]
+			}
+			snippet = sanitizeSnippet(snippet)
+
+			// Dampened score: 60% of parent's composite
+			dampened := c.composite * 0.6
+
+			expanded = append(expanded, scored{
+				path:        notePath,
+				title:       rec.Title,
+				contentType: rec.ContentType,
+				confidence:  rec.Confidence,
+				snippet:     snippet,
+				composite:   dampened,
+			})
+		}
+	}
+
+	return append(candidates, expanded...)
 }
 
 // isPrivatePath returns true if the path is under the _PRIVATE/ directory.
