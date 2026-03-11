@@ -297,7 +297,7 @@ fi
 if [ "$BINARY_ACQUIRED" = false ]; then
   echo ""
   if [ "$SKIP_DOWNLOAD" = false ]; then
-    echo "  Checksum verification failed. Falling back to build from source..."
+    echo "  Pre-built binary unavailable. Trying build from source..."
     echo ""
   fi
   # Strategy 2: Build from source
