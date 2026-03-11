@@ -218,7 +218,19 @@ sendLoop:
 		close(resultCh)
 	}()
 
-	// Collect results and insert
+	// Collect results and insert.
+	// Graph extraction is deferred to a second pass so that all embedding
+	// requests complete before any LLM generation requests are issued. This
+	// prevents Ollama from swapping between the embedding model and the chat
+	// model concurrently, which causes timeouts on resource-constrained machines.
+	type graphWork struct {
+		rootID  int64
+		path    string
+		content []byte
+		agent   string
+	}
+	var pendingGraph []graphWork
+
 	canceled := false
 	embeddingFileFailures := 0
 	for result := range resultCh {
@@ -259,14 +271,18 @@ sendLoop:
 			continue
 		}
 
-		// Graph Extraction
+		// Defer graph extraction to after all embeddings are done
 		if rootID, ok := insertedIDs[result.Path]; ok {
 			agent := ""
 			if len(result.Records) > 0 {
 				agent = result.Records[0].Agent
 			}
-			// Best effort extraction
-			_ = extractor.ExtractFromNote(rootID, result.Path, string(result.Content), agent)
+			pendingGraph = append(pendingGraph, graphWork{
+				rootID:  rootID,
+				path:    result.Path,
+				content: result.Content,
+				agent:   agent,
+			})
 		}
 
 		stats.NewlyIndexed++
@@ -276,6 +292,19 @@ sendLoop:
 		} else {
 			fmt.Fprintf(os.Stderr, "  [%d/%d] Indexed: %s (%d chunks)\n",
 				processed, stats.TotalFiles, result.Path, len(result.Records))
+		}
+	}
+
+	// Second pass: graph extraction runs after all embeddings are complete.
+	// This avoids concurrent embedding + LLM model usage on Ollama.
+	if !canceled {
+		for _, gw := range pendingGraph {
+			if ctx.Err() != nil {
+				break
+			}
+			if discovered, err := extractor.ExtractFromNote(gw.rootID, gw.path, string(gw.content), gw.agent); err == nil {
+				recordDiscoveredSources(db, gw.path, vaultPath, discovered)
+			}
 		}
 	}
 
@@ -436,7 +465,9 @@ func IndexSingleFile(database *store.DB, filePath, relPath, vaultPath string, em
 		if len(records) > 0 {
 			agent = records[0].Agent
 		}
-		_ = extractor.ExtractFromNote(rootID, relPath, string(content), agent)
+		if discovered, extractErr := extractor.ExtractFromNote(rootID, relPath, string(content), agent); extractErr == nil {
+			recordDiscoveredSources(database, relPath, vaultPath, discovered)
+		}
 	}
 
 	// Rebuild FTS for the updated content
@@ -472,7 +503,9 @@ func IndexSingleFileLite(database *store.DB, filePath, relPath, vaultPath string
 		if len(records) > 0 {
 			agent = records[0].Agent
 		}
-		_ = extractor.ExtractFromNote(rootID, relPath, string(content), agent)
+		if discovered, extractErr := extractor.ExtractFromNote(rootID, relPath, string(content), agent); extractErr == nil {
+			recordDiscoveredSources(database, relPath, vaultPath, discovered)
+		}
 	}
 
 	_ = database.RebuildFTS()
@@ -678,6 +711,32 @@ func sha256Hash(s string) string {
 	return fmt.Sprintf("%x", h)
 }
 
+// recordDiscoveredSources records graph-extracted source references as provenance.
+// Best-effort: errors are logged but don't propagate.
+func recordDiscoveredSources(database *store.DB, notePath, vaultPath string, discovered []graph.DiscoveredSource) {
+	if len(discovered) == 0 {
+		return
+	}
+	var sources []store.NoteSource
+	for _, d := range discovered {
+		hash := ""
+		if d.SourceType == "file" || d.SourceType == "note" {
+			fullPath := filepath.Join(vaultPath, d.SourcePath)
+			if content, err := os.ReadFile(fullPath); err == nil {
+				hash = sha256Hash(string(content))
+			}
+		}
+		sources = append(sources, store.NoteSource{
+			SourcePath: d.SourcePath,
+			SourceType: d.SourceType,
+			SourceHash: hash,
+		})
+	}
+	if err := database.RecordSources(notePath, sources); err != nil {
+		fmt.Fprintf(os.Stderr, "  [WARN] record discovered sources for %s: %v\n", notePath, err)
+	}
+}
+
 // liteResult holds the result of parsing a single file for lite indexing.
 type liteResult struct {
 	Records []store.NoteRecord
@@ -827,7 +886,9 @@ sendLoop:
 			if len(result.Records) > 0 {
 				agent = result.Records[0].Agent
 			}
-			_ = extractor.ExtractFromNote(rootID, result.RelPath, string(result.Content), agent)
+			if discovered, extractErr := extractor.ExtractFromNote(rootID, result.RelPath, string(result.Content), agent); extractErr == nil {
+				recordDiscoveredSources(db, result.RelPath, vaultPath, discovered)
+			}
 		}
 
 		stats.NewlyIndexed++

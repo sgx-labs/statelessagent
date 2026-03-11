@@ -16,17 +16,33 @@ import (
 // would re-parse the transcript and create duplicate artifacts every turn.
 const stopHookCooldown = 300 // 5 minutes
 
+// preCompactCooldown is a shorter cooldown for PreCompact checkpoint handoffs.
+// PreCompact fires less frequently than Stop (only before context compaction),
+// so a shorter cooldown lets it capture checkpoints without excessive runs.
+const preCompactCooldown = 120 // 2 minutes
+
 // stopHookDebounce checks whether a Stop hook ran recently for this session.
 // Returns true if the hook should be skipped (still within cooldown).
 // On first run or after cooldown expires, returns false and records the timestamp.
 func stopHookDebounce(db *store.DB, sessionID, hookName string) bool {
+	return hookDebounce(db, sessionID, hookName, "stop_cooldown_", int64(stopHookCooldown))
+}
+
+// preCompactDebounce checks whether a PreCompact hook ran recently for this session.
+// Uses a shorter cooldown than Stop since PreCompact fires less frequently.
+func preCompactDebounce(db *store.DB, sessionID, hookName string) bool {
+	return hookDebounce(db, sessionID, hookName, "precompact_cooldown_", int64(preCompactCooldown))
+}
+
+// hookDebounce is the shared debounce logic for Stop and PreCompact hooks.
+func hookDebounce(db *store.DB, sessionID, hookName, keyPrefix string, cooldownSec int64) bool {
 	if sessionID == "" {
 		return false // no session tracking possible, let it run
 	}
-	key := "stop_cooldown_" + hookName
+	key := keyPrefix + hookName
 	if last, ok := db.SessionStateGet(sessionID, key); ok {
 		if ts, err := strconv.ParseInt(last, 10, 64); err == nil {
-			if time.Now().Unix()-ts < stopHookCooldown {
+			if time.Now().Unix()-ts < cooldownSec {
 				writeVerboseLog(fmt.Sprintf("%s: skipped (cooldown, last ran %ds ago)\n",
 					hookName, time.Now().Unix()-ts))
 				return true
@@ -38,10 +54,23 @@ func stopHookDebounce(db *store.DB, sessionID, hookName string) bool {
 	return false
 }
 
+// isCheckpointMode returns true if the hook was triggered by PreCompact
+// (a checkpoint before context compaction) rather than Stop (session end).
+func isCheckpointMode(input *HookInput) bool {
+	return input.HookEventName == "PreCompact"
+}
+
 // runHandoffGenerator generates a handoff note from the transcript.
 func runHandoffGenerator(db *store.DB, input *HookInput) hookRunResult {
-	if stopHookDebounce(db, input.SessionID, "handoff-generator") {
-		return hookSkipped("cooldown active")
+	checkpoint := isCheckpointMode(input)
+	if checkpoint {
+		if preCompactDebounce(db, input.SessionID, "handoff-generator") {
+			return hookSkipped("cooldown active")
+		}
+	} else {
+		if stopHookDebounce(db, input.SessionID, "handoff-generator") {
+			return hookSkipped("cooldown active")
+		}
 	}
 
 	transcriptPath := input.TranscriptPath
@@ -68,15 +97,20 @@ func runHandoffGenerator(db *store.DB, input *HookInput) hookRunResult {
 	}
 	_ = db.SessionStateSet(input.SessionID, key, result.Path)
 
+	handoffKind := "handoff"
+	if checkpoint {
+		handoffKind = "checkpoint handoff"
+	}
+
 	if !isQuietMode() {
-		fmt.Fprintf(os.Stderr, "same: ✓ handoff saved → %s\n", result.Path)
+		fmt.Fprintf(os.Stderr, "same: ✓ %s saved → %s\n", handoffKind, result.Path)
 	}
 
 	out := &HookOutput{
 		SystemMessage: fmt.Sprintf(
-			"\n<vault-handoff>\nSession handoff written to: %s\nSession ID: %s\n</vault-handoff>\n",
-			result.Path, result.SessionID,
+			"\n<vault-handoff>\nSession %s written to: %s\nSession ID: %s\n</vault-handoff>\n",
+			handoffKind, result.Path, result.SessionID,
 		),
 	}
-	return hookInjected(out, 1, 0, []string{result.Path}, "handoff saved")
+	return hookInjected(out, 1, 0, []string{result.Path}, handoffKind+" saved")
 }

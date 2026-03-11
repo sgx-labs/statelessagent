@@ -19,7 +19,8 @@ func TestMCPCmd_NoVault(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected MCP command to fail without a valid vault")
 	}
-	if !strings.Contains(err.Error(), "open database") {
-		t.Fatalf("expected open database error, got: %v", err)
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "open database") && !strings.Contains(errMsg, "not initialized") {
+		t.Fatalf("expected vault init error, got: %v", err)
 	}
 }

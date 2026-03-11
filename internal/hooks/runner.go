@@ -62,7 +62,10 @@ type HookSpecific struct {
 	AdditionalContext string `json:"additionalContext,omitempty"`
 }
 
-// hookEventMap maps CLI hook names to Claude Code event names.
+// hookEventMap maps CLI hook names to their primary Claude Code event name.
+// The handoff-generator fires on both PreCompact and Stop — this maps to Stop
+// as the primary event. PreCompact is registered separately in setup/hooks.go
+// and the runner differentiates via input.HookEventName at runtime.
 var hookEventMap = map[string]string{
 	"context-surfacing":  "UserPromptSubmit",
 	"decision-extractor": "Stop",
@@ -164,8 +167,13 @@ func Run(hookName string) {
 			result = hookError("unknown hook")
 		}
 
-		// Run plugins matching this hook's event
-		eventName := hookEventMap[hookName]
+		// Run plugins matching this hook's event.
+		// Prefer the actual event name from Claude Code input (e.g., PreCompact)
+		// over the hookEventMap default, so plugins can distinguish events.
+		eventName := input.HookEventName
+		if eventName == "" {
+			eventName = hookEventMap[hookName]
+		}
 		if eventName != "" {
 			pluginContexts := RunPlugins(eventName, inputData)
 			if len(pluginContexts) > 0 {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sgx-labs/statelessagent/internal/config"
@@ -40,7 +41,8 @@ func TestRepairCmd_NoVault(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected repair to fail without a valid vault")
 	}
-	if !errors.Is(err, config.ErrNoDatabase) {
-		t.Fatalf("expected ErrNoDatabase, got: %v", err)
+	errMsg := err.Error()
+	if !errors.Is(err, config.ErrNoDatabase) && !strings.Contains(errMsg, "No SAME vault found") {
+		t.Fatalf("expected vault-not-found error, got: %v", err)
 	}
 }

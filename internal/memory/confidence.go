@@ -17,6 +17,7 @@ var decayRates = map[string]*float64{
 	"note":     ptr(60),
 	"handoff":  ptr(30),
 	"progress": ptr(30),
+	"kaizen":   ptr(30),
 }
 
 const defaultDecayDays = 60.0
@@ -28,6 +29,7 @@ var typeBaselines = map[string]float64{
 	"research": 0.7,
 	"project":  0.65,
 	"handoff":  0.6,
+	"kaizen":   0.5,
 	"progress": 0.5,
 	"note":     0.5,
 }
@@ -110,6 +112,9 @@ func InferContentType(path string, explicitType string, tags []string) string {
 	if strings.Contains(pathLower, "hub") || strings.Contains(pathLower, "moc") || strings.Contains(pathLower, "index") {
 		return "hub"
 	}
+	if strings.HasPrefix(pathLower, "kaizen/") || strings.Contains(pathLower, "/kaizen/") {
+		return "kaizen"
+	}
 
 	// Tag-based inference
 	tagSet := make(map[string]bool)
@@ -124,6 +129,9 @@ func InferContentType(path string, explicitType string, tags []string) string {
 	}
 	if tagSet["handoff"] {
 		return "handoff"
+	}
+	if tagSet["kaizen"] {
+		return "kaizen"
 	}
 
 	return "note"

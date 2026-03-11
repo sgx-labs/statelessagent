@@ -75,8 +75,8 @@ func runHooksList() error {
 		},
 		{
 			name:        "handoff-generator",
-			event:       "Stop",
-			description: "Creates session handoff notes when Claude stops",
+			event:       "PreCompact/Stop",
+			description: "Creates session handoff notes (checkpoint on PreCompact, full on Stop)",
 		},
 		{
 			name:        "feedback-loop",

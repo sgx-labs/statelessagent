@@ -168,7 +168,7 @@ func RebuildFromIndexedNotes(conn *sql.DB, extractor *Extractor, opts *RebuildOp
 
 	for _, n := range notes {
 		stats.NotesProcessed++
-		if err := extractor.ExtractFromNote(n.id, n.path, n.content, n.agent); err != nil {
+		if _, err := extractor.ExtractFromNote(n.id, n.path, n.content, n.agent); err != nil {
 			if opts.ContinueOnError {
 				stats.NotesFailed++
 				stats.Errors = append(stats.Errors, fmt.Sprintf("%s: %v", n.path, err))

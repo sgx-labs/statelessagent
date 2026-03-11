@@ -252,7 +252,7 @@ func TestExtractFromNote(t *testing.T) {
 	// SQLite ignores FKs by default unless PRAGMA foreign_keys = ON.
 	// We didn't enable it in setupTestDB, so it should pass.
 
-	err := ext.ExtractFromNote(100, "foo.go", content, "AgentSmith")
+	_, err := ext.ExtractFromNote(100, "foo.go", content, "AgentSmith")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ func TestExtractFromNote_MarkdownReferenceBecomesNoteNode(t *testing.T) {
 	See notes/other.md for prior context.
 	`
 
-	if err := ext.ExtractFromNote(200, "notes/current.md", content, ""); err != nil {
+	if _, err := ext.ExtractFromNote(200, "notes/current.md", content, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -326,7 +326,7 @@ func TestExtractFromNote_IgnoresExternalOrAbsoluteLikeReferences(t *testing.T) {
 	Also see internal/store/db.go and notes/next.md.
 	`
 
-	if err := ext.ExtractFromNote(300, "notes/current.md", content, ""); err != nil {
+	if _, err := ext.ExtractFromNote(300, "notes/current.md", content, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -351,7 +351,7 @@ func TestExtractFromNote_IgnoresExternalFileURLReferences(t *testing.T) {
 
 	content := `*Viewed [AGENTS.md](file:///Users/jdoe/.windsurf/worktrees/myproject/myproject-f716fdc5/AGENTS.md)*`
 
-	if err := ext.ExtractFromNote(301, "notes/current.md", content, ""); err != nil {
+	if _, err := ext.ExtractFromNote(301, "notes/current.md", content, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -373,7 +373,7 @@ static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json
 Also see internal/graph/extraction.go.
 `
 
-	if err := ext.ExtractFromNote(302, "notes/current.md", content, ""); err != nil {
+	if _, err := ext.ExtractFromNote(302, "notes/current.md", content, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -422,7 +422,7 @@ internal/graph/extraction.go
 notes/real.md
 `
 
-	if err := ext.ExtractFromNote(303, "notes/current.md", content, ""); err != nil {
+	if _, err := ext.ExtractFromNote(303, "notes/current.md", content, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -475,7 +475,7 @@ We chose to keep regex extraction as the default fallback.
 Decision: adopt deterministic chunking for indexing.
 `
 
-	if err := ext.ExtractFromNote(303, "notes/current.md", content, ""); err != nil {
+	if _, err := ext.ExtractFromNote(303, "notes/current.md", content, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -567,10 +567,10 @@ See notes/beta.md and internal/indexer/indexer.go.
 We chose to keep regex extraction as the default fallback.
 `
 
-	if err := ext.ExtractFromNote(1, "notes/alpha.md", alphaContent, "woody"); err != nil {
+	if _, err := ext.ExtractFromNote(1, "notes/alpha.md", alphaContent, "woody"); err != nil {
 		t.Fatalf("extract alpha: %v", err)
 	}
-	if err := ext.ExtractFromNote(2, "notes/beta.md", betaContent, "buzz"); err != nil {
+	if _, err := ext.ExtractFromNote(2, "notes/beta.md", betaContent, "buzz"); err != nil {
 		t.Fatalf("extract beta: %v", err)
 	}
 
