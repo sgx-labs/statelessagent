@@ -265,4 +265,4 @@ These features have detailed design docs but no implementation yet. The developm
 ---
 
 *This document was generated from vault design sessions. It contains no PII, client data, or personal information.*
-*Last generated: 2026-02-06*
+*Last generated: 2026-03-11*

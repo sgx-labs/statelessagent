@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated:** 2026-02-05
+**Last updated:** 2026-03-11
 
 SAME (Stateless Agent Memory Engine) is designed to be local-first and privacy-respecting.
 
@@ -10,6 +10,8 @@ SAME (Stateless Agent Memory Engine) is designed to be local-first and privacy-r
 |-----------|---------------|-----------|
 | Your markdown notes | Read from disk, never transmitted | N/A (your files) |
 | Embeddings (vectors) | Stored locally in SQLite | Until you delete or reindex |
+| Provenance hashes | SHA256 of source files, stored locally in SQLite | Until you delete or reindex |
+| Trust state | Per-note metadata, stored locally in SQLite | Until you delete or reindex |
 | Search queries | Processed locally | Not stored |
 | Config settings | Stored in `.same/config.toml` | Until you delete |
 

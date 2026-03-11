@@ -230,7 +230,7 @@ No telemetry. No cloud. Path traversal blocked. Config files written with owner-
 | `same search <query>` | Search your notes |
 | `same search --all <query>` | Search across all vaults |
 | `same status` | See what SAME is tracking |
-| `same doctor` | Run 19 diagnostic checks |
+| `same doctor` | Run diagnostic checks |
 | `same claim <path> --agent <name>` | Advisory file ownership for multi-agent |
 | `same pin <path>` | Always include a note in sessions |
 | `same graph stats` | Knowledge graph diagnostics |
@@ -294,7 +294,7 @@ cd statelessagent && make install
 <details>
 <summary><strong>Troubleshooting</strong></summary>
 
-Start with `same doctor` -- it runs 19 checks and tells you what's wrong.
+Start with `same doctor` -- it runs 20+ checks and tells you what's wrong.
 
 **"No vault found"** -- Run `same init` from inside your notes folder, or set `VAULT_PATH=/path/to/notes`.
 

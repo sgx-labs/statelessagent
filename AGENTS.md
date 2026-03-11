@@ -47,7 +47,7 @@ cmd/same/
   config_cmd.go        # Config show/edit
   demo_cmd.go          # Interactive demo
   display_cmd.go       # Display mode switching
-  doctor_cmd.go        # 19 diagnostic checks
+  doctor_cmd.go        # 23 diagnostic checks
   feedback_cmd.go      # Note relevance feedback
   graph_cmd.go         # Knowledge graph query/path/stats/rebuild
   guard_cmd.go         # Push protection
@@ -69,7 +69,7 @@ cmd/same/
   web_cmd.go           # Local dashboard server (`same web`)
 
 internal/
-  hooks/               # Claude Code hook handlers (20 files)
+  hooks/               # Claude Code hook handlers (35 files)
     runner.go             # Hook execution engine
     context_surfacing.go  # UserPromptSubmit: surface relevant notes
     session_bootstrap.go  # SessionStart: orient with handoff + decisions

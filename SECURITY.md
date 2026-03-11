@@ -4,10 +4,10 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.9.x   | :white_check_mark: |
-| 0.8.x   | :white_check_mark: |
-| 0.7.x   | Security fixes only |
-| < 0.7   | :x:                |
+| 0.12.x  | :white_check_mark: |
+| 0.11.x  | :white_check_mark: |
+| 0.10.x  | Security fixes only |
+| < 0.10  | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -61,9 +61,17 @@ SAME is designed with a local-first security model:
 ### Path Traversal Protection
 - MCP `get_note` tool validates paths stay within vault boundary
 - Symlink resolution verifies real path stays inside vault (v0.8.3)
+- Provenance source paths validated before file reads (v0.12.0)
+- Source divergence checks validate stored paths before reads (v0.12.0)
 - Relative path components (`..`) are rejected
 - Null bytes in paths are rejected
 - Windows drive-letter paths are rejected regardless of host OS
+
+### Memory Integrity (v0.12.0)
+- Provenance tracking records SHA256 hashes of source files at capture time
+- Trust state (`validated`, `stale`, `contradicted`, `unknown`) affects search ranking
+- Staleness and divergence context tags are sanitized against prompt injection
+- YAML frontmatter values are sanitized to prevent injection via newlines
 
 ### Input Validation
 - All user inputs are validated before processing
