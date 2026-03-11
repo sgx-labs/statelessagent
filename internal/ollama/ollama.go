@@ -35,10 +35,10 @@ func NewClient() (*Client, error) {
 }
 
 // NewClientWithURL creates an Ollama LLM client with a specific base URL.
-// Used for testing. No localhost validation is performed.
+// No localhost validation is performed.
 func NewClientWithURL(baseURL string) *Client {
 	return &Client{
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: &http.Client{Timeout: 120 * time.Second},
 		baseURL:    baseURL,
 	}
 }

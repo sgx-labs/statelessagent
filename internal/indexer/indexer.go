@@ -218,7 +218,19 @@ sendLoop:
 		close(resultCh)
 	}()
 
-	// Collect results and insert
+	// Collect results and insert.
+	// Graph extraction is deferred to a second pass so that all embedding
+	// requests complete before any LLM generation requests are issued. This
+	// prevents Ollama from swapping between the embedding model and the chat
+	// model concurrently, which causes timeouts on resource-constrained machines.
+	type graphWork struct {
+		rootID  int64
+		path    string
+		content []byte
+		agent   string
+	}
+	var pendingGraph []graphWork
+
 	canceled := false
 	embeddingFileFailures := 0
 	for result := range resultCh {
@@ -259,16 +271,18 @@ sendLoop:
 			continue
 		}
 
-		// Graph Extraction
+		// Defer graph extraction to after all embeddings are done
 		if rootID, ok := insertedIDs[result.Path]; ok {
 			agent := ""
 			if len(result.Records) > 0 {
 				agent = result.Records[0].Agent
 			}
-			// Best effort extraction; record discovered sources for provenance
-			if discovered, err := extractor.ExtractFromNote(rootID, result.Path, string(result.Content), agent); err == nil {
-				recordDiscoveredSources(db, result.Path, vaultPath, discovered)
-			}
+			pendingGraph = append(pendingGraph, graphWork{
+				rootID:  rootID,
+				path:    result.Path,
+				content: result.Content,
+				agent:   agent,
+			})
 		}
 
 		stats.NewlyIndexed++
@@ -278,6 +292,19 @@ sendLoop:
 		} else {
 			fmt.Fprintf(os.Stderr, "  [%d/%d] Indexed: %s (%d chunks)\n",
 				processed, stats.TotalFiles, result.Path, len(result.Records))
+		}
+	}
+
+	// Second pass: graph extraction runs after all embeddings are complete.
+	// This avoids concurrent embedding + LLM model usage on Ollama.
+	if !canceled {
+		for _, gw := range pendingGraph {
+			if ctx.Err() != nil {
+				break
+			}
+			if discovered, err := extractor.ExtractFromNote(gw.rootID, gw.path, string(gw.content), gw.agent); err == nil {
+				recordDiscoveredSources(db, gw.path, vaultPath, discovered)
+			}
 		}
 	}
 
