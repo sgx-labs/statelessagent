@@ -17,6 +17,11 @@ var hookDefinitions = map[string][]hookEntry{
 	"UserPromptSubmit": {
 		{Matcher: "", Hooks: []hookAction{{Type: "command", Command: "%s hook context-surfacing"}}},
 	},
+	"PreCompact": {
+		{Matcher: "", Hooks: []hookAction{
+			{Type: "command", Command: "%s hook handoff-generator"},
+		}},
+	},
 	"Stop": {
 		{Matcher: "", Hooks: []hookAction{
 			{Type: "command", Command: "%s hook decision-extractor"},
