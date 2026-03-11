@@ -386,6 +386,17 @@ func runHealth() error {
 		recs = append(recs, fmt.Sprintf("%d notes have stale sources — review or re-capture them", trustSummary.Stale))
 	}
 
+	// Kaizen items
+	var kaizenOpenCount int
+	_ = db.Conn().QueryRow(
+		`SELECT COUNT(*) FROM vault_notes
+		 WHERE chunk_id = 0 AND content_type = 'kaizen'
+		 AND COALESCE(suppressed, 0) = 0`,
+	).Scan(&kaizenOpenCount)
+	if kaizenOpenCount > 0 {
+		recs = append(recs, fmt.Sprintf("%d kaizen items logged — run 'same kaizen' to review", kaizenOpenCount))
+	}
+
 	if len(recs) > 0 {
 		cli.Section("Recommendations")
 		for _, r := range recs {

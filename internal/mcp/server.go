@@ -251,6 +251,13 @@ func registerTools(server *mcp.Server) {
 		Description: "Suppress a memory so it won't be surfaced in normal search. The note is not deleted -- it's marked as suppressed and will only appear if explicitly requested. Use this for outdated, incorrect, or irrelevant memories. This is not easily reversible: there is no mem_restore tool.\n\nArgs:\n  path: Path of the note to suppress (required)\n  reason: Why this memory is being suppressed (optional)\n\nReturns confirmation of suppression. (experimental)",
 		Annotations: writeNonDestructive,
 	}, handleMemForget)
+
+	// save_kaizen (continuous improvement)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "save_kaizen",
+		Description: "Log a friction point, bug, or improvement idea discovered during work. SAME tracks provenance — if the source files change later, the item is automatically flagged as potentially addressed.\n\nArgs:\n  description: What was observed (required)\n  area: Area of the codebase (e.g. 'indexer', 'config', 'hooks') (optional)\n  agent: Who observed it (optional)\n  sources: Related file paths for provenance tracking (optional)\n\nReturns confirmation with the file path.",
+		Annotations: writeNonDestructive,
+	}, handleSaveKaizen)
 }
 
 // Tool input types
@@ -328,6 +335,13 @@ type memBriefInput struct {
 type memForgetInput struct {
 	Path   string `json:"path" jsonschema:"Path of the note to suppress"`
 	Reason string `json:"reason,omitempty" jsonschema:"Why this memory is being suppressed"`
+}
+
+type saveKaizenInput struct {
+	Description string   `json:"description" jsonschema:"What was observed — friction, bug, or improvement idea"`
+	Area        string   `json:"area,omitempty" jsonschema:"Area of the codebase (e.g. indexer, config, hooks)"`
+	Agent       string   `json:"agent,omitempty" jsonschema:"Who observed it"`
+	Sources     []string `json:"sources,omitempty" jsonschema:"Related file paths for provenance tracking"`
 }
 
 // Tool handlers
@@ -1469,6 +1483,98 @@ func handleMemForget(ctx context.Context, req *mcp.CallToolRequest, input memFor
 	message += "\nNote: There is currently no mem_restore tool. To reverse this, manually set suppressed=0 in the database."
 
 	return textResult(message), nil, nil
+}
+
+func handleSaveKaizen(ctx context.Context, req *mcp.CallToolRequest, input saveKaizenInput) (*mcp.CallToolResult, any, error) {
+	description := strings.TrimSpace(input.Description)
+	if description == "" {
+		return errorResult("Error: description is required."), nil, nil
+	}
+	if len(description) > maxNoteSize {
+		return errorResult("Error: description exceeds 100KB limit."), nil, nil
+	}
+	if !checkWriteRateLimit() {
+		return errorResult("Error: too many write operations. Try again in a minute."), nil, nil
+	}
+
+	agent, err := normalizeAgent(input.Agent)
+	if err != nil {
+		return errorResult("Error: invalid agent value. Use 1-128 visible characters without newlines."), nil, nil
+	}
+
+	// Build filename
+	date := time.Now().Format("2006-01-02")
+	slug := kaizenSlugify(description)
+	if slug == "" {
+		slug = "item"
+	}
+	relPath := fmt.Sprintf("kaizen/%s-%s.md", date, slug)
+	fullPath := filepath.Join(vaultRoot, relPath)
+
+	// Ensure kaizen directory exists
+	kaizenDir := filepath.Join(vaultRoot, "kaizen")
+	if err := os.MkdirAll(kaizenDir, 0o755); err != nil {
+		return errorResult("Error: could not create kaizen directory. Check vault write permissions."), nil, nil
+	}
+
+	// Build content
+	var content strings.Builder
+	mcpHeader := "<!-- Note saved via SAME MCP tool. Review before trusting. -->\n"
+	content.WriteString(mcpHeader)
+	content.WriteString("---\n")
+	content.WriteString(fmt.Sprintf("title: %s\n", description))
+	content.WriteString("content_type: kaizen\n")
+	content.WriteString("status: open\n")
+	if agent != "" {
+		content.WriteString(fmt.Sprintf("agent: %s\n", agent))
+	}
+	if input.Area != "" {
+		content.WriteString(fmt.Sprintf("area: %s\n", strings.TrimSpace(input.Area)))
+	}
+	content.WriteString("tags: [kaizen]\n")
+	content.WriteString("---\n\n")
+	content.WriteString(description)
+	content.WriteString("\n")
+
+	// Write file
+	if err := os.WriteFile(fullPath, []byte(content.String()), 0o600); err != nil {
+		return errorResult("Error: could not write kaizen note. Check vault permissions and available disk space."), nil, nil
+	}
+
+	// Index the file
+	if err := indexer.IndexSingleFile(db, fullPath, relPath, vaultRoot, embedClient); err != nil {
+		return textResult(fmt.Sprintf("Saved: %s (index update failed — run reindex to fix)", relPath)), nil, nil
+	}
+
+	// Record provenance sources if provided
+	recordProvenanceSources(relPath, input.Sources)
+
+	return textResult(fmt.Sprintf("Saved: %s", relPath)), nil, nil
+}
+
+// kaizenSlugify converts a description into a filesystem-safe slug.
+func kaizenSlugify(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	prevDash := false
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			prevDash = false
+		case r == ' ' || r == '-' || r == '_' || r == '/' || r == '.':
+			if !prevDash && b.Len() > 0 {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		}
+	}
+	result := strings.TrimRight(b.String(), "-")
+	if len(result) > 60 {
+		result = result[:60]
+		result = strings.TrimRight(result, "-")
+	}
+	return result
 }
 
 // --- MCP brief helpers ---

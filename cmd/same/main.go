@@ -172,6 +172,7 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 		vaultCmd(),
 		graphCmd(),
 		consolidateCmd(),
+		kaizenCmd(),
 	)
 
 	addGrouped("diagnostics",

@@ -74,7 +74,7 @@ same search "authentication decision"
 
 - **Memory integrity** -- Tracks provenance (where notes came from), detects when source files change, and flags stale knowledge. `same health` shows trust state across your vault.
 
-- **Works with your tools** -- 16 MCP tools for Claude Code, Cursor, Windsurf, or any MCP client. Search, save decisions, create handoffs without leaving your editor.
+- **Works with your tools** -- 17 MCP tools for Claude Code, Cursor, Windsurf, or any MCP client. Search, save decisions, create handoffs without leaving your editor.
 
 - **Safe for teams** -- Multiple AI agents on the same codebase won't step on each other. File claims, push protection, and attribution built in.
 
@@ -151,7 +151,7 @@ Add to your MCP config (`.mcp.json`, Cursor settings, etc.):
 }
 ```
 
-16 MCP tools available instantly. Works without Ollama (keyword fallback).
+17 MCP tools available instantly. Works without Ollama (keyword fallback).
 
 Switch between Claude Code and Cursor without losing context. Your memory travels with you.
 
