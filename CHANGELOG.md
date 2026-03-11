@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased
+## v0.12.0
+
+### Memory Integrity
+
+- `note_sources` table for provenance tracking — records what files/notes each note was derived from, with SHA256 hashes at capture time
+- `trust_state` field on notes: validated, stale, contradicted, unknown
+- `same health` now shows Trust section: validated/stale/unknown counts with specific stale sources listed
+- Health score updated to 5-factor model (added trust factor)
+- MCP `save_note` accepts `sources` parameter for explicit provenance tracking
+- Graph extraction records discovered file references as provenance sources
+- Staleness hook enhanced to detect source file divergence
+- Reindex serializes graph extraction after embeddings (fixes Ollama timeout on constrained machines)
+- Fixed `NewClientWithURL` timeout (10s → 120s) for production Ollama usage
 
 ### Added
 

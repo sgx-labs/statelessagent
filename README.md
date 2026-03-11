@@ -5,7 +5,7 @@
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](https://go.dev)
 [![Latest Release](https://img.shields.io/github/v/release/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent)
-[![MCP Tools](https://img.shields.io/badge/MCP_Tools-12-8A2BE2.svg)](#mcp-server)
+[![MCP Tools](https://img.shields.io/badge/MCP_Tools-16-8A2BE2.svg)](#mcp-server)
 [![Discord](https://img.shields.io/discord/1468523556076785757?color=5865F2&label=Discord&logo=discord&logoColor=white)](https://discord.gg/9KfTkcGs7g)
 
 **Your AI forgets everything between sessions. SAME fixes that.**
@@ -72,7 +72,9 @@ same search "authentication decision"
 
 - **Your AI remembers everything** -- Decisions, handoffs, and context survive across sessions. Close your terminal, switch projects, come back tomorrow. Nothing gets lost.
 
-- **Works with your tools** -- 12 MCP tools for Claude Code, Cursor, Windsurf, or any MCP client. Search, save decisions, create handoffs without leaving your editor.
+- **Memory integrity** -- Tracks provenance (where notes came from), detects when source files change, and flags stale knowledge. `same health` shows trust state across your vault.
+
+- **Works with your tools** -- 16 MCP tools for Claude Code, Cursor, Windsurf, or any MCP client. Search, save decisions, create handoffs without leaving your editor.
 
 - **Safe for teams** -- Multiple AI agents on the same codebase won't step on each other. File claims, push protection, and attribution built in.
 
@@ -149,7 +151,7 @@ Add to your MCP config (`.mcp.json`, Cursor settings, etc.):
 }
 ```
 
-12 MCP tools available instantly. Works without Ollama (keyword fallback).
+16 MCP tools available instantly. Works without Ollama (keyword fallback).
 
 Switch between Claude Code and Cursor without losing context. Your memory travels with you.
 
@@ -173,6 +175,10 @@ Switch between Claude Code and Cursor without losing context. Your memory travel
 | `create_handoff` | Write a session handoff |
 | `reindex` | Re-scan and re-index the vault |
 | `index_stats` | Index health and statistics |
+| `mem_consolidate` | Consolidate related notes via LLM |
+| `mem_brief` | Generate orientation briefing |
+| `mem_health` | Vault health with trust analysis |
+| `mem_forget` | Suppress a note from search results |
 
 ## SeedVaults
 
@@ -231,6 +237,10 @@ No telemetry. No cloud. Path traversal blocked. Config files written with owner-
 | `same seed install <name>` | Install a seed vault |
 | `same vault list\|add\|remove\|default` | Manage multiple vaults |
 | `same guard settings set push-protect on` | Enable push protection |
+| `same consolidate` | Merge related notes into knowledge summaries |
+| `same brief` | AI-generated orientation briefing |
+| `same health` | Vault health score with trust/provenance analysis |
+| `same tips` | Best practices for vault hygiene and security |
 | `same reindex [--force]` | Rebuild search index |
 | `same repair` | Back up and rebuild database |
 | `same update` | Update to latest version |
@@ -304,7 +314,7 @@ Start with `same doctor` -- it runs 19 checks and tells you what's wrong.
 | Offline | Full | Not default | With local models | Yes |
 | Cloud required | No | Default yes | No | No |
 | Telemetry | None | Default ON | Yes | None |
-| MCP tools | 12 | 9 | Client only | No |
+| MCP tools | 16 | 9 | Client only | No |
 | Knowledge graph | Built-in | Requires Neo4j | No | No |
 | Cross-tool memory | Yes | API only | No | Claude only |
 | Runs on Pi | Yes (~12MB) | No | No | Yes |
