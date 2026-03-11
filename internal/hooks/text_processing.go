@@ -206,6 +206,8 @@ func sanitizeContextTags(text string) string {
 		"session-bootstrap",
 		"vault-handoff",
 		"vault-decisions",
+		"vault-staleness",
+		"vault-source-divergence",
 		"same-diagnostic",
 		// F16: Additional tags used by AI systems that could enable prompt injection
 		"system-reminder",

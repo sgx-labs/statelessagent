@@ -470,7 +470,7 @@ Security hardening, crash recovery, search improvements, UX polish, and every ho
 
 ### Changed
 
-- **README rewritten** — pain-first opening, architecture diagram, feature matrix, competitor comparison table, honest benchmarks (removed aspirational token claim)
+- **README rewritten** — pain-first opening, architecture diagram, feature matrix, competitor comparison table, updated benchmarks
 - **Schema v3** — adds `session_recovery` table; auto-migrates from v2
 - **MCP tool list updated** — setup now shows all 11 tools with accurate descriptions
 
@@ -489,7 +489,7 @@ Self-diagnosing retrieval, pinned notes, keyword fallback, vault privacy structu
   - `get_session_context` — one-call orientation: pinned notes + latest handoff + recent activity + stats
   - `recent_activity` — recently modified notes (clamped to 50)
 - **`same ask`** — ask questions, get answers FROM your notes with source citations. Uses a local Ollama LLM to synthesize answers from semantically relevant notes. Auto-detects the best available chat model. 100% local, no cloud APIs. Example: `same ask "what did we decide about authentication?"`
-- **`same demo`** — interactive demo that creates a temporary vault with 6 realistic sample notes, indexes them, runs search, and showcases `same ask`. Works without Ollama (keyword-only mode). See SAME in action in under 60 seconds.
+- **`same demo`** — interactive demo that creates a temporary vault with 6 realistic sample notes, indexes them, runs search, and showcases `same ask`. Works without Ollama (keyword-only mode).
 - **`same tutorial`** — modular learn-by-doing system with 6 lessons: semantic search, decisions, pinning, privacy tiers, RAG chat, and session handoffs. Run all lessons (`same tutorial`) or jump to any topic (`same tutorial search`, `same tutorial pin`). Creates real notes and runs real commands — you learn the CLI by using it.
 - **SAME Lite (keyword-only mode)** — SAME now works without Ollama. When Ollama is unavailable, `same init` offers keyword-only mode using SQLite FTS5. All features work — search, ask, demo, tutorial — with keyword matching instead of semantic search. Install Ollama later and `same reindex` upgrades to full semantic mode. Zero dependencies beyond the binary.
 - **Project-aware init** — `same init` now detects existing project documentation (README.md, docs/, ARCHITECTURE.md, CLAUDE.md, .cursorrules, ADR/) and offers to index them. Zero new notes required — your project already has context.

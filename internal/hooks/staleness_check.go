@@ -77,7 +77,8 @@ func buildDivergenceContext(db *store.DB, vaultPath string) string {
 		lines = append(lines, fmt.Sprintf("- %s (source: %s changed %s)", d.NotePath, sourceBase, agoStr))
 	}
 
-	return strings.Join(lines, "\n")
+	// SECURITY: sanitize output to prevent prompt injection via crafted paths
+	return sanitizeContextTags(strings.Join(lines, "\n"))
 }
 
 // formatDivergenceAge formats a duration as a relative time string for divergence context.

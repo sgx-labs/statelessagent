@@ -224,9 +224,12 @@ func runKaizenAdd(description, agent, status string) error {
 	}
 
 	// Build frontmatter
+	// SECURITY: strip newlines from frontmatter values to prevent YAML injection
+	safeTitle := strings.ReplaceAll(strings.ReplaceAll(description, "\n", " "), "\r", " ")
+
 	var content strings.Builder
 	content.WriteString("---\n")
-	content.WriteString(fmt.Sprintf("title: %s\n", description))
+	content.WriteString(fmt.Sprintf("title: %s\n", safeTitle))
 	content.WriteString("content_type: kaizen\n")
 	content.WriteString(fmt.Sprintf("status: %s\n", status))
 	if agent != "" {

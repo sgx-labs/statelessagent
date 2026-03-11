@@ -11,9 +11,9 @@ Your AI agent forgets everything between sessions. SAME fixes that. It indexes y
 - **Session handoffs** — your agent writes what it did, the next session picks up where it left off
 - **Decision log** — decisions are saved and surfaced automatically in future sessions
 - **`same ask`** — RAG chat over your vault with source citations
-- **`same demo`** — try it in 60 seconds, creates a sandbox, cleans up after
+- **`same demo`** — try it interactively, creates a sandbox, cleans up after
 
-## 12 MCP Tools
+## 17 MCP Tools
 
 | Tool | Type | Description |
 |------|------|-------------|
@@ -29,6 +29,11 @@ Your AI agent forgets everything between sessions. SAME fixes that. It indexes y
 | `save_note` | write | Create or update a note (optional `agent` attribution) |
 | `save_decision` | write | Log a project decision (optional `agent` attribution) |
 | `create_handoff` | write | Create a session handoff note (optional `agent` attribution) |
+| `save_kaizen` | write | Log improvement items with provenance tracking |
+| `mem_consolidate` | write | Consolidate related notes via LLM |
+| `mem_brief` | read | Generate orientation briefing |
+| `mem_health` | read | Vault health with trust analysis |
+| `mem_forget` | write | Suppress a note from search results |
 
 ## MCP Configuration
 

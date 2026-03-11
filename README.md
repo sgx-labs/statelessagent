@@ -28,7 +28,7 @@ Or via npm (all platforms): `npm install -g @sgx-labs/same`
 
 **Installed via npm?** Update with `npx same@latest` or `npm update -g @sgx-labs/same`.
 
-## See It Work (30 seconds)
+## See It Work
 
 ```bash
 same demo
@@ -127,7 +127,7 @@ Your markdown notes get embedded and stored in SQLite. When your AI starts a ses
 | MRR | **0.949** (right note first, almost every time) |
 | Prompt overhead | **<200ms** |
 | Binary size | **~12MB** |
-| Setup time | **<60 seconds** |
+| Setup time | **Under 2 minutes** |
 
 ## Add to Your AI Tool
 

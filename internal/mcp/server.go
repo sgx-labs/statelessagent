@@ -681,6 +681,10 @@ func recordProvenanceSources(notePath string, explicitSources []string) {
 		if srcPath == "" {
 			continue
 		}
+		// SECURITY: validate path to prevent traversal (e.g. "../../etc/passwd")
+		if safeVaultPath(srcPath) == "" {
+			continue
+		}
 		hash := ""
 		fullPath := filepath.Join(vaultRoot, srcPath)
 		if content, err := os.ReadFile(fullPath); err == nil {
@@ -1518,18 +1522,22 @@ func handleSaveKaizen(ctx context.Context, req *mcp.CallToolRequest, input saveK
 	}
 
 	// Build content
+	// SECURITY: strip newlines from frontmatter values to prevent YAML injection
+	safeTitle := strings.ReplaceAll(strings.ReplaceAll(description, "\n", " "), "\r", " ")
+	safeArea := strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(input.Area), "\n", " "), "\r", " ")
+
 	var content strings.Builder
 	mcpHeader := "<!-- Note saved via SAME MCP tool. Review before trusting. -->\n"
 	content.WriteString(mcpHeader)
 	content.WriteString("---\n")
-	content.WriteString(fmt.Sprintf("title: %s\n", description))
+	content.WriteString(fmt.Sprintf("title: %s\n", safeTitle))
 	content.WriteString("content_type: kaizen\n")
 	content.WriteString("status: open\n")
 	if agent != "" {
 		content.WriteString(fmt.Sprintf("agent: %s\n", agent))
 	}
-	if input.Area != "" {
-		content.WriteString(fmt.Sprintf("area: %s\n", strings.TrimSpace(input.Area)))
+	if safeArea != "" {
+		content.WriteString(fmt.Sprintf("area: %s\n", safeArea))
 	}
 	content.WriteString("tags: [kaizen]\n")
 	content.WriteString("---\n\n")

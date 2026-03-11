@@ -168,6 +168,11 @@ func (db *DB) CheckSourceDivergence(vaultPath string) ([]DivergenceResult, error
 			return nil, fmt.Errorf("scan divergence row: %w", err)
 		}
 
+		// SECURITY: validate stored path to prevent traversal reads outside vault
+		clean := filepath.ToSlash(filepath.Clean(sourcePath))
+		if strings.HasPrefix(clean, "..") || filepath.IsAbs(clean) || strings.Contains(clean, "\x00") {
+			continue
+		}
 		fullPath := filepath.Join(vaultPath, sourcePath)
 		content, err := os.ReadFile(fullPath)
 		if err != nil {
