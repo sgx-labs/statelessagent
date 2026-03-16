@@ -44,9 +44,9 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
         with:
           go-version: '1.25'
           cache-dependency-path: go.sum
@@ -87,7 +87,7 @@ jobs:
             -o build/same-${{ matrix.suffix }} ./cmd/same
 
       - name: Upload artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: same-${{ matrix.suffix }}
           path: build/same-${{ matrix.suffix }}
@@ -97,7 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: artifacts
 
@@ -127,15 +127,12 @@ jobs:
   npm-publish:
     needs: release
     runs-on: ubuntu-latest
-    # npm requires 2FA (passkey) for publishing. CI token may not have bypass-2FA.
-    # If this job fails, publish locally: cd npm && npm publish --access public --auth-type=web
-    continue-on-error: true
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Verify version match
@@ -161,7 +158,14 @@ jobs:
           PKG_NAME=$(node -p "require('./package.json').name")
           PKG_VER=$(node -p "require('./package.json').version")
           if npm view "${PKG_NAME}@${PKG_VER}" version 2>/dev/null; then
-            echo "Version ${PKG_VER} already published — skipping"
+            echo "::notice::Version ${PKG_VER} already published to npm — skipping"
+            exit 0
+          fi
+          # Attempt publish; handle expected failures gracefully (e.g., npm org
+          # not yet created, 2FA required, token permissions).
+          if npm publish --access public 2>&1; then
+            echo "::notice::Published ${PKG_NAME}@${PKG_VER} to npm"
           else
-            npm publish --access public
+            echo "::warning::npm publish failed — this is non-blocking. Publish manually: cd npm && npm publish --access public --auth-type=web"
+            exit 0
           fi
