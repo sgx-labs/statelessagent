@@ -670,25 +670,50 @@ func WalkVault(vaultPath string) []string {
 	return walkVault(vaultPath)
 }
 
+// WalkVaultWithIgnore returns all markdown file paths, respecting both skip dirs
+// and .sameignore patterns. This is the preferred entry point for callers that
+// want full ignore support.
+func WalkVaultWithIgnore(vaultPath string) []string {
+	ip := LoadSameignore(vaultPath)
+	return walkVaultWithIgnore(vaultPath, ip)
+}
+
 // CountMarkdownFiles returns the number of .md files in a directory.
 func CountMarkdownFiles(dir string) int {
 	return len(walkVault(dir))
 }
 
 func walkVault(vaultPath string) []string {
+	ip := LoadSameignore(vaultPath)
+	return walkVaultWithIgnore(vaultPath, ip)
+}
+
+func walkVaultWithIgnore(vaultPath string, ip *IgnorePatterns) []string {
 	var files []string
 	if err := filepath.WalkDir(vaultPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
+
+		relPath, _ := filepath.Rel(vaultPath, path)
+		relPath = filepath.ToSlash(relPath)
+
 		if d.IsDir() {
 			name := d.Name()
 			if config.SkipDirs[name] {
 				return filepath.SkipDir
 			}
+			// Check .sameignore for directory patterns
+			if ip != nil && relPath != "." && ip.ShouldIgnore(relPath, true) {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if strings.HasSuffix(d.Name(), ".md") && !config.SkipFiles[d.Name()] {
+			// Check .sameignore for file patterns
+			if ip != nil && ip.ShouldIgnore(relPath, false) {
+				return nil
+			}
 			files = append(files, path)
 		}
 		return nil

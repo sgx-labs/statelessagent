@@ -162,6 +162,7 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 		askCmd(),
 		briefCmd(),
 		relatedCmd(),
+		staleCmd(),
 		webCmd(),
 	)
 
@@ -191,6 +192,7 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 		modelCmd(),
 		setupSubCmd(),
 		reindexCmd(),
+		ignoreCmd(),
 		completionCmd(),
 	)
 

@@ -384,6 +384,9 @@ func RunInit(opts InitOptions) error {
 	// Create seed directories
 	createSeedStructure(vaultPath, experience)
 
+	// Create default .sameignore (only for new vaults — don't overwrite existing)
+	createDefaultSameignore(vaultPath)
+
 	// Indexing — use full mode if any embedding provider is available
 	useEmbeddings := embedProvider != "none" && providerReady
 	cli.Section("Indexing")
@@ -1778,6 +1781,21 @@ func handleGitignore(vaultPath string, autoAccept bool) {
 		fmt.Printf("    %s.same/data/ (system), _PRIVATE/ (secret), research/ (local-only)%s\n",
 			cli.Dim, cli.Reset)
 	}
+}
+
+// createDefaultSameignore creates a .sameignore file with sensible defaults.
+// Only creates the file if it doesn't already exist — never overwrites.
+func createDefaultSameignore(vaultPath string) {
+	sameignorePath := filepath.Join(vaultPath, ".sameignore")
+	if _, err := os.Stat(sameignorePath); err == nil {
+		return // already exists, don't overwrite
+	}
+
+	if err := indexer.WriteSameignore(vaultPath, indexer.DefaultSameignore); err != nil {
+		fmt.Fprintf(os.Stderr, "  [WARN] Could not create .sameignore: %v\n", err)
+		return
+	}
+	fmt.Printf("  %s✓%s Created .sameignore with default exclusion patterns\n", cli.Green, cli.Reset)
 }
 
 // createSeedStructure creates the recommended vault directory structure.

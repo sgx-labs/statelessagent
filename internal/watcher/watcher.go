@@ -24,6 +24,9 @@ import (
 func Watch(ctx context.Context, db *store.DB) error {
 	vaultPath := config.VaultPath()
 
+	// Load .sameignore patterns once at watcher startup
+	ignorePatterns := indexer.LoadSameignore(vaultPath)
+
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("create watcher: %w", err)
@@ -31,7 +34,7 @@ func Watch(ctx context.Context, db *store.DB) error {
 	defer w.Close()
 
 	// Add all directories (not skipped ones)
-	dirs := walkDirs(vaultPath)
+	dirs := walkDirsWithIgnore(vaultPath, ignorePatterns)
 	for _, d := range dirs {
 		if err := w.Add(d); err != nil {
 			fmt.Fprintf(os.Stderr, "  [WARN] Could not watch %s: %v\n", d, err)
@@ -91,6 +94,14 @@ func Watch(ctx context.Context, db *store.DB) error {
 					}
 				}
 				continue
+			}
+
+			// Check .sameignore patterns
+			if ignorePatterns != nil {
+				relPath := relativePath(event.Name, vaultPath)
+				if ignorePatterns.ShouldIgnore(relPath, false) {
+					continue
+				}
 			}
 
 			if event.Has(fsnotify.Rename) {
@@ -212,6 +223,10 @@ func removeFromIndex(db *store.DB, absPath, vaultPath string) {
 }
 
 func walkDirs(root string) []string {
+	return walkDirsWithIgnore(root, nil)
+}
+
+func walkDirsWithIgnore(root string, ip *indexer.IgnorePatterns) []string {
 	var dirs []string
 	if err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -221,6 +236,13 @@ func walkDirs(root string) []string {
 			name := d.Name()
 			if config.SkipDirs[name] {
 				return filepath.SkipDir
+			}
+			// Check .sameignore for directory patterns
+			if ip != nil {
+				relPath := relativePath(path, root)
+				if relPath != "." && relPath != "" && ip.ShouldIgnore(relPath, true) {
+					return filepath.SkipDir
+				}
 			}
 			dirs = append(dirs, path)
 		}
