@@ -324,10 +324,10 @@ PY
 )"
 
     if [ "$provider" = "none" ]; then
-        if [ "$index_mode" = "lite" ]; then
-            pass "provider=$provider smoke flow (keyword-only expected, index_mode=lite)"
+        if [ "$index_mode" = "lite" ] || [ "$index_mode" = "progressive" ]; then
+            pass "provider=$provider smoke flow (keyword-only expected, index_mode=$index_mode)"
         else
-            fail "provider=$provider smoke flow expected index_mode=lite, got ${index_mode:-<empty>}"
+            fail "provider=$provider smoke flow expected index_mode=lite or progressive, got ${index_mode:-<empty>}"
         fi
     else
         if [ "$index_mode" = "full" ]; then
