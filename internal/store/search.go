@@ -35,6 +35,12 @@ type SearchOptions struct {
 	Tags        []string
 	TrustState  string // Filter by trust_state (validated, stale, contradicted, unknown)
 	ContentType string // Filter by content_type (decision, handoff, note, research, etc.)
+
+	// QueryTypeBoosts maps content_type to score multiplier (e.g. {"handoff": 1.3}).
+	// Applied after composite scoring to boost results matching query intent.
+	// Use memory.InferQueryTypeBoost to compute this from the query string.
+	// The special key "_suppress_stale_penalty" suppresses stale trust penalties.
+	QueryTypeBoosts map[string]float64
 }
 
 // VectorSearch performs a KNN vector search with optional metadata filtering
@@ -590,29 +596,10 @@ func (db *DB) HybridSearch(queryVec []float32, queryText string, opts SearchOpti
 			}
 			seen[r.Path] = true
 
-			snippet := r.Text
-			if len(snippet) > 500 {
-				snippet = snippet[:500]
-			}
-
 			titleLower := strings.ToLower(r.Title)
 			score := keywordTitleScore(titleLower, terms, termsSet)
 
-			newKW = append(newKW, SearchResult{
-				Path:         r.Path,
-				Title:        r.Title,
-				ChunkHeading: r.Heading,
-				Score:        score,
-				Distance:     0,
-				Snippet:      snippet,
-				Domain:       r.Domain,
-				Workstream:   r.Workstream,
-				Agent:        r.Agent,
-				Tags:         r.Tags,
-				ContentType:  r.ContentType,
-				Confidence:   round3(r.Confidence),
-				TrustState:   r.TrustState,
-			})
+			newKW = append(newKW, RawToSearchResult(r, score))
 		}
 
 		if len(newKW) > 0 {
@@ -655,26 +642,7 @@ func (db *DB) HybridSearch(queryVec []float32, queryText string, opts SearchOpti
 				}
 				seen[r.Path] = true
 
-				snippet := r.Text
-				if len(snippet) > 500 {
-					snippet = snippet[:500]
-				}
-
-				merged = append(merged, SearchResult{
-					Path:         r.Path,
-					Title:        r.Title,
-					ChunkHeading: r.Heading,
-					Score:        0.4,
-					Distance:     0,
-					Snippet:      snippet,
-					Domain:       r.Domain,
-					Workstream:   r.Workstream,
-					Agent:        r.Agent,
-					Tags:         r.Tags,
-					ContentType:  r.ContentType,
-					Confidence:   round3(r.Confidence),
-					TrustState:   r.TrustState,
-				})
+				merged = append(merged, RawToSearchResult(r, 0.4))
 				filled++
 			}
 		}
@@ -691,7 +659,46 @@ func (db *DB) HybridSearch(queryVec []float32, queryText string, opts SearchOpti
 		merged = RankSearchResults(merged, queryTerms)
 	}
 
+	// 10. Apply content-type-aware query boost.
+	// Subtly boosts results whose content_type matches query intent keywords
+	// (e.g. "last session" boosts handoff results by 1.3x). Re-sorts after.
+	if len(opts.QueryTypeBoosts) > 0 {
+		merged = ApplyQueryTypeBoosts(merged, opts.QueryTypeBoosts)
+	}
+
 	return merged, nil
+}
+
+// ApplyQueryTypeBoosts applies content-type score multipliers to search results
+// and re-sorts by score. Boosts are subtle (1.2-1.3x) — enough to break ties,
+// not enough to override strong semantic matches. Results are re-sorted after
+// boosting. Scores are capped at 1.0.
+//
+// The special key "_suppress_stale_penalty" signals that stale results should
+// not be penalized (useful for queries like "show stale notes").
+func ApplyQueryTypeBoosts(results []SearchResult, boosts map[string]float64) []SearchResult {
+	if len(boosts) == 0 || len(results) == 0 {
+		return results
+	}
+
+	_, suppressStale := boosts["_suppress_stale_penalty"]
+
+	for i, r := range results {
+		if mult, ok := boosts[strings.ToLower(r.ContentType)]; ok {
+			results[i].Score = round3(math.Min(1.0, r.Score*mult))
+		}
+		// If stale penalty is suppressed and result is stale, reverse the penalty.
+		// TrustMultiplier for stale is 0.75, so dividing by it restores the original score.
+		if suppressStale && strings.EqualFold(r.TrustState, "stale") {
+			results[i].Score = round3(math.Min(1.0, results[i].Score/0.75))
+		}
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Score > results[j].Score
+	})
+
+	return results
 }
 
 // keywordTitleScore computes a score for a keyword result based on how many
@@ -1071,11 +1078,12 @@ func FederatedSearch(vaultDBPaths map[string]string, queryVec []float32, queryTe
 
 		var results []SearchResult
 		vaultOpts := SearchOptions{
-			TopK:       perVaultK,
-			Domain:     opts.Domain,
-			Workstream: opts.Workstream,
-			Agent:      opts.Agent,
-			Tags:       opts.Tags,
+			TopK:            perVaultK,
+			Domain:          opts.Domain,
+			Workstream:      opts.Workstream,
+			Agent:           opts.Agent,
+			Tags:            opts.Tags,
+			QueryTypeBoosts: opts.QueryTypeBoosts,
 		}
 
 		if queryVec != nil && vaultDB.HasVectors() {
@@ -1089,24 +1097,7 @@ func FederatedSearch(vaultDBPaths map[string]string, queryVec []float32, queryTe
 				raw, kwErr := vaultDB.KeywordSearch(terms, vaultOpts.TopK)
 				if kwErr == nil {
 					for _, r := range raw {
-						snippet := r.Text
-						if len(snippet) > 500 {
-							snippet = snippet[:500]
-						}
-						results = append(results, SearchResult{
-							Path:         r.Path,
-							Title:        r.Title,
-							ChunkHeading: r.Heading,
-							Score:        0.5,
-							Snippet:      snippet,
-							Domain:       r.Domain,
-							Workstream:   r.Workstream,
-							Agent:        r.Agent,
-							Tags:         r.Tags,
-							ContentType:  r.ContentType,
-							Confidence:   round3(r.Confidence),
-							TrustState:   r.TrustState,
-						})
+						results = append(results, RawToSearchResult(r, 0.5))
 					}
 				}
 			}
@@ -1252,6 +1243,32 @@ func (db *DB) MetadataFilterSearch(opts SearchOptions) ([]SearchResult, error) {
 	}
 
 	return results, rows.Err()
+}
+
+// RawToSearchResult converts a RawSearchResult into a SearchResult with the
+// given score. Snippets are truncated to 500 characters. Confidence is rounded.
+// Use this instead of manually constructing SearchResult from raw results to
+// avoid missing fields (e.g. TrustState, Agent, Workstream).
+func RawToSearchResult(r RawSearchResult, score float64) SearchResult {
+	snippet := r.Text
+	if len(snippet) > 500 {
+		snippet = snippet[:500]
+	}
+	return SearchResult{
+		Path:         r.Path,
+		Title:        r.Title,
+		ChunkHeading: r.Heading,
+		Score:        score,
+		Distance:     0,
+		Snippet:      snippet,
+		Domain:       r.Domain,
+		Workstream:   r.Workstream,
+		Agent:        r.Agent,
+		Tags:         r.Tags,
+		ContentType:  r.ContentType,
+		Confidence:   round3(r.Confidence),
+		TrustState:   r.TrustState,
+	}
 }
 
 func round3(f float64) float64 {

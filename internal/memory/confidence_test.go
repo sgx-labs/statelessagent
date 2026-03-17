@@ -144,6 +144,68 @@ func TestHasRecencyIntent(t *testing.T) {
 	}
 }
 
+func TestInferQueryTypeBoost(t *testing.T) {
+	t.Run("handoff keywords", func(t *testing.T) {
+		for _, query := range []string{
+			"what did we work on last session",
+			"session handoff",
+			"where did we leave off",
+			"pick up from yesterday",
+		} {
+			boosts := InferQueryTypeBoost(query)
+			if mult, ok := boosts["handoff"]; !ok || mult < 1.2 {
+				t.Errorf("expected handoff boost >= 1.2 for %q, got %v", query, boosts)
+			}
+		}
+	})
+
+	t.Run("decision keywords", func(t *testing.T) {
+		for _, query := range []string{
+			"what did we decide about auth",
+			"why did we choose PostgreSQL",
+			"the decision on caching",
+		} {
+			boosts := InferQueryTypeBoost(query)
+			if mult, ok := boosts["decision"]; !ok || mult < 1.2 {
+				t.Errorf("expected decision boost >= 1.2 for %q, got %v", query, boosts)
+			}
+		}
+	})
+
+	t.Run("meeting keywords", func(t *testing.T) {
+		boosts := InferQueryTypeBoost("what was discussed in the sprint meeting")
+		if mult, ok := boosts["meeting"]; !ok || mult < 1.1 {
+			t.Errorf("expected meeting boost for sprint query, got %v", boosts)
+		}
+	})
+
+	t.Run("stale suppression", func(t *testing.T) {
+		boosts := InferQueryTypeBoost("show me stale notes")
+		if _, ok := boosts["_suppress_stale_penalty"]; !ok {
+			t.Error("expected _suppress_stale_penalty for stale query")
+		}
+
+		boosts = InferQueryTypeBoost("find outdated content")
+		if _, ok := boosts["_suppress_stale_penalty"]; !ok {
+			t.Error("expected _suppress_stale_penalty for outdated query")
+		}
+	})
+
+	t.Run("no boost for generic queries", func(t *testing.T) {
+		boosts := InferQueryTypeBoost("how does authentication work")
+		if len(boosts) != 0 {
+			t.Errorf("expected no boosts for generic query, got %v", boosts)
+		}
+	})
+
+	t.Run("case insensitive", func(t *testing.T) {
+		boosts := InferQueryTypeBoost("What was the DECISION on caching?")
+		if _, ok := boosts["decision"]; !ok {
+			t.Error("expected decision boost for uppercase query")
+		}
+	})
+}
+
 func TestInferContentType(t *testing.T) {
 	tests := []struct {
 		path         string

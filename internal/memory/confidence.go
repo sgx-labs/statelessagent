@@ -157,6 +157,72 @@ func InferContentType(path string, explicitType string, tags []string) string {
 	return "note"
 }
 
+// queryTypeBoostKeywords maps query keywords to content_type boost multipliers.
+// When a search query contains one of these keywords, results of the matching
+// content_type receive a subtle score multiplier (1.2-1.3x) — enough to break
+// ties, not enough to override strong semantic matches.
+var queryTypeBoostKeywords = map[string]map[string]float64{
+	// Handoff-related queries
+	"session":      {"handoff": 1.3},
+	"handoff":      {"handoff": 1.3},
+	"hand-off":     {"handoff": 1.3},
+	"last session": {"handoff": 1.3},
+	"working on":   {"handoff": 1.3},
+	"left off":     {"handoff": 1.3},
+	"leave off":    {"handoff": 1.3},
+	"pick up":      {"handoff": 1.3},
+	// Decision-related queries
+	"decided":    {"decision": 1.3},
+	"decide":     {"decision": 1.3},
+	"decision":   {"decision": 1.3},
+	"chose":      {"decision": 1.3},
+	"choose":     {"decision": 1.3},
+	"why did we": {"decision": 1.3},
+	"choice":     {"decision": 1.3},
+	// Meeting-related queries
+	"meeting":   {"meeting": 1.2},
+	"discussed": {"meeting": 1.2},
+	"sprint":    {"meeting": 1.2},
+}
+
+// staleQueryKeywords are keywords that signal the user is asking about stale
+// content. When matched, the stale trust penalty is suppressed (multiplier of
+// 1.0 effectively neutralizes TrustMultiplier for stale results).
+var staleQueryKeywords = []string{
+	"stale", "outdated", "old", "deprecated",
+}
+
+// InferQueryTypeBoost analyzes a search query and returns content_type score
+// multipliers. The returned map contains content_type -> multiplier pairs.
+// A special key "_suppress_stale_penalty" with value 1.0 signals that stale
+// results should not be penalized for this query.
+func InferQueryTypeBoost(query string) map[string]float64 {
+	lower := strings.ToLower(query)
+	boosts := make(map[string]float64)
+
+	// Check type-boost keywords (longest match first via iteration order is fine;
+	// overlapping boosts are max'd)
+	for keyword, typeBoosts := range queryTypeBoostKeywords {
+		if strings.Contains(lower, keyword) {
+			for ct, mult := range typeBoosts {
+				if existing, ok := boosts[ct]; !ok || mult > existing {
+					boosts[ct] = mult
+				}
+			}
+		}
+	}
+
+	// Check stale-intent keywords
+	for _, kw := range staleQueryKeywords {
+		if strings.Contains(lower, kw) {
+			boosts["_suppress_stale_penalty"] = 1.0
+			break
+		}
+	}
+
+	return boosts
+}
+
 // recencyKeywords signal the user wants time-based results.
 var recencyKeywords = []string{
 	"recent", "recently", "lately", "today", "yesterday",

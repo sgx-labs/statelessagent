@@ -978,6 +978,177 @@ func TestMetadataFilterSearch(t *testing.T) {
 	})
 }
 
+func TestRawToSearchResult(t *testing.T) {
+	raw := RawSearchResult{
+		NoteID:      42,
+		Distance:    5.5,
+		Path:        "notes/test.md",
+		Title:       "Test Note",
+		Heading:     "Section 1",
+		Text:        "Some content here",
+		Domain:      "engineering",
+		Workstream:  "api-redesign",
+		Agent:       "claude",
+		Tags:        `["test","demo"]`,
+		ContentType: "decision",
+		Confidence:  0.8567,
+		Modified:    1700000000,
+		AccessCount: 5,
+		TrustState:  "validated",
+	}
+
+	result := RawToSearchResult(raw, 0.75)
+
+	if result.Path != raw.Path {
+		t.Errorf("Path: got %q, want %q", result.Path, raw.Path)
+	}
+	if result.Title != raw.Title {
+		t.Errorf("Title: got %q, want %q", result.Title, raw.Title)
+	}
+	if result.ChunkHeading != raw.Heading {
+		t.Errorf("ChunkHeading: got %q, want %q", result.ChunkHeading, raw.Heading)
+	}
+	if result.Score != 0.75 {
+		t.Errorf("Score: got %f, want 0.75", result.Score)
+	}
+	if result.Distance != 0 {
+		t.Errorf("Distance: got %f, want 0 (RawToSearchResult always sets 0)", result.Distance)
+	}
+	if result.Snippet != raw.Text {
+		t.Errorf("Snippet: got %q, want %q", result.Snippet, raw.Text)
+	}
+	if result.Domain != raw.Domain {
+		t.Errorf("Domain: got %q, want %q", result.Domain, raw.Domain)
+	}
+	if result.Workstream != raw.Workstream {
+		t.Errorf("Workstream: got %q, want %q", result.Workstream, raw.Workstream)
+	}
+	if result.Agent != raw.Agent {
+		t.Errorf("Agent: got %q, want %q", result.Agent, raw.Agent)
+	}
+	if result.Tags != raw.Tags {
+		t.Errorf("Tags: got %q, want %q", result.Tags, raw.Tags)
+	}
+	if result.ContentType != raw.ContentType {
+		t.Errorf("ContentType: got %q, want %q", result.ContentType, raw.ContentType)
+	}
+	if result.Confidence != 0.857 { // round3(0.8567)
+		t.Errorf("Confidence: got %f, want 0.857", result.Confidence)
+	}
+	if result.TrustState != raw.TrustState {
+		t.Errorf("TrustState: got %q, want %q", result.TrustState, raw.TrustState)
+	}
+}
+
+func TestRawToSearchResult_SnippetTruncation(t *testing.T) {
+	longText := strings.Repeat("a", 600)
+	raw := RawSearchResult{
+		Path:       "notes/long.md",
+		Title:      "Long Note",
+		Text:       longText,
+		TrustState: "unknown",
+	}
+
+	result := RawToSearchResult(raw, 0.5)
+	if len(result.Snippet) != 500 {
+		t.Errorf("Snippet length: got %d, want 500", len(result.Snippet))
+	}
+}
+
+func TestApplyQueryTypeBoosts(t *testing.T) {
+	t.Run("handoff boost", func(t *testing.T) {
+		results := []SearchResult{
+			{Path: "notes/handoff.md", ContentType: "handoff", Score: 0.6, TrustState: "unknown"},
+			{Path: "notes/decision.md", ContentType: "decision", Score: 0.65, TrustState: "unknown"},
+			{Path: "notes/note.md", ContentType: "note", Score: 0.7, TrustState: "unknown"},
+		}
+		boosts := map[string]float64{"handoff": 1.3}
+		boosted := ApplyQueryTypeBoosts(results, boosts)
+
+		// Handoff result should be boosted: 0.6 * 1.3 = 0.78
+		if boosted[0].ContentType != "note" && boosted[0].ContentType != "handoff" {
+			// After boosting, handoff (0.78) should rank above note (0.7) and decision (0.65)
+		}
+		// Find the handoff result
+		var handoffScore float64
+		for _, r := range boosted {
+			if r.ContentType == "handoff" {
+				handoffScore = r.Score
+				break
+			}
+		}
+		if handoffScore < 0.77 || handoffScore > 0.79 {
+			t.Errorf("expected handoff score ~0.78, got %f", handoffScore)
+		}
+	})
+
+	t.Run("no boost for unmatched types", func(t *testing.T) {
+		results := []SearchResult{
+			{Path: "notes/note.md", ContentType: "note", Score: 0.7, TrustState: "unknown"},
+		}
+		boosts := map[string]float64{"handoff": 1.3}
+		boosted := ApplyQueryTypeBoosts(results, boosts)
+		if boosted[0].Score != 0.7 {
+			t.Errorf("expected no change to note score, got %f", boosted[0].Score)
+		}
+	})
+
+	t.Run("stale penalty suppression", func(t *testing.T) {
+		results := []SearchResult{
+			{Path: "notes/stale.md", ContentType: "note", Score: 0.5, TrustState: "stale"},
+			{Path: "notes/fresh.md", ContentType: "note", Score: 0.6, TrustState: "unknown"},
+		}
+		boosts := map[string]float64{"_suppress_stale_penalty": 1.0}
+		boosted := ApplyQueryTypeBoosts(results, boosts)
+
+		// Stale result should have its penalty reversed: 0.5 / 0.75 ≈ 0.667
+		var staleScore float64
+		for _, r := range boosted {
+			if r.TrustState == "stale" {
+				staleScore = r.Score
+				break
+			}
+		}
+		if staleScore < 0.66 || staleScore > 0.67 {
+			t.Errorf("expected stale score ~0.667 after suppression, got %f", staleScore)
+		}
+	})
+
+	t.Run("empty boosts is no-op", func(t *testing.T) {
+		results := []SearchResult{
+			{Path: "notes/a.md", Score: 0.8, TrustState: "unknown"},
+		}
+		boosted := ApplyQueryTypeBoosts(results, map[string]float64{})
+		if boosted[0].Score != 0.8 {
+			t.Errorf("expected no change, got %f", boosted[0].Score)
+		}
+	})
+
+	t.Run("score capped at 1.0", func(t *testing.T) {
+		results := []SearchResult{
+			{Path: "notes/high.md", ContentType: "handoff", Score: 0.9, TrustState: "unknown"},
+		}
+		boosts := map[string]float64{"handoff": 1.3}
+		boosted := ApplyQueryTypeBoosts(results, boosts)
+		if boosted[0].Score > 1.0 {
+			t.Errorf("score should be capped at 1.0, got %f", boosted[0].Score)
+		}
+	})
+
+	t.Run("results re-sorted after boost", func(t *testing.T) {
+		results := []SearchResult{
+			{Path: "notes/note.md", ContentType: "note", Score: 0.7, TrustState: "unknown"},
+			{Path: "notes/handoff.md", ContentType: "handoff", Score: 0.6, TrustState: "unknown"},
+		}
+		boosts := map[string]float64{"handoff": 1.3}
+		boosted := ApplyQueryTypeBoosts(results, boosts)
+		// After boost: handoff=0.78, note=0.7. Handoff should be first.
+		if boosted[0].Path != "notes/handoff.md" {
+			t.Errorf("expected handoff first after boost, got %s", boosted[0].Path)
+		}
+	})
+}
+
 func TestSearchOptions_TrustStateFilter_VectorSearch(t *testing.T) {
 	// Verify that trust_state and content_type filters work in VectorSearch post-filtering.
 	// This test uses FTS5Search since vector search requires real embeddings.

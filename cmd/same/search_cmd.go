@@ -12,6 +12,7 @@ import (
 	"github.com/sgx-labs/statelessagent/internal/cli"
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/embedding"
+	"github.com/sgx-labs/statelessagent/internal/memory"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
@@ -84,11 +85,12 @@ func runSearch(query string, topK int, domain string, trustState string, content
 	defer db.Close()
 
 	searchOpts := store.SearchOptions{
-		TopK:        topK,
-		Domain:      domain,
-		TrustState:  trustState,
-		ContentType: contentType,
-		Tags:        tags,
+		TopK:            topK,
+		Domain:          domain,
+		TrustState:      trustState,
+		ContentType:     contentType,
+		Tags:            tags,
+		QueryTypeBoosts: memory.InferQueryTypeBoost(query),
 	}
 
 	// Detect lite mode (no vectors) and fall back to FTS5/keyword
@@ -108,16 +110,7 @@ func runSearch(query string, topK int, domain string, trustState string, content
 				return fmt.Errorf("search: %w", err)
 			}
 			for _, rr := range rawResults {
-				snippet := rr.Text
-				if len(snippet) > 500 {
-					snippet = snippet[:500]
-				}
-				results = append(results, store.SearchResult{
-					Path: rr.Path, Title: rr.Title, Snippet: snippet,
-					Domain: rr.Domain, Workstream: rr.Workstream,
-					Tags: rr.Tags, ContentType: rr.ContentType, Score: 0.5,
-					TrustState: rr.TrustState,
-				})
+				results = append(results, store.RawToSearchResult(rr, 0.5))
 			}
 		}
 		if !jsonOut && len(results) > 0 {
@@ -139,16 +132,7 @@ func runSearch(query string, topK int, domain string, trustState string, content
 				rawResults, kwErr := db.KeywordSearch(terms, topK)
 				if kwErr == nil {
 					for _, rr := range rawResults {
-						snippet := rr.Text
-						if len(snippet) > 500 {
-							snippet = snippet[:500]
-						}
-						results = append(results, store.SearchResult{
-							Path: rr.Path, Title: rr.Title, Snippet: snippet,
-							Domain: rr.Domain, Workstream: rr.Workstream,
-							Tags: rr.Tags, ContentType: rr.ContentType, Score: 0.5,
-							TrustState: rr.TrustState,
-						})
+						results = append(results, store.RawToSearchResult(rr, 0.5))
 					}
 				}
 			}
@@ -304,11 +288,12 @@ func runFederatedSearch(query string, topK int, domain string, trustState string
 	}
 
 	results, err := store.FederatedSearch(vaultDBPaths, queryVec, query, store.SearchOptions{
-		TopK:        topK,
-		Domain:      domain,
-		TrustState:  trustState,
-		ContentType: contentType,
-		Tags:        tags,
+		TopK:            topK,
+		Domain:          domain,
+		TrustState:      trustState,
+		ContentType:     contentType,
+		Tags:            tags,
+		QueryTypeBoosts: memory.InferQueryTypeBoost(query),
 	})
 	if err != nil {
 		return fmt.Errorf("federated search: %w", err)

@@ -20,6 +20,7 @@ import (
 	"github.com/sgx-labs/statelessagent/internal/embedding"
 	"github.com/sgx-labs/statelessagent/internal/indexer"
 	"github.com/sgx-labs/statelessagent/internal/llm"
+	"github.com/sgx-labs/statelessagent/internal/memory"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
@@ -1795,6 +1796,11 @@ func sanitizeResultSnippets(results []store.SearchResult) []store.SearchResult {
 // pure keyword search. This mirrors the graceful degradation in FederatedSearch
 // and ensures MCP search works even when Ollama is unavailable.
 func searchWithFallback(query string, opts store.SearchOptions) ([]store.SearchResult, error) {
+	// Infer content-type boosts from query keywords
+	if opts.QueryTypeBoosts == nil {
+		opts.QueryTypeBoosts = memory.InferQueryTypeBoost(query)
+	}
+
 	// Try vector+keyword hybrid search first
 	var queryVec []float32
 	if embedClient != nil {
@@ -1823,24 +1829,7 @@ func searchWithFallback(query string, opts store.SearchOptions) ([]store.SearchR
 		if !matchesSearchOptions(r, opts) {
 			continue
 		}
-		snippet := r.Text
-		if len(snippet) > 500 {
-			snippet = snippet[:500]
-		}
-		results = append(results, store.SearchResult{
-			Path:         r.Path,
-			Title:        r.Title,
-			ChunkHeading: r.Heading,
-			Score:        0.5,
-			Snippet:      snippet,
-			Domain:       r.Domain,
-			Workstream:   r.Workstream,
-			Agent:        r.Agent,
-			Tags:         r.Tags,
-			ContentType:  r.ContentType,
-			Confidence:   r.Confidence,
-			TrustState:   r.TrustState,
-		})
+		results = append(results, store.RawToSearchResult(r, 0.5))
 	}
 	return results, nil
 }

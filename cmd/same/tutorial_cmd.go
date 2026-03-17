@@ -158,21 +158,7 @@ func (ts *tutorialState) search(query string, topK int) ([]store.SearchResult, e
 	}
 	results := make([]store.SearchResult, 0, len(rawResults))
 	for _, rr := range rawResults {
-		snippet := rr.Text
-		if len(snippet) > 500 {
-			snippet = snippet[:500]
-		}
-		results = append(results, store.SearchResult{
-			Path:        rr.Path,
-			Title:       rr.Title,
-			Snippet:     snippet,
-			Domain:      rr.Domain,
-			Workstream:  rr.Workstream,
-			Tags:        rr.Tags,
-			ContentType: rr.ContentType,
-			Score:       0.5,
-			TrustState:  rr.TrustState,
-		})
+		results = append(results, store.RawToSearchResult(rr, 0.5))
 	}
 	return results, nil
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/embedding"
 	"github.com/sgx-labs/statelessagent/internal/graph"
+	"github.com/sgx-labs/statelessagent/internal/memory"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
@@ -318,7 +319,7 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	domain := r.URL.Query().Get("domain")
 
-	opts := store.SearchOptions{TopK: topK, Domain: domain}
+	opts := store.SearchOptions{TopK: topK, Domain: domain, QueryTypeBoosts: memory.InferQueryTypeBoost(query)}
 	var results []store.SearchResult
 	var mode string
 
@@ -349,22 +350,7 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			mode = "keyword"
 			for _, rr := range rawResults {
-				snippet := rr.Text
-				if len(snippet) > 500 {
-					snippet = snippet[:500]
-				}
-				results = append(results, store.SearchResult{
-					Path:        rr.Path,
-					Title:       rr.Title,
-					Snippet:     snippet,
-					Domain:      rr.Domain,
-					Workstream:  rr.Workstream,
-					Agent:       rr.Agent,
-					Tags:        rr.Tags,
-					ContentType: rr.ContentType,
-					Score:       0.5,
-					TrustState:  rr.TrustState,
-				})
+				results = append(results, store.RawToSearchResult(rr, 0.5))
 			}
 		}
 	}
