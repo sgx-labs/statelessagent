@@ -1675,16 +1675,42 @@ func runIndex(vaultPath string, verbose, useEmbeddings bool) (*indexer.Stats, er
 
 	var stats *indexer.Stats
 	if useEmbeddings {
-		stats, err = indexer.ReindexWithProgress(ctx, db, true, progress)
+		// Progressive mode: FTS5 first (fast), then embeddings (slow).
+		// Keyword search works immediately after Phase 1.
+		embedProgress := func(completed, total int) {
+			if total > 0 {
+				fmt.Fprintf(os.Stderr, "\r  Embedding: %d/%d notes (keyword search active)\033[K", completed, total)
+			}
+		}
+		var embResult *indexer.EmbeddingProgress
+		stats, embResult, err = indexer.ReindexProgressive(ctx, db, true, progress, embedProgress)
+		if err != nil && !errors.Is(err, indexer.ErrCanceled) {
+			return nil, fmt.Errorf("indexing failed: %w", err)
+		}
+
+		if !verbose {
+			fmt.Println() // newline after progress bar
+		}
+
+		// Report embedding result
+		if embResult != nil && embResult.Total > 0 {
+			fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 70))
+			if embResult.Completed == embResult.Total {
+				fmt.Printf("  All notes embedded. Semantic search ready.\n")
+			} else if errors.Is(err, indexer.ErrCanceled) {
+				fmt.Printf("  Embedding paused: %d/%d notes done. Resume with 'same reindex'.\n",
+					embResult.Completed, embResult.Total)
+			}
+		}
 	} else {
 		stats, err = indexer.ReindexLite(ctx, db, true, progress)
-	}
-	if err != nil && !errors.Is(err, indexer.ErrCanceled) {
-		return nil, fmt.Errorf("indexing failed: %w", err)
-	}
+		if err != nil && !errors.Is(err, indexer.ErrCanceled) {
+			return nil, fmt.Errorf("indexing failed: %w", err)
+		}
 
-	if !verbose {
-		fmt.Println() // newline after progress bar
+		if !verbose {
+			fmt.Println() // newline after progress bar
+		}
 	}
 	if stats != nil && stats.Canceled {
 		fmt.Printf("\n  %sReindex canceled by user. %d of %d notes indexed.%s\n",

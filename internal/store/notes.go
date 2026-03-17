@@ -189,6 +189,82 @@ func (db *DB) BulkInsertNotesLite(records []NoteRecord) (map[string]int64, error
 	return insertedIDs, nil
 }
 
+// UnembeddedNoteIDs returns the IDs of notes in vault_notes that have no
+// corresponding row in vault_notes_vec. Used by progressive indexing to
+// identify notes that still need embedding after the FTS5-only pass.
+func (db *DB) UnembeddedNoteIDs() ([]int64, error) {
+	rows, err := db.conn.Query(`
+		SELECT n.id FROM vault_notes n
+		WHERE n.id NOT IN (SELECT note_id FROM vault_notes_vec)
+		ORDER BY n.id`)
+	if err != nil {
+		return nil, fmt.Errorf("unembedded note ids: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan unembedded note id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// UnembeddedNoteCount returns the count of notes that have no corresponding
+// vector embedding. Used for progress reporting.
+func (db *DB) UnembeddedNoteCount() (int, error) {
+	var count int
+	err := db.conn.QueryRow(`
+		SELECT COUNT(*) FROM vault_notes n
+		WHERE n.id NOT IN (SELECT note_id FROM vault_notes_vec)`).Scan(&count)
+	return count, err
+}
+
+// InsertEmbeddingForNote inserts a single embedding vector for an existing note.
+// Used by the background embedding backfill to add vectors one at a time.
+func (db *DB) InsertEmbeddingForNote(noteID int64, vec []float32) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	vecData, err := serializeFloat32(vec)
+	if err != nil {
+		return fmt.Errorf("serialize embedding: %w", err)
+	}
+
+	_, err = db.conn.Exec(
+		"INSERT INTO vault_notes_vec (note_id, embedding) VALUES (?, ?)",
+		noteID, vecData,
+	)
+	if err != nil {
+		return fmt.Errorf("insert embedding for note %d: %w", noteID, err)
+	}
+	return nil
+}
+
+// GetNoteByID returns a single note record by its primary key.
+// Used by the embedding backfill to read note content for embedding.
+func (db *DB) GetNoteByID(id int64) (*NoteRecord, error) {
+	var n NoteRecord
+	err := db.conn.QueryRow(`
+		SELECT id, path, title, tags, domain, workstream, COALESCE(agent, ''), chunk_id, chunk_heading,
+			text, modified, content_hash, content_type, review_by, confidence, access_count
+		FROM vault_notes WHERE id = ?`, id).Scan(
+		&n.ID, &n.Path, &n.Title, &n.Tags, &n.Domain, &n.Workstream, &n.Agent,
+		&n.ChunkID, &n.ChunkHeading, &n.Text, &n.Modified,
+		&n.ContentHash, &n.ContentType, &n.ReviewBy, &n.Confidence, &n.AccessCount,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get note by id %d: %w", id, err)
+	}
+	return &n, nil
+}
+
 // HasVectors returns true if the vault_notes_vec table has any entries.
 // Used to detect whether SAME is running in full (vector) or lite (FTS5-only) mode.
 func (db *DB) HasVectors() bool {

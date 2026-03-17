@@ -1374,5 +1374,213 @@ func TestBulkInsertNotesLite_Empty(t *testing.T) {
 	}
 }
 
+func TestUnembeddedNoteIDs_Empty(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	ids, err := db.UnembeddedNoteIDs()
+	if err != nil {
+		t.Fatalf("UnembeddedNoteIDs: %v", err)
+	}
+	if len(ids) != 0 {
+		t.Errorf("expected 0 unembedded IDs, got %d", len(ids))
+	}
+}
+
+func TestUnembeddedNoteIDs_LiteInsert(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Insert 3 notes via lite mode (no embeddings)
+	records := []NoteRecord{
+		{Path: "a.md", Title: "A", Tags: "[]", ChunkID: 0, Text: "aaa", Modified: 1, ContentHash: "ha", ContentType: "note", Confidence: 0.5},
+		{Path: "b.md", Title: "B", Tags: "[]", ChunkID: 0, Text: "bbb", Modified: 2, ContentHash: "hb", ContentType: "note", Confidence: 0.5},
+		{Path: "a.md", Title: "A", Tags: "[]", ChunkID: 1, Text: "aaa chunk2", Modified: 1, ContentHash: "ha", ContentType: "note", Confidence: 0.5},
+	}
+	if _, err := db.BulkInsertNotesLite(records); err != nil {
+		t.Fatalf("BulkInsertNotesLite: %v", err)
+	}
+
+	ids, err := db.UnembeddedNoteIDs()
+	if err != nil {
+		t.Fatalf("UnembeddedNoteIDs: %v", err)
+	}
+	if len(ids) != 3 {
+		t.Errorf("expected 3 unembedded IDs, got %d", len(ids))
+	}
+}
+
+func TestUnembeddedNoteIDs_AfterEmbedding(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Insert 2 notes via lite mode
+	records := []NoteRecord{
+		{Path: "a.md", Title: "A", Tags: "[]", ChunkID: 0, Text: "aaa", Modified: 1, ContentHash: "ha", ContentType: "note", Confidence: 0.5},
+		{Path: "b.md", Title: "B", Tags: "[]", ChunkID: 0, Text: "bbb", Modified: 2, ContentHash: "hb", ContentType: "note", Confidence: 0.5},
+	}
+	insertedIDs, err := db.BulkInsertNotesLite(records)
+	if err != nil {
+		t.Fatalf("BulkInsertNotesLite: %v", err)
+	}
+
+	// Embed only the first note
+	vec := make([]float32, 768)
+	vec[0] = 1.0
+	aID := insertedIDs["a.md"]
+	if err := db.InsertEmbeddingForNote(aID, vec); err != nil {
+		t.Fatalf("InsertEmbeddingForNote: %v", err)
+	}
+
+	ids, err := db.UnembeddedNoteIDs()
+	if err != nil {
+		t.Fatalf("UnembeddedNoteIDs: %v", err)
+	}
+	if len(ids) != 1 {
+		t.Errorf("expected 1 unembedded ID, got %d", len(ids))
+	}
+
+	// Verify HasVectors is now true (at least one vector exists)
+	if !db.HasVectors() {
+		t.Error("expected HasVectors=true after embedding one note")
+	}
+}
+
+func TestInsertEmbeddingForNote(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Insert a note via lite mode
+	records := []NoteRecord{
+		{Path: "x.md", Title: "X", Tags: "[]", ChunkID: 0, Text: "test content", Modified: 1, ContentHash: "hx", ContentType: "note", Confidence: 0.5},
+	}
+	insertedIDs, err := db.BulkInsertNotesLite(records)
+	if err != nil {
+		t.Fatalf("BulkInsertNotesLite: %v", err)
+	}
+
+	noteID := insertedIDs["x.md"]
+	vec := make([]float32, 768)
+	vec[0] = 0.5
+	vec[1] = 0.3
+
+	if err := db.InsertEmbeddingForNote(noteID, vec); err != nil {
+		t.Fatalf("InsertEmbeddingForNote: %v", err)
+	}
+
+	// Verify the embedding is retrievable
+	retrieved, err := db.GetNoteEmbedding("x.md")
+	if err != nil {
+		t.Fatalf("GetNoteEmbedding: %v", err)
+	}
+	if len(retrieved) != 768 {
+		t.Fatalf("expected 768-dim vector, got %d", len(retrieved))
+	}
+	if retrieved[0] != 0.5 || retrieved[1] != 0.3 {
+		t.Errorf("embedding values mismatch: got [%f, %f, ...], want [0.5, 0.3, ...]", retrieved[0], retrieved[1])
+	}
+}
+
+func TestGetNoteByID(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	records := []NoteRecord{
+		{Path: "n.md", Title: "Note N", Tags: "[]", ChunkID: 0, Text: "content n", Modified: 100, ContentHash: "hn", ContentType: "note", Confidence: 0.8},
+	}
+	insertedIDs, err := db.BulkInsertNotesLite(records)
+	if err != nil {
+		t.Fatalf("BulkInsertNotesLite: %v", err)
+	}
+
+	id := insertedIDs["n.md"]
+	note, err := db.GetNoteByID(id)
+	if err != nil {
+		t.Fatalf("GetNoteByID: %v", err)
+	}
+	if note == nil {
+		t.Fatal("GetNoteByID returned nil")
+	}
+	if note.Title != "Note N" {
+		t.Errorf("expected title 'Note N', got %q", note.Title)
+	}
+	if note.Text != "content n" {
+		t.Errorf("expected text 'content n', got %q", note.Text)
+	}
+
+	// Non-existent ID should return nil, no error
+	note2, err := db.GetNoteByID(99999)
+	if err != nil {
+		t.Fatalf("GetNoteByID(nonexistent): %v", err)
+	}
+	if note2 != nil {
+		t.Error("expected nil for non-existent ID")
+	}
+}
+
+func TestUnembeddedNoteCount(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Empty
+	count, err := db.UnembeddedNoteCount()
+	if err != nil {
+		t.Fatalf("UnembeddedNoteCount: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0, got %d", count)
+	}
+
+	// Insert 2 lite notes
+	records := []NoteRecord{
+		{Path: "a.md", Title: "A", Tags: "[]", ChunkID: 0, Text: "a", Modified: 1, ContentHash: "ha", ContentType: "note", Confidence: 0.5},
+		{Path: "b.md", Title: "B", Tags: "[]", ChunkID: 0, Text: "b", Modified: 2, ContentHash: "hb", ContentType: "note", Confidence: 0.5},
+	}
+	insertedIDs, err := db.BulkInsertNotesLite(records)
+	if err != nil {
+		t.Fatalf("BulkInsertNotesLite: %v", err)
+	}
+
+	count, err = db.UnembeddedNoteCount()
+	if err != nil {
+		t.Fatalf("UnembeddedNoteCount: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("expected 2, got %d", count)
+	}
+
+	// Embed one
+	vec := make([]float32, 768)
+	if err := db.InsertEmbeddingForNote(insertedIDs["a.md"], vec); err != nil {
+		t.Fatalf("InsertEmbeddingForNote: %v", err)
+	}
+
+	count, err = db.UnembeddedNoteCount()
+	if err != nil {
+		t.Fatalf("UnembeddedNoteCount: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1, got %d", count)
+	}
+}
+
 // Suppress unused import warnings
 var _ = math.Pi

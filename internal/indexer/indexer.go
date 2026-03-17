@@ -39,6 +39,13 @@ type Stats struct {
 	Canceled         bool   `json:"canceled,omitempty"`
 }
 
+// EmbeddingProgress reports the state of a background embedding backfill.
+type EmbeddingProgress struct {
+	Completed int // Number of notes successfully embedded
+	Failed    int // Number of notes that failed embedding
+	Total     int // Total notes that need embedding
+}
+
 // ProgressFunc is called during indexing to report progress.
 // current is the number of files processed so far, total is the total count,
 // and path is the file being processed.
@@ -954,6 +961,160 @@ sendLoop:
 	saveStats(stats)
 
 	return stats, nil
+}
+
+// ReindexProgressive indexes the vault in two phases:
+//
+// Phase 1 (fast): Insert all notes into vault_notes + FTS5 (no embeddings).
+// Search is immediately available via keyword/FTS5 fallback.
+//
+// Phase 2 (slow): Backfill embeddings one note at a time. Search progressively
+// upgrades from keyword-only to hybrid as embeddings arrive.
+//
+// If the embedding provider is unavailable, Phase 1 completes and Phase 2 is
+// skipped (equivalent to ReindexLite). If Phase 2 is canceled, the FTS5 index
+// remains intact and embeddings resume on next run via BackfillEmbeddings.
+func ReindexProgressive(ctx context.Context, db *store.DB, force bool, liteProgress ProgressFunc, embedProgress EmbeddingProgressFunc) (*Stats, *EmbeddingProgress, error) {
+	// Phase 1: FTS5-only indexing (fast)
+	stats, err := ReindexLite(ctx, db, force, liteProgress)
+	if err != nil {
+		return stats, nil, err
+	}
+
+	// Set index mode to progressive (between lite and full)
+	if err := db.SetMeta("index_mode", "progressive"); err != nil {
+		fmt.Fprintf(os.Stderr, "  [WARN] set index mode: %v\n", err)
+	}
+
+	// Phase 2: Embedding backfill
+	// Create embedding client — if it fails, FTS5 index is still usable
+	ec := config.EmbeddingProviderConfig()
+	provCfg := embedding.ProviderConfig{
+		Provider:   ec.Provider,
+		Model:      ec.Model,
+		APIKey:     ec.APIKey,
+		BaseURL:    ec.BaseURL,
+		Dimensions: ec.Dimensions,
+	}
+	if (provCfg.Provider == "ollama" || provCfg.Provider == "") && provCfg.BaseURL == "" {
+		if ollamaURL, urlErr := config.OllamaURL(); urlErr == nil {
+			provCfg.BaseURL = ollamaURL
+		}
+	}
+
+	embedClient, err := embedding.NewProvider(provCfg)
+	if err != nil {
+		// Embedding provider not available — Phase 1 results stand as lite mode
+		return stats, nil, nil
+	}
+
+	// Preflight check before committing to the embedding pass
+	if err := preflightEmbeddingProvider(embedClient); err != nil {
+		// Embedding provider not responding — stay in lite mode
+		return stats, nil, nil
+	}
+
+	// Run embedding backfill
+	embResult, embErr := BackfillEmbeddings(ctx, db, embedClient, embedProgress)
+	if embErr != nil && !errors.Is(embErr, ErrCanceled) {
+		return stats, embResult, fmt.Errorf("embedding backfill: %w", embErr)
+	}
+
+	// Record embedding metadata after first successful embedding
+	if embResult != nil && embResult.Completed > 0 {
+		embedName := embedClient.Name()
+		embedModel := embedClient.Model()
+		embedDims := embedClient.Dimensions()
+		if metaErr := db.SetEmbeddingMeta(embedName, embedModel, embedDims); metaErr != nil {
+			fmt.Fprintf(os.Stderr, "  [WARN] set embedding metadata: %v\n", metaErr)
+		}
+	}
+
+	// Update index mode based on completion
+	if embResult != nil && embResult.Completed == embResult.Total && embResult.Total > 0 {
+		if metaErr := db.SetMeta("index_mode", "full"); metaErr != nil {
+			fmt.Fprintf(os.Stderr, "  [WARN] set index mode: %v\n", metaErr)
+		}
+	}
+
+	// Update final stats counts (may have changed during embedding)
+	noteCount, _ := db.NoteCount()
+	chunkCount, _ := db.ChunkCount()
+	stats.NotesInIndex = noteCount
+	stats.ChunksInIndex = chunkCount
+
+	if errors.Is(embErr, ErrCanceled) {
+		stats.Canceled = true
+		return stats, embResult, ErrCanceled
+	}
+
+	return stats, embResult, nil
+}
+
+// EmbeddingProgressFunc is called during embedding backfill to report progress.
+type EmbeddingProgressFunc func(completed, total int)
+
+// BackfillEmbeddings generates embeddings for notes that were indexed without
+// vectors (FTS5-only). It processes notes one at a time to avoid overloading
+// the embedding provider. Returns progress stats and nil error on completion.
+// If the context is canceled, returns partial progress and ErrCanceled.
+func BackfillEmbeddings(ctx context.Context, db *store.DB, embedClient embedding.Provider, progress EmbeddingProgressFunc) (*EmbeddingProgress, error) {
+	ids, err := db.UnembeddedNoteIDs()
+	if err != nil {
+		return nil, fmt.Errorf("get unembedded notes: %w", err)
+	}
+
+	result := &EmbeddingProgress{
+		Total: len(ids),
+	}
+
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	for _, noteID := range ids {
+		// Check cancellation before each note
+		select {
+		case <-ctx.Done():
+			return result, ErrCanceled
+		default:
+		}
+
+		note, err := db.GetNoteByID(noteID)
+		if err != nil || note == nil {
+			result.Failed++
+			continue
+		}
+
+		// Build the same embed text used by buildRecordsWithContent
+		embedText := note.Title + "\n" + note.Text
+		if len(embedText) > config.MaxEmbedChars {
+			embedText = embedText[:config.MaxEmbedChars]
+		}
+
+		vec, err := embedClient.GetDocumentEmbedding(embedText)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  [WARN] embed backfill %s (chunk %d): %v\n",
+				note.Path, note.ChunkID, embedding.HumanizeError(err))
+			result.Failed++
+			continue
+		}
+
+		if err := db.InsertEmbeddingForNote(noteID, vec); err != nil {
+			fmt.Fprintf(os.Stderr, "  [WARN] insert embedding %s (chunk %d): %v\n",
+				note.Path, note.ChunkID, err)
+			result.Failed++
+			continue
+		}
+
+		result.Completed++
+
+		if progress != nil {
+			progress(result.Completed, result.Total)
+		}
+	}
+
+	return result, nil
 }
 
 // buildRecordsLite builds note records WITHOUT embeddings.

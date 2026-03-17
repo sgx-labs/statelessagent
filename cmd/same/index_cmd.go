@@ -80,9 +80,9 @@ func runReindex(force bool, verbose bool) error {
 	}()
 	defer signal.Stop(sigCh)
 
-	var progress indexer.ProgressFunc
+	var liteProgress indexer.ProgressFunc
 	if verbose {
-		progress = func(current, total int, path string) {
+		liteProgress = func(current, total int, path string) {
 			fmt.Printf("  [%d/%d] %s\n", current, total, path)
 		}
 	}
@@ -90,25 +90,26 @@ func runReindex(force bool, verbose bool) error {
 	fmt.Printf("  Graph extraction: %s\n", graphModeSummary(config.GraphLLMMode()))
 
 	indexer.Version = Version
-	stats, err := indexer.ReindexWithProgress(ctx, db, force, progress)
+
+	// Progressive mode: FTS5 first (fast), then embeddings (slow).
+	// Keyword search works immediately after Phase 1.
+	embedProgress := func(completed, total int) {
+		fmt.Fprintf(os.Stderr, "\r  Embedding: %d/%d notes (keyword search active)", completed, total)
+	}
+
+	stats, embResult, err := indexer.ReindexProgressive(ctx, db, force, liteProgress, embedProgress)
 	if err != nil && !errors.Is(err, indexer.ErrCanceled) {
-		errMsg := strings.ToLower(err.Error())
-		if strings.Contains(errMsg, "ollama") ||
-			strings.Contains(errMsg, "connection") ||
-			strings.Contains(errMsg, "refused") ||
-			strings.Contains(errMsg, "embedding backend unavailable") ||
-			strings.Contains(errMsg, "no embeddings generated") ||
-			strings.Contains(errMsg, "keyword-only mode") ||
-			strings.Contains(errMsg, `provider is "none"`) {
-			// Embedding unavailable/disabled — offer lite mode
-			fmt.Fprintf(os.Stderr, "  Embedding backend unavailable or disabled — indexing with keyword search only.\n")
-			fmt.Fprintf(os.Stderr, "  Configure an embedding provider (ollama/openai/openai-compatible) and run 'same reindex' again for semantic search.\n\n")
-			stats, err = indexer.ReindexLite(ctx, db, force, progress)
-			if err != nil && !errors.Is(err, indexer.ErrCanceled) {
-				return err
-			}
-		} else {
-			return fmt.Errorf("reindex failed: %w", err)
+		return fmt.Errorf("reindex failed: %w", err)
+	}
+
+	// Clear the embedding progress line if it was printed
+	if embResult != nil && embResult.Total > 0 {
+		fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 60))
+		if embResult.Completed == embResult.Total {
+			fmt.Fprintf(os.Stderr, "  All notes embedded. Semantic search ready.\n")
+		} else if errors.Is(err, indexer.ErrCanceled) {
+			fmt.Fprintf(os.Stderr, "  Embedding paused: %d/%d notes done. Resume with 'same reindex'.\n",
+				embResult.Completed, embResult.Total)
 		}
 	}
 
