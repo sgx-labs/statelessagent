@@ -8,9 +8,13 @@ Training and validation data for fine-tuning LLMs on SAME's graph extraction tas
 |------|----------|-------------|
 | `graph_extraction_train_batch1.jsonl` | 15 | Based on eval/test_vault decision notes (3 variations each) |
 | `graph_extraction_train_batch2.jsonl` | 15 | Synthetic developer notes (architecture, sprints, incidents) |
-| `graph_extraction_val.jsonl` | 10 | Validation set (different content from both batches) |
+| `graph_extraction_train_batch3.jsonl` | 20 | Code review comments, PR descriptions, tech debt discussions, refactoring notes |
+| `graph_extraction_train_batch4.jsonl` | 20 | API documentation, endpoint specs, integration guides, migration plans |
+| `graph_extraction_train_batch5.jsonl` | 20 | Deployment runbooks, monitoring alerts, performance optimization, scaling decisions |
+| `graph_extraction_train_batch6.jsonl` | 20 | Onboarding docs, team processes, coding standards, design system docs |
+| `graph_extraction_val.jsonl` | 10 | Validation set (different content from training batches) |
 
-**Total: 30 training + 10 validation examples**
+**Total: 110 training + 10 validation = 120 examples**
 
 ## Format
 
@@ -52,7 +56,7 @@ The output JSON matches `internal/graph/llm.go` LLMResponse:
 ## Combining Batches
 
 ```bash
-cat graph_extraction_train_batch1.jsonl graph_extraction_train_batch2.jsonl > graph_extraction_train.jsonl
+cat graph_extraction_train_batch{1,2,3,4,5,6}.jsonl > graph_extraction_train.jsonl
 ```
 
 ## Fine-Tuning
@@ -124,5 +128,5 @@ for fname in sys.argv[1:]:
             except Exception as e:
                 print(f'{fname}:{i}: {e}')
     print(f'{fname}: {i} examples OK')
-" graph_extraction_train_batch1.jsonl graph_extraction_train_batch2.jsonl graph_extraction_val.jsonl
+" graph_extraction_train_batch{1,2,3,4,5,6}.jsonl graph_extraction_val.jsonl
 ```
