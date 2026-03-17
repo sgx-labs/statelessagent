@@ -1,782 +1,710 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="night">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SAME — Vault Dashboard</title>
+<link href="https://cdn.jsdelivr.net/npm/daisyui@5/dist/full.min.css" rel="stylesheet" type="text/css" />
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 <style>
-:root {
-  --bg: #1a1a2e;
-  --bg-card: #16213e;
-  --bg-input: #0f3460;
-  --text: #e0e0e0;
-  --text-dim: #8892b0;
-  --accent: #5ea4eb;
-  --accent-hover: #7bb8f0;
-  --border: #233554;
-  --green: #64ffda;
-  --yellow: #ffd166;
-  --red: #ff6b6b;
-  --purple: #c084fc;
-  --orange: #fb923c;
-  --teal: #2dd4bf;
-  --focus: #36cfc9;
-  --badge-decision: #3b82f6;
-  --badge-handoff: #22c55e;
-  --badge-entity: #a855f7;
-  --badge-hub: #f97316;
-  --badge-note: #6b7280;
-  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
-  --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
-  --radius: 8px;
-  --shadow: 0 2px 8px rgba(0,0,0,0.3);
-}
-
-@media (prefers-color-scheme: light) {
+  /* Base overrides to match the website color scheme */
   :root {
-    --bg: #f5f5f5;
-    --bg-card: #ffffff;
-    --bg-input: #e8e8e8;
-    --text: #1a1a2e;
-    --text-dim: #6b7280;
-    --border: #d1d5db;
-    --shadow: 0 2px 8px rgba(0,0,0,0.1);
+    --same-bg: #0A0A0F;
+    --same-bg-card: rgba(15, 15, 25, 0.8);
+    --same-bg-glass: rgba(20, 20, 35, 0.6);
+    --same-accent: #00D4AA;
+    --same-accent-hover: #00E8BB;
+    --same-purple: #8B5CF6;
+    --same-text: #E0E0E8;
+    --same-text-dim: #6B7280;
+    --same-border: rgba(255, 255, 255, 0.06);
+    --same-green: #00D4AA;
+    --same-yellow: #FBBF24;
+    --same-red: #EF4444;
+    --same-orange: #F97316;
+    --same-teal: #00D4AA;
+    --same-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
   }
-}
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  font-family: var(--font);
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  display: flex;
-}
-
-/* Sidebar */
-.sidebar {
-  width: 220px;
-  background: var(--bg-card);
-  border-right: 1px solid var(--border);
-  padding: 20px 0;
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  top: 0;
-  left: 0;
-  height: 100vh;
-  z-index: 10;
-}
-.sidebar-brand {
-  padding: 0 20px 20px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 12px;
-}
-.sidebar-brand h1 {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--accent);
-  letter-spacing: 2px;
-}
-.sidebar-brand small {
-  font-size: 11px;
-  color: var(--text-dim);
-}
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 20px;
-  color: var(--text-dim);
-  text-decoration: none;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  border-left: 3px solid transparent;
-}
-.nav-item:hover { background: var(--bg-input); color: var(--text); }
-.nav-item.active {
-  color: var(--accent);
-  background: var(--bg-input);
-  border-left-color: var(--accent);
-}
-.nav-item:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: -2px;
-}
-.nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
-.sidebar-footer {
-  margin-top: auto;
-  padding: 12px 20px;
-  border-top: 1px solid var(--border);
-  font-size: 11px;
-  color: var(--text-dim);
-}
-.search-mode-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.search-mode-badge.semantic { background: rgba(94,164,235,0.2); color: var(--accent); }
-.search-mode-badge.keyword { background: rgba(255,209,102,0.2); color: var(--yellow); }
-
-/* Main content */
-.main {
-  margin-left: 220px;
-  flex: 1;
-  padding: 24px 32px;
-  min-height: 100vh;
-}
-.page { display: none; }
-.page.active { display: block; }
-.page-title {
-  font-size: 22px;
-  font-weight: 600;
-  margin-bottom: 20px;
-}
-
-/* Stat cards */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-}
-.stat-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-  box-shadow: var(--shadow);
-}
-.stat-value {
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--accent);
-}
-.stat-label {
-  font-size: 12px;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-top: 4px;
-}
-
-/* Section headers */
-.section-header {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 24px 0 12px;
-  color: var(--text);
-}
-
-/* Note cards */
-.note-list { display: flex; flex-direction: column; gap: 8px; }
-.note-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px 18px;
-  cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
-  box-shadow: var(--shadow);
-}
-.note-card:hover {
-  border-color: var(--accent);
-  box-shadow: 0 2px 12px rgba(94,164,235,0.15);
-}
-.note-card:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 1px;
-}
-.note-card.search-active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(94,164,235,0.2);
-}
-.note-title {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-.note-path {
-  font-size: 11px;
-  font-family: var(--mono);
-  color: var(--text-dim);
-  margin-bottom: 6px;
-}
-.note-snippet {
-  font-size: 13px;
-  color: var(--text-dim);
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-.note-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-
-/* Tags */
-.tag {
-  display: inline-block;
-  padding: 2px 8px;
-  background: var(--bg-input);
-  border-radius: 10px;
-  font-size: 11px;
-  color: var(--text-dim);
-}
-.agent-badge {
-  background: rgba(94,164,235,0.18);
-  color: var(--accent);
-  font-weight: 600;
-}
-
-/* Content type badges */
-.type-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #fff;
-}
-.type-badge.decision { background: var(--badge-decision); }
-.type-badge.handoff { background: var(--badge-handoff); }
-.type-badge.entity { background: var(--badge-entity); }
-.type-badge.hub { background: var(--badge-hub); }
-.type-badge.note { background: var(--badge-note); }
-
-/* Search */
-.search-container {
-  position: relative;
-  margin-bottom: 20px;
-}
-.search-input {
-  width: 100%;
-  padding: 12px 16px 12px 42px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text);
-  font-size: 15px;
-  font-family: var(--font);
-  outline: none;
-  transition: border-color 0.15s;
-}
-.search-input:focus { border-color: var(--accent); }
-.search-input::placeholder { color: var(--text-dim); }
-.search-input:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-.search-icon {
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--text-dim);
-}
-.search-icon svg { width: 18px; height: 18px; }
-
-/* Score bar */
-.score-bar-container {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-}
-.score-bar {
-  flex: 0 0 80px;
-  height: 6px;
-  background: var(--bg-input);
-  border-radius: 3px;
-  overflow: hidden;
-}
-.score-bar-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s ease;
-}
-.score-bar-fill.high { background: var(--green); }
-.score-bar-fill.medium { background: var(--yellow); }
-.score-bar-fill.low { background: var(--text-dim); }
-.score-label {
-  font-size: 11px;
-  color: var(--text-dim);
-  font-family: var(--mono);
-}
-
-/* Note viewer */
-.note-viewer {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 24px;
-  box-shadow: var(--shadow);
-}
-.note-viewer-title {
-  font-size: 20px;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-.note-viewer-path {
-  font-size: 12px;
-  font-family: var(--mono);
-  color: var(--text-dim);
-  margin-bottom: 16px;
-}
-.note-viewer-meta {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border);
-}
-.note-viewer-content {
-  font-size: 14px;
-  line-height: 1.7;
-  word-break: break-word;
-  font-family: var(--font);
-}
-.note-viewer-content h1,
-.note-viewer-content h2,
-.note-viewer-content h3,
-.note-viewer-content h4 {
-  margin: 20px 0 8px;
-  font-weight: 600;
-  line-height: 1.3;
-}
-.note-viewer-content h1 { font-size: 20px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
-.note-viewer-content h2 { font-size: 17px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-.note-viewer-content h3 { font-size: 15px; }
-.note-viewer-content h4 { font-size: 14px; color: var(--text-dim); }
-.note-viewer-content p { margin: 8px 0; }
-.note-viewer-content code {
-  background: var(--bg-input);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: var(--mono);
-  font-size: 13px;
-}
-.note-viewer-content pre {
-  background: var(--bg-input);
-  padding: 14px;
-  border-radius: var(--radius);
-  overflow-x: auto;
-  margin: 12px 0;
-  line-height: 1.5;
-}
-.note-viewer-content pre code {
-  background: none;
-  padding: 0;
-}
-.note-viewer-content ul, .note-viewer-content ol {
-  margin: 8px 0;
-  padding-left: 24px;
-}
-.note-viewer-content li { margin: 3px 0; }
-.note-viewer-content li.task-item { list-style: none; margin-left: -20px; }
-.note-viewer-content li.task-item input { margin-right: 6px; vertical-align: middle; }
-.note-viewer-content blockquote {
-  border-left: 3px solid var(--accent);
-  padding: 8px 12px;
-  color: var(--text-dim);
-  margin: 12px 0;
-  background: var(--bg-input);
-  border-radius: 0 var(--radius) var(--radius) 0;
-}
-.note-viewer-content hr {
-  border: none;
-  border-top: 1px solid var(--border);
-  margin: 16px 0;
-}
-.note-viewer-content table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 12px 0;
-  font-size: 13px;
-}
-.note-viewer-content th, .note-viewer-content td {
-  border: 1px solid var(--border);
-  padding: 8px 12px;
-  text-align: left;
-}
-.note-viewer-content th {
-  background: var(--bg-input);
-  font-weight: 600;
-}
-.note-viewer-content a {
-  color: var(--accent);
-  text-decoration: none;
-}
-.note-viewer-content a:hover { text-decoration: underline; }
-.note-viewer-content img { max-width: 100%; border-radius: var(--radius); }
-.note-viewer-content .frontmatter {
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 16px;
-  margin-bottom: 16px;
-  font-size: 13px;
-  line-height: 1.6;
-}
-.note-viewer-content .frontmatter strong { color: var(--accent); }
-.back-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--accent);
-  text-decoration: none;
-  font-size: 13px;
-  margin-bottom: 16px;
-  cursor: pointer;
-}
-.back-link:hover { text-decoration: underline; }
-
-/* Browse filter */
-.browse-controls {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-.browse-controls input, .browse-controls select {
-  padding: 8px 12px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text);
-  font-size: 13px;
-  font-family: var(--font);
-  outline: none;
-}
-.browse-controls input:focus, .browse-controls select:focus {
-  border-color: var(--accent);
-}
-.browse-controls select { cursor: pointer; }
-.browse-controls select option { background: var(--bg-card); }
-.note-count-label {
-  font-size: 12px;
-  color: var(--text-dim);
-  margin-bottom: 12px;
-}
-.search-help {
-  margin-top: -8px;
-  margin-bottom: 12px;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-.search-help kbd {
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-family: var(--mono);
-  font-size: 11px;
-  background: var(--bg-card);
-  color: var(--text);
-}
-
-.snippet-mark {
-  background: rgba(255, 209, 102, 0.33);
-  color: inherit;
-  padding: 0 2px;
-  border-radius: 2px;
-}
-
-/* Composition breakdown */
-.composition-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 24px; }
-.composition-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: border-color 0.15s;
-}
-.composition-row:hover { border-color: var(--accent); }
-.composition-bar {
-  flex: 1;
-  height: 6px;
-  background: var(--bg-input);
-  border-radius: 3px;
-  overflow: hidden;
-}
-.composition-bar-fill { height: 100%; border-radius: 3px; }
-.composition-label { font-size: 12px; min-width: 80px; }
-.composition-count { font-size: 12px; color: var(--text-dim); font-family: var(--mono); min-width: 30px; text-align: right; }
-
-/* CLI copy button */
-.cli-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-dim);
-  font-size: 11px;
-  font-family: var(--mono);
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-  white-space: nowrap;
-}
-.cli-btn:hover { border-color: var(--accent); color: var(--accent); }
-.cli-btn:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 1px;
-}
-.cli-btn svg { width: 12px; height: 12px; }
-.cli-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-
-/* Related notes */
-.related-section {
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid var(--border);
-}
-.related-section .section-header { margin-top: 0; }
-
-/* Graph */
-.graph-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.graph-item {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 14px;
-  box-shadow: var(--shadow);
-}
-.graph-item-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-}
-.graph-node-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--bg-input);
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: 11px;
-  max-width: min(48ch, 88vw);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.graph-node-chip.clickable {
-  cursor: pointer;
-}
-.graph-node-chip.clickable:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.graph-rel-chip {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(45,212,191,0.16);
-  color: var(--teal);
-  font-size: 11px;
-  font-weight: 600;
-}
-.graph-summary {
-  font-size: 12px;
-  color: var(--text-dim);
-  margin-top: 8px;
-}
-
-/* Insights */
-.insights-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
-.insight-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 13px;
-  line-height: 1.5;
-}
-.insight-card.tip { border-left: 3px solid var(--accent); }
-.insight-card.warn { border-left: 3px solid var(--yellow); }
-.insight-card.good { border-left: 3px solid var(--green); }
-.insight-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
-.insight-body { flex: 1; }
-.insight-body strong { font-weight: 600; }
-.insight-body .cli-btn { margin-top: 6px; }
-
-/* Empty state */
-.empty-state {
-  text-align: center;
-  padding: 48px 20px;
-  color: var(--text-dim);
-}
-.empty-state svg { width: 48px; height: 48px; margin-bottom: 16px; opacity: 0.5; }
-.empty-state p { font-size: 14px; line-height: 1.6; }
-.empty-state .hint { font-size: 12px; margin-top: 8px; font-family: var(--mono); }
-.error-state {
-  border: 1px solid rgba(255,107,107,0.35);
-  border-radius: var(--radius);
-  background: rgba(255,107,107,0.08);
-  padding: 16px;
-}
-
-/* Loading */
-.loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 32px;
-  color: var(--text-dim);
-}
-.spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin-right: 8px;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.skeleton-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.skeleton-card {
-  background: linear-gradient(90deg, rgba(136,146,176,0.12), rgba(136,146,176,0.22), rgba(136,146,176,0.12));
-  background-size: 240px 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  height: 92px;
-  animation: skeleton 1.2s ease-in-out infinite;
-}
-@keyframes skeleton {
-  0% { background-position: -240px 0; }
-  100% { background-position: calc(100% + 240px) 0; }
-}
-
-/* Responsive */
-@media (max-width: 1024px) {
-  .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: auto;
-    width: 100%;
-    flex-direction: row;
-    align-items: center;
-    padding: 8px 10px;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    overflow-x: auto;
-    gap: 4px;
+  /* Force the dark background everywhere */
+  html, body {
+    background: var(--same-bg) !important;
+    color: var(--same-text);
   }
-  .sidebar-brand {
-    border-bottom: none;
-    margin-bottom: 0;
-    padding: 0 10px 0 4px;
-    min-width: 160px;
+
+  /* Glassmorphism card effect */
+  .glass-card {
+    background: var(--same-bg-glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--same-border);
+    border-radius: 12px;
   }
-  .sidebar-footer {
-    border-top: none;
-    margin-top: 0;
-    margin-left: auto;
-    white-space: nowrap;
-    padding: 0 6px;
+
+  /* Accent glow */
+  .accent-glow {
+    box-shadow: 0 0 20px rgba(0, 212, 170, 0.08);
   }
+
+  /* Sidebar styling */
+  .same-sidebar {
+    background: rgba(8, 8, 15, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-right: 1px solid var(--same-border);
+  }
+
   .nav-item {
-    border-left: none;
-    border-bottom: 2px solid transparent;
-    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    color: var(--same-text-dim);
+    text-decoration: none;
+    font-size: 14px;
+    font-family: var(--same-mono);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-left: 3px solid transparent;
+    letter-spacing: 0.02em;
   }
-  .nav-item.active { border-bottom-color: var(--accent); }
-  .main {
-    margin-left: 0;
-    margin-top: 72px;
-    padding: 18px;
+  .nav-item:hover {
+    background: rgba(0, 212, 170, 0.05);
+    color: var(--same-text);
   }
-}
-@media (max-width: 768px) {
-  .sidebar-brand { min-width: 90px; }
-  .sidebar-brand h1 { font-size: 14px; }
-  .sidebar-brand small,
-  #vault-label,
-  .sidebar-footer div { display: none; }
-  .nav-item span { display: none; }
-  .nav-item { padding: 10px; justify-content: center; }
-  .main { margin-top: 56px; padding: 14px; }
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 480px) {
-  .stats-grid { grid-template-columns: 1fr; }
-  .browse-controls { flex-direction: column; }
-  .browse-controls input, .browse-controls select { width: 100%; }
-  .page-title { font-size: 20px; }
-  .note-viewer { padding: 16px; }
-}
+  .nav-item.active {
+    color: var(--same-accent);
+    background: rgba(0, 212, 170, 0.08);
+    border-left-color: var(--same-accent);
+  }
+  .nav-item:focus-visible {
+    outline: 2px solid var(--same-accent);
+    outline-offset: -2px;
+  }
+  .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
 
-@media print {
-  body { background: #fff; color: #000; display: block; }
-  .sidebar, .back-link, .related-section, .cli-actions, .search-help { display: none !important; }
-  .main { margin: 0; padding: 0; }
-  .page { display: none !important; }
-  #page-note { display: block !important; }
-  .note-viewer {
-    border: none;
-    box-shadow: none;
-    padding: 0;
+  /* Page visibility */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* Search mode badges */
+  .search-mode-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
+  .search-mode-badge.semantic { background: rgba(0,212,170,0.2); color: var(--same-accent); }
+  .search-mode-badge.keyword { background: rgba(251,191,36,0.2); color: var(--same-yellow); }
+
+  /* Note card */
+  .note-card {
+    background: var(--same-bg-glass);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--same-border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .note-card:hover {
+    border-color: rgba(0, 212, 170, 0.3);
+    box-shadow: 0 4px 20px rgba(0, 212, 170, 0.08);
+    transform: translateY(-1px);
+  }
+  .note-card:focus-visible {
+    outline: 2px solid var(--same-accent);
+    outline-offset: 1px;
+  }
+  .note-card.search-active {
+    border-color: var(--same-accent);
+    box-shadow: 0 0 0 2px rgba(0, 212, 170, 0.15);
+  }
+  .note-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--same-text);
+  }
+  .note-path {
+    font-size: 11px;
+    font-family: var(--same-mono);
+    color: var(--same-text-dim);
+    margin-bottom: 6px;
+  }
+  .note-snippet {
+    font-size: 13px;
+    color: var(--same-text-dim);
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .note-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* Type badges */
+  .type-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #fff;
+  }
+  .type-badge.decision { background: #3b82f6; }
+  .type-badge.handoff { background: #22c55e; }
+  .type-badge.entity { background: #8B5CF6; }
+  .type-badge.hub { background: #f97316; }
+  .type-badge.note { background: #4b5563; }
+
+  /* Trust state badges */
+  .trust-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .trust-badge.validated { background: rgba(0,212,170,0.2); color: var(--same-accent); }
+  .trust-badge.stale { background: rgba(251,191,36,0.2); color: var(--same-yellow); }
+  .trust-badge.contradicted { background: rgba(239,68,68,0.2); color: var(--same-red); }
+  .trust-badge.unknown { background: rgba(107,114,128,0.2); color: var(--same-text-dim); }
+
+  /* Confidence bar */
+  .confidence-bar {
+    height: 3px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .confidence-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    background: var(--same-accent);
+  }
+
+  /* Tags */
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 10px;
+    font-size: 11px;
+    color: var(--same-text-dim);
+  }
+  .agent-badge {
+    background: rgba(0,212,170,0.15);
+    color: var(--same-accent);
+    font-weight: 600;
+  }
+
+  /* Score bar */
+  .score-bar-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .score-bar {
+    flex: 0 0 80px;
+    height: 6px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .score-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+  }
+  .score-bar-fill.high { background: var(--same-accent); }
+  .score-bar-fill.medium { background: var(--same-yellow); }
+  .score-bar-fill.low { background: var(--same-text-dim); }
+  .score-label {
+    font-size: 11px;
+    color: var(--same-text-dim);
+    font-family: var(--same-mono);
+  }
+
+  /* Search input */
+  .search-input-wrapper {
+    position: relative;
+    margin-bottom: 16px;
+  }
+  .search-input-wrapper .search-icon-el {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--same-text-dim);
+    pointer-events: none;
+  }
+  .search-input-wrapper .search-kbd {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  .same-search-input {
+    width: 100%;
+    padding: 14px 80px 14px 48px;
+    background: var(--same-bg-glass);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--same-border);
+    border-radius: 12px;
+    color: var(--same-text);
+    font-size: 16px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .same-search-input:focus {
+    border-color: rgba(0, 212, 170, 0.4);
+    box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.1);
+  }
+  .same-search-input::placeholder { color: var(--same-text-dim); }
+
+  /* Snippet highlight */
+  .snippet-mark {
+    background: rgba(251, 191, 36, 0.25);
+    color: inherit;
+    padding: 0 2px;
+    border-radius: 2px;
+  }
+
+  /* Composition rows */
+  .composition-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--same-bg-glass);
+    border: 1px solid var(--same-border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .composition-row:hover {
+    border-color: rgba(0, 212, 170, 0.3);
+    transform: translateX(2px);
+  }
+  .composition-bar {
+    flex: 1;
+    height: 6px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .composition-bar-fill { height: 100%; border-radius: 3px; }
+  .composition-label { font-size: 12px; min-width: 80px; }
+  .composition-count {
+    font-size: 12px;
+    color: var(--same-text-dim);
+    font-family: var(--same-mono);
+    min-width: 30px;
+    text-align: right;
+  }
+
+  /* CLI copy button */
+  .cli-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--same-border);
+    border-radius: 6px;
+    color: var(--same-text-dim);
+    font-size: 11px;
+    font-family: var(--same-mono);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+  .cli-btn:hover {
+    border-color: rgba(0, 212, 170, 0.4);
+    color: var(--same-accent);
+    background: rgba(0, 212, 170, 0.05);
+  }
+  .cli-btn:focus-visible {
+    outline: 2px solid var(--same-accent);
+    outline-offset: 1px;
+  }
+  .cli-btn svg { width: 12px; height: 12px; }
+  .cli-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+
+  /* Note viewer content (markdown) */
   .note-viewer-content {
-    font-size: 12pt;
+    font-size: 14px;
+    line-height: 1.7;
+    word-break: break-word;
+  }
+  .note-viewer-content h1,
+  .note-viewer-content h2,
+  .note-viewer-content h3,
+  .note-viewer-content h4 {
+    margin: 20px 0 8px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--same-text);
+  }
+  .note-viewer-content h1 { font-size: 20px; border-bottom: 1px solid var(--same-border); padding-bottom: 6px; }
+  .note-viewer-content h2 { font-size: 17px; border-bottom: 1px solid var(--same-border); padding-bottom: 4px; }
+  .note-viewer-content h3 { font-size: 15px; }
+  .note-viewer-content h4 { font-size: 14px; color: var(--same-text-dim); }
+  .note-viewer-content p { margin: 8px 0; }
+  .note-viewer-content code {
+    background: rgba(255,255,255,0.06);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: var(--same-mono);
+    font-size: 13px;
+  }
+  .note-viewer-content pre {
+    background: rgba(0, 0, 0, 0.4);
+    padding: 16px;
+    border-radius: 10px;
+    border: 1px solid var(--same-border);
+    overflow-x: auto;
+    margin: 12px 0;
     line-height: 1.5;
   }
-  .note-viewer-content a {
-    color: #000;
-    text-decoration: underline;
+  .note-viewer-content pre code { background: none; padding: 0; }
+  .note-viewer-content ul, .note-viewer-content ol { margin: 8px 0; padding-left: 24px; }
+  .note-viewer-content li { margin: 3px 0; }
+  .note-viewer-content li.task-item { list-style: none; margin-left: -20px; }
+  .note-viewer-content li.task-item input { margin-right: 6px; vertical-align: middle; }
+  .note-viewer-content blockquote {
+    border-left: 3px solid var(--same-accent);
+    padding: 8px 12px;
+    color: var(--same-text-dim);
+    margin: 12px 0;
+    background: rgba(0, 212, 170, 0.04);
+    border-radius: 0 8px 8px 0;
   }
-}
+  .note-viewer-content hr { border: none; border-top: 1px solid var(--same-border); margin: 16px 0; }
+  .note-viewer-content table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; }
+  .note-viewer-content th, .note-viewer-content td {
+    border: 1px solid var(--same-border);
+    padding: 8px 12px;
+    text-align: left;
+  }
+  .note-viewer-content th { background: rgba(255,255,255,0.04); font-weight: 600; }
+  .note-viewer-content a { color: var(--same-accent); text-decoration: none; }
+  .note-viewer-content a:hover { text-decoration: underline; }
+  .note-viewer-content img { max-width: 100%; border-radius: 10px; }
+  .note-viewer-content .frontmatter {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--same-border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .note-viewer-content .frontmatter strong { color: var(--same-accent); }
+
+  /* Graph items */
+  .graph-item {
+    background: var(--same-bg-glass);
+    border: 1px solid var(--same-border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .graph-item-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+  }
+  .graph-node-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--same-border);
+    background: rgba(255,255,255,0.04);
+    color: var(--same-text);
+    font-family: var(--same-mono);
+    font-size: 11px;
+    max-width: min(48ch, 88vw);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .graph-node-chip.clickable { cursor: pointer; }
+  .graph-node-chip.clickable:hover {
+    border-color: var(--same-accent);
+    color: var(--same-accent);
+  }
+  .graph-rel-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(0, 212, 170, 0.12);
+    color: var(--same-accent);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .graph-summary {
+    font-size: 12px;
+    color: var(--same-text-dim);
+    margin-top: 8px;
+  }
+
+  /* Insight cards */
+  .insight-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 18px;
+    background: var(--same-bg-glass);
+    border: 1px solid var(--same-border);
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .insight-card.tip { border-left: 3px solid var(--same-accent); }
+  .insight-card.warn { border-left: 3px solid var(--same-yellow); }
+  .insight-card.good { border-left: 3px solid var(--same-green); }
+  .insight-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .insight-body { flex: 1; }
+  .insight-body strong { font-weight: 600; }
+  .insight-body code {
+    background: rgba(255,255,255,0.06);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: var(--same-mono);
+    font-size: 12px;
+  }
+  .insight-body .cli-btn { margin-top: 6px; }
+
+  /* Skeleton loading */
+  .skeleton-list { display: flex; flex-direction: column; gap: 8px; }
+  .skeleton-card {
+    background: linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+    background-size: 240px 100%;
+    border: 1px solid var(--same-border);
+    border-radius: 12px;
+    height: 92px;
+    animation: skeleton 1.2s ease-in-out infinite;
+  }
+  @keyframes skeleton {
+    0% { background-position: -240px 0; }
+    100% { background-position: calc(100% + 240px) 0; }
+  }
+
+  /* Loading spinner */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    color: var(--same-text-dim);
+  }
+  .spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--same-border);
+    border-top-color: var(--same-accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Empty / error states */
+  .empty-state {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--same-text-dim);
+  }
+  .empty-state svg { width: 48px; height: 48px; margin-bottom: 16px; opacity: 0.3; }
+  .empty-state p { font-size: 14px; line-height: 1.6; }
+  .empty-state .hint { font-size: 12px; margin-top: 8px; font-family: var(--same-mono); color: var(--same-text-dim); }
+  .error-state {
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 12px;
+    background: rgba(239,68,68,0.06);
+    padding: 16px;
+  }
+
+  /* Stat card big numbers */
+  .stat-number {
+    font-size: 32px;
+    font-weight: 800;
+    font-family: var(--same-mono);
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, var(--same-accent), #00E8BB);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .stat-number.purple {
+    background: linear-gradient(135deg, var(--same-purple), #A78BFA);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  /* Trust overview cards */
+  .trust-stat-validated .stat-number {
+    background: linear-gradient(135deg, #00D4AA, #10B981);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+  .trust-stat-stale .stat-number {
+    background: linear-gradient(135deg, #FBBF24, #F59E0B);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+  .trust-stat-contradicted .stat-number {
+    background: linear-gradient(135deg, #EF4444, #F87171);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+  .trust-stat-unknown .stat-number {
+    background: linear-gradient(135deg, #6B7280, #9CA3AF);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  /* Section header accent underline */
+  .section-title {
+    position: relative;
+    display: inline-block;
+  }
+  .section-title::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    width: 32px;
+    height: 2px;
+    background: var(--same-accent);
+    border-radius: 1px;
+  }
+
+  /* Browse controls */
+  .browse-select,
+  .browse-input {
+    padding: 8px 12px;
+    background: var(--same-bg-glass);
+    border: 1px solid var(--same-border);
+    border-radius: 8px;
+    color: var(--same-text);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .browse-select:focus,
+  .browse-input:focus {
+    border-color: rgba(0, 212, 170, 0.4);
+  }
+  .browse-select { cursor: pointer; }
+  .browse-select option { background: var(--same-bg); }
+
+  /* Responsive */
+  @media (max-width: 1024px) {
+    .same-sidebar {
+      position: fixed !important;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: auto !important;
+      width: 100% !important;
+      flex-direction: row !important;
+      align-items: center;
+      padding: 8px 10px !important;
+      border-right: none !important;
+      border-bottom: 1px solid var(--same-border);
+      overflow-x: auto;
+      gap: 4px;
+    }
+    .sidebar-brand-block {
+      border-bottom: none !important;
+      margin-bottom: 0 !important;
+      padding: 0 10px 0 4px !important;
+      min-width: 160px;
+    }
+    .sidebar-footer-block {
+      border-top: none !important;
+      margin-top: 0 !important;
+      margin-left: auto;
+      white-space: nowrap;
+      padding: 0 6px !important;
+    }
+    .nav-item {
+      border-left: none;
+      border-bottom: 2px solid transparent;
+      padding: 8px 12px;
+    }
+    .nav-item.active { border-left-color: transparent; border-bottom-color: var(--same-accent); }
+    .same-main {
+      margin-left: 0 !important;
+      margin-top: 72px;
+      padding: 18px !important;
+    }
+  }
+  @media (max-width: 768px) {
+    .sidebar-brand-block { min-width: 90px !important; }
+    .sidebar-brand-block h1 { font-size: 14px !important; }
+    .sidebar-brand-block .brand-subtitle,
+    #vault-label,
+    .sidebar-footer-block div { display: none; }
+    .nav-item span { display: none; }
+    .nav-item { padding: 10px; justify-content: center; }
+    .same-main { margin-top: 56px; padding: 14px !important; }
+  }
+  @media (max-width: 480px) {
+    .browse-controls-wrap { flex-direction: column; }
+    .browse-controls-wrap input, .browse-controls-wrap select { width: 100%; }
+  }
+
+  @media print {
+    body { background: #fff !important; color: #000; display: block; }
+    .same-sidebar, .back-link, .related-section, .cli-actions, .search-help { display: none !important; }
+    .same-main { margin: 0 !important; padding: 0 !important; }
+    .page { display: none !important; }
+    #page-note { display: block !important; }
+    .glass-card { border: none; box-shadow: none; padding: 0; backdrop-filter: none; background: #fff; }
+    .note-viewer-content { font-size: 12pt; line-height: 1.5; }
+    .note-viewer-content a { color: #000; text-decoration: underline; }
+  }
 </style>
 </head>
-<body>
+<body class="min-h-screen flex" style="background: #0A0A0F;">
 
-<nav class="sidebar" aria-label="Primary">
-  <div class="sidebar-brand">
-    <h1>SAME</h1>
-    <small style="display:block;font-size:10px;color:var(--text-dim);margin-top:2px">Persistent memory for AI agents</small>
-    <small id="version-label">v0.0.0</small>
-    <div id="vault-label" style="font-size:11px;color:var(--text-dim);margin-top:4px;word-break:break-all;cursor:help" title=""></div>
+<nav class="same-sidebar fixed top-0 left-0 h-screen w-56 flex flex-col z-10" aria-label="Primary">
+  <div class="sidebar-brand-block px-5 pb-5 pt-5 border-b border-white/5 mb-3">
+    <h1 class="text-xl font-bold tracking-widest" style="color: var(--same-accent); font-family: var(--same-mono);">SAME</h1>
+    <small class="brand-subtitle block text-[10px] mt-1" style="color: var(--same-text-dim);">Persistent memory for AI agents</small>
+    <small id="version-label" class="block text-[11px] mt-1" style="color: var(--same-text-dim);">v0.0.0</small>
+    <div id="vault-label" class="text-[11px] mt-1 break-all cursor-help" style="color: var(--same-text-dim);" title=""></div>
   </div>
+
   <a class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')" title="Vault stats, health insights, and recent activity" aria-label="Open dashboard">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     <span>Dashboard</span>
@@ -797,65 +725,130 @@ body {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
     <span>Handoffs</span>
   </a>
-  <div class="sidebar-footer">
+
+  <div class="sidebar-footer-block mt-auto px-5 py-3 border-t border-white/5">
     <span id="search-mode-indicator"></span>
-    <div style="margin-top:8px"><a href="https://statelessagent.com" target="_blank" rel="noopener" style="font-size:11px;color:var(--text-dim);text-decoration:none">Docs &amp; Help</a></div>
+    <div class="mt-2"><a href="https://statelessagent.com" target="_blank" rel="noopener" class="text-[11px] hover:underline" style="color: var(--same-text-dim);">Docs &amp; Help</a></div>
   </div>
 </nav>
 
-<main class="main" id="main-content">
+<main class="same-main ml-56 flex-1 p-8 min-h-screen" id="main-content">
+
   <!-- Dashboard -->
   <div id="page-dashboard" class="page active" role="region" aria-label="Dashboard view">
-    <h2 class="page-title" tabindex="-1">Dashboard</h2>
-    <div class="stats-grid" id="stats-grid">
-      <div class="stat-card" title="Markdown files indexed in your vault"><div class="stat-value" id="stat-notes">-</div><div class="stat-label">Notes</div></div>
-      <div class="stat-card" title="Notes split into sections for embedding and search"><div class="stat-value" id="stat-chunks">-</div><div class="stat-label">Chunks</div></div>
-      <div class="stat-card" title="SQLite database size on disk"><div class="stat-value" id="stat-dbsize">-</div><div class="stat-label">DB Size</div></div>
-      <div class="stat-card" title="Semantic: finds notes by meaning via embeddings. Keyword: matches exact terms."><div class="stat-value" id="stat-search">-</div><div class="stat-label">Search Mode</div></div>
-    </div>
+    <h2 class="text-2xl font-bold mb-6 tracking-tight" tabindex="-1" style="color: var(--same-text);">Dashboard</h2>
 
-    <div id="insights-section" style="display:none">
-      <h3 class="section-header">Insights</h3>
-      <div class="insights-list" id="insights-list"></div>
-    </div>
-
-    <div id="composition-section" style="display:none">
-      <h3 class="section-header">Vault Composition</h3>
-      <div class="composition-list" id="composition-list"></div>
-    </div>
-
-    <div id="graph-section" style="display:none">
-      <h3 class="section-header">Knowledge Graph</h3>
-      <div class="stats-grid">
-        <div class="stat-card" title="Unique graph nodes extracted from notes, files, decisions, and agents"><div class="stat-value" id="graph-total-nodes">-</div><div class="stat-label">Graph Nodes</div></div>
-        <div class="stat-card" title="Relationships between graph nodes"><div class="stat-value" id="graph-total-edges">-</div><div class="stat-label">Graph Edges</div></div>
-        <div class="stat-card" title="Average number of relationships per node"><div class="stat-value" id="graph-avg-degree">-</div><div class="stat-label">Avg Degree</div></div>
+    <!-- Stat cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8" id="stats-grid">
+      <div class="glass-card p-5 accent-glow" title="Markdown files indexed in your vault">
+        <div class="stat-number" id="stat-notes">-</div>
+        <div class="text-xs uppercase tracking-wider mt-1 font-medium" style="color: var(--same-text-dim);">Notes</div>
       </div>
-      <div class="graph-list" id="graph-top-relationships"></div>
+      <div class="glass-card p-5" title="Notes split into sections for embedding and search">
+        <div class="stat-number" id="stat-chunks">-</div>
+        <div class="text-xs uppercase tracking-wider mt-1 font-medium" style="color: var(--same-text-dim);">Chunks</div>
+      </div>
+      <div class="glass-card p-5" title="SQLite database size on disk">
+        <div class="stat-number purple" id="stat-dbsize">-</div>
+        <div class="text-xs uppercase tracking-wider mt-1 font-medium" style="color: var(--same-text-dim);">DB Size</div>
+      </div>
+      <div class="glass-card p-5" title="Semantic: finds notes by meaning via embeddings. Keyword: matches exact terms.">
+        <div class="stat-number" id="stat-search">-</div>
+        <div class="text-xs uppercase tracking-wider mt-1 font-medium" style="color: var(--same-text-dim);">Search Mode</div>
+      </div>
+    </div>
+
+    <!-- Trust Overview -->
+    <div id="trust-section" style="display:none" class="mb-8">
+      <h3 class="text-base font-semibold mb-4 section-title" style="color: var(--same-text);">Trust Overview</h3>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6" id="trust-grid">
+        <div class="glass-card p-4 trust-stat-validated">
+          <div class="stat-number text-2xl" id="trust-validated">0</div>
+          <div class="text-[10px] uppercase tracking-wider mt-1 font-semibold" style="color: var(--same-accent);">Validated</div>
+        </div>
+        <div class="glass-card p-4 trust-stat-stale">
+          <div class="stat-number text-2xl" id="trust-stale">0</div>
+          <div class="text-[10px] uppercase tracking-wider mt-1 font-semibold" style="color: var(--same-yellow);">Stale</div>
+        </div>
+        <div class="glass-card p-4 trust-stat-contradicted">
+          <div class="stat-number text-2xl" id="trust-contradicted">0</div>
+          <div class="text-[10px] uppercase tracking-wider mt-1 font-semibold" style="color: var(--same-red);">Contradicted</div>
+        </div>
+        <div class="glass-card p-4 trust-stat-unknown">
+          <div class="stat-number text-2xl" id="trust-unknown">0</div>
+          <div class="text-[10px] uppercase tracking-wider mt-1 font-semibold" style="color: var(--same-text-dim);">Unknown</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Insights -->
+    <div id="insights-section" style="display:none" class="mb-8">
+      <h3 class="text-base font-semibold mb-4 section-title" style="color: var(--same-text);">Insights</h3>
+      <div class="flex flex-col gap-3 mt-6" id="insights-list"></div>
+    </div>
+
+    <!-- Vault Composition -->
+    <div id="composition-section" style="display:none" class="mb-8">
+      <h3 class="text-base font-semibold mb-4 section-title" style="color: var(--same-text);">Vault Composition</h3>
+      <div class="flex flex-col gap-2 mt-6" id="composition-list"></div>
+    </div>
+
+    <!-- Knowledge Graph -->
+    <div id="graph-section" style="display:none" class="mb-8">
+      <h3 class="text-base font-semibold mb-4 section-title" style="color: var(--same-text);">Knowledge Graph</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 mb-4">
+        <div class="glass-card p-4" title="Unique graph nodes extracted from notes, files, decisions, and agents">
+          <div class="stat-number text-2xl" id="graph-total-nodes">-</div>
+          <div class="text-[10px] uppercase tracking-wider mt-1 font-medium" style="color: var(--same-text-dim);">Graph Nodes</div>
+        </div>
+        <div class="glass-card p-4" title="Relationships between graph nodes">
+          <div class="stat-number purple text-2xl" id="graph-total-edges">-</div>
+          <div class="text-[10px] uppercase tracking-wider mt-1 font-medium" style="color: var(--same-text-dim);">Graph Edges</div>
+        </div>
+        <div class="glass-card p-4" title="Average number of relationships per node">
+          <div class="stat-number text-2xl" id="graph-avg-degree">-</div>
+          <div class="text-[10px] uppercase tracking-wider mt-1 font-medium" style="color: var(--same-text-dim);">Avg Degree</div>
+        </div>
+      </div>
+      <div class="flex flex-col gap-2" id="graph-top-relationships"></div>
       <div class="cli-actions" id="graph-cli-actions"></div>
     </div>
 
-    <div id="pinned-section" style="display:none">
-      <h3 class="section-header">Pinned Notes</h3>
-      <div class="note-list" id="pinned-notes"></div>
+    <!-- Pinned Notes -->
+    <div id="pinned-section" style="display:none" class="mb-8">
+      <h3 class="text-base font-semibold mb-4 section-title" style="color: var(--same-text);">Pinned Notes</h3>
+      <div class="flex flex-col gap-3 mt-6" id="pinned-notes"></div>
     </div>
 
-    <h3 class="section-header">Recent Notes</h3>
-    <div class="note-list" id="recent-notes">
-      <div class="loading"><div class="spinner"></div> Loading...</div>
+    <!-- Recent Notes -->
+    <div class="mb-8">
+      <h3 class="text-base font-semibold mb-4 section-title" style="color: var(--same-text);">Recent Notes</h3>
+      <div class="flex flex-col gap-3 mt-6" id="recent-notes">
+        <div class="loading"><div class="spinner"></div> Loading...</div>
+      </div>
     </div>
   </div>
 
   <!-- Search -->
   <div id="page-search" class="page" role="region" aria-label="Search view">
-    <h2 class="page-title" tabindex="-1">Search</h2>
-    <div class="search-container">
-      <div class="search-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <h2 class="text-2xl font-bold mb-6 tracking-tight" tabindex="-1" style="color: var(--same-text);">Search</h2>
+
+    <div class="search-input-wrapper">
+      <div class="search-icon-el">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       </div>
-      <input type="text" class="search-input" id="search-input" placeholder="Search by concept or keyword..." autocomplete="off" aria-label="Search notes" aria-controls="search-results">
+      <input type="text" class="same-search-input" id="search-input" placeholder="Search by concept or keyword..." autocomplete="off" aria-label="Search notes" aria-controls="search-results">
+      <div class="search-kbd">
+        <kbd class="kbd kbd-sm" style="background: rgba(255,255,255,0.06); border-color: var(--same-border); color: var(--same-text-dim); font-size: 11px;">/</kbd>
+      </div>
     </div>
-    <div class="search-help"><kbd>/</kbd> focus search · <kbd>Esc</kbd> clear · <kbd>↑</kbd>/<kbd>↓</kbd> navigate results</div>
+
+    <div class="search-help flex items-center gap-3 mb-4 text-xs" style="color: var(--same-text-dim);">
+      <span><kbd class="kbd kbd-xs" style="background: rgba(255,255,255,0.06); border-color: var(--same-border); color: var(--same-text-dim);">/</kbd> focus</span>
+      <span><kbd class="kbd kbd-xs" style="background: rgba(255,255,255,0.06); border-color: var(--same-border); color: var(--same-text-dim);">Esc</kbd> clear</span>
+      <span><kbd class="kbd kbd-xs" style="background: rgba(255,255,255,0.06); border-color: var(--same-border); color: var(--same-text-dim);">&uarr;</kbd>/<kbd class="kbd kbd-xs" style="background: rgba(255,255,255,0.06); border-color: var(--same-border); color: var(--same-text-dim);">&darr;</kbd> navigate</span>
+    </div>
+
     <div id="search-results" aria-live="polite">
       <div class="empty-state">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -867,10 +860,10 @@ body {
 
   <!-- Browse -->
   <div id="page-browse" class="page" role="region" aria-label="Browse view">
-    <h2 class="page-title" tabindex="-1">Browse</h2>
-    <div class="browse-controls">
-      <input type="text" id="browse-filter" placeholder="Filter notes..." style="flex:1;min-width:200px" aria-label="Filter notes">
-      <select id="browse-type-filter" title="Filter by content type" aria-label="Filter by note type">
+    <h2 class="text-2xl font-bold mb-6 tracking-tight" tabindex="-1" style="color: var(--same-text);">Browse</h2>
+    <div class="browse-controls-wrap flex gap-3 mb-4 flex-wrap">
+      <input type="text" id="browse-filter" placeholder="Filter notes..." class="browse-input flex-1 min-w-[200px]" aria-label="Filter notes">
+      <select id="browse-type-filter" class="browse-select" title="Filter by content type" aria-label="Filter by note type">
         <option value="">All types</option>
         <option value="note">Notes</option>
         <option value="decision">Decisions (key choices)</option>
@@ -878,55 +871,56 @@ body {
         <option value="entity">Entities (people, APIs, configs)</option>
         <option value="hub">Hubs (index notes linking related content)</option>
       </select>
-      <select id="browse-sort" aria-label="Sort notes">
+      <select id="browse-sort" class="browse-select" aria-label="Sort notes">
         <option value="modified">Modified (newest)</option>
         <option value="modified-asc">Modified (oldest)</option>
         <option value="title">Title (A-Z)</option>
         <option value="title-desc">Title (Z-A)</option>
       </select>
     </div>
-    <div class="note-count-label" id="browse-count"></div>
-    <div class="note-list" id="browse-notes">
+    <div class="text-xs mb-3" id="browse-count" style="color: var(--same-text-dim);"></div>
+    <div class="flex flex-col gap-3" id="browse-notes">
       <div class="loading"><div class="spinner"></div> Loading...</div>
     </div>
   </div>
 
   <!-- Decisions -->
   <div id="page-decisions" class="page" role="region" aria-label="Decisions view">
-    <h2 class="page-title" tabindex="-1">Decisions</h2>
-    <div class="note-count-label" id="decisions-count"></div>
-    <div class="note-list" id="decisions-notes">
+    <h2 class="text-2xl font-bold mb-6 tracking-tight" tabindex="-1" style="color: var(--same-text);">Decisions</h2>
+    <div class="text-xs mb-3" id="decisions-count" style="color: var(--same-text-dim);"></div>
+    <div class="flex flex-col gap-3" id="decisions-notes">
       <div class="loading"><div class="spinner"></div> Loading...</div>
     </div>
   </div>
 
   <!-- Handoffs -->
   <div id="page-handoffs" class="page" role="region" aria-label="Handoffs view">
-    <h2 class="page-title" tabindex="-1">Session Handoffs</h2>
-    <div class="note-count-label" id="handoffs-count"></div>
-    <div class="note-list" id="handoffs-notes">
+    <h2 class="text-2xl font-bold mb-6 tracking-tight" tabindex="-1" style="color: var(--same-text);">Session Handoffs</h2>
+    <div class="text-xs mb-3" id="handoffs-count" style="color: var(--same-text-dim);"></div>
+    <div class="flex flex-col gap-3" id="handoffs-notes">
       <div class="loading"><div class="spinner"></div> Loading...</div>
     </div>
   </div>
 
   <!-- Note Viewer -->
   <div id="page-note" class="page" role="region" aria-label="Note details view">
-    <a class="back-link" id="back-link" onclick="goBack()">
+    <a class="back-link inline-flex items-center gap-1 text-sm mb-4 cursor-pointer hover:underline" id="back-link" onclick="goBack()" style="color: var(--same-accent);">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
       Back
     </a>
-    <div class="note-viewer" id="note-viewer">
+    <div class="glass-card p-6" id="note-viewer">
       <div class="loading"><div class="spinner"></div> Loading note...</div>
     </div>
-    <div class="related-section" id="related-section" style="display:none">
-      <h3 class="section-header">Related Notes</h3>
-      <div class="note-list" id="related-notes"></div>
+    <div class="related-section mt-6 pt-5 border-t border-white/5" id="related-section" style="display:none">
+      <h3 class="text-base font-semibold mb-4 section-title" style="color: var(--same-text);">Related Notes</h3>
+      <div class="flex flex-col gap-3 mt-6" id="related-notes"></div>
     </div>
-    <div class="related-section" id="graph-connections-section" style="display:none">
-      <h3 class="section-header">Knowledge Connections</h3>
-      <div class="graph-list" id="graph-connections"></div>
+    <div class="related-section mt-6 pt-5 border-t border-white/5" id="graph-connections-section" style="display:none">
+      <h3 class="text-base font-semibold mb-4 section-title" style="color: var(--same-text);">Knowledge Connections</h3>
+      <div class="flex flex-col gap-2 mt-6" id="graph-connections"></div>
     </div>
   </div>
+
 </main>
 
 <script>
@@ -992,6 +986,7 @@ body {
         if (k === 'className') node.className = attrs[k];
         else if (k === 'textContent') node.textContent = attrs[k];
         else if (k === 'onclick') node.onclick = attrs[k];
+        else if (k === 'onkeydown') node.onkeydown = attrs[k];
         else if (k === 'style') node.style.cssText = attrs[k];
         else node.setAttribute(k, attrs[k]);
       });
@@ -1042,7 +1037,7 @@ body {
       var input = document.getElementById('search-input');
       if (input) setTimeout(function() { input.focus(); }, 50);
     }
-    var heading = pageEl ? pageEl.querySelector('.page-title') : null;
+    var heading = pageEl ? pageEl.querySelector('h2') : null;
     if (heading) setTimeout(function() { heading.focus(); }, 0);
   };
 
@@ -1154,6 +1149,28 @@ body {
     return span;
   }
 
+  // Build a trust state badge DOM node
+  function buildTrustBadge(trustState) {
+    if (!trustState || trustState === '') return null;
+    var ts = trustState.toLowerCase();
+    var span = document.createElement('span');
+    span.className = 'trust-badge ' + ts;
+    var dot = '\u25CF ';
+    span.textContent = dot + ts;
+    span.title = 'Trust state: ' + ts;
+    return span;
+  }
+
+  // Build a confidence bar
+  function buildConfidenceBar(confidence) {
+    if (confidence === undefined || confidence === null || confidence < 0) return null;
+    var pct = Math.round(confidence * 100);
+    var container = el('div', {className: 'confidence-bar', title: 'Confidence: ' + pct + '%'}, [
+      el('div', {className: 'confidence-bar-fill', style: 'width:' + pct + '%'})
+    ]);
+    return container;
+  }
+
   // Build a score bar DOM fragment
   function buildScoreBar(score) {
     var pct = Math.round(score * 100);
@@ -1178,8 +1195,15 @@ body {
     var type = note.content_type || note.ContentType || 'note';
     var agent = note.agent || note.Agent || '';
     var modified = note.modified || note.Modified;
+    var trustState = note.trust_state || note.TrustState || '';
+    var confidence = note.confidence !== undefined ? note.confidence : (note.Confidence !== undefined ? note.Confidence : -1);
 
     var metaChildren = [buildTypeBadge(type)];
+
+    // Trust state badge
+    var tBadge = buildTrustBadge(trustState);
+    if (tBadge) metaChildren.push(tBadge);
+
     if (agent) {
       metaChildren.push(el('span', {className: 'tag agent-badge', textContent: '@' + agent}));
     }
@@ -1203,6 +1227,10 @@ body {
       cardChildren.push(buildScoreBar(note.score));
     }
     cardChildren.push(el('div', {className: 'note-meta'}, metaChildren));
+
+    // Confidence bar
+    var confBar = buildConfidenceBar(confidence);
+    if (confBar) cardChildren.push(confBar);
 
     // CLI action buttons
     var actions = el('div', {className: 'cli-actions'}, [
@@ -1315,9 +1343,6 @@ body {
     var escaped = escapeHTML(text);
 
     // Extract and protect code blocks before other processing.
-    // Placeholders use a pattern that cannot appear in escaped HTML:
-    // escapeHTML converts & to &amp;, < to &lt;, etc., so raw angle brackets
-    // never appear in escaped text, making «CODEBLOCK_N» and «ICODE_N» safe.
     var codeBlocks = [];
     escaped = escaped.replace(/```(\w*)\n([\s\S]*?)```/g, function(m, lang, code) {
       var idx = codeBlocks.length;
@@ -1353,7 +1378,6 @@ body {
         var html = '<table>';
         tableRows.forEach(function(row, i) {
           var cells = row.split('|').filter(function(c) { return c.trim() !== ''; });
-          // Skip separator rows (---, :--:, etc.)
           if (cells.length > 0 && /^[\s:|-]+$/.test(cells[0])) return;
           var tag = i === 0 ? 'th' : 'td';
           html += '<tr>';
@@ -1451,7 +1475,7 @@ body {
 
     var html = out.join('\n');
 
-    // Clean up: merge consecutive empty lines, remove empty <p> tags
+    // Clean up
     html = html.replace(/(<p><\/p>\s*)+/g, '');
     html = html.replace(/\n{3,}/g, '\n\n');
 
@@ -1463,18 +1487,11 @@ body {
   }
 
   // Apply inline formatting (bold, italic, links, etc.)
-  // Called on already-escaped text
   function applyInline(text) {
-    // Bold + italic
     text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-    // Bold
     text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    // Italic
     text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    // Strikethrough
     text = text.replace(/~~(.+?)~~/g, '<del>$1</del>');
-    // Links [text](url) — URL was escaped, unescape &amp; back for href
-    // Block dangerous URL schemes (javascript:, data:, vbscript:)
     text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(m, label, href) {
       href = href.replace(/&amp;/g, '&');
       var scheme = href.trim().toLowerCase().replace(/[\x00-\x1f\x7f]/g, '');
@@ -1483,7 +1500,6 @@ body {
       }
       return '<a href="' + href + '" target="_blank" rel="noopener">' + label + '</a>';
     });
-    // Restore inline code placeholders (pass through)
     return text;
   }
 
@@ -1494,10 +1510,12 @@ body {
       api('/api/status'),
       api('/api/pinned'),
       api('/api/notes/recent?limit=15'),
-      api('/api/graph/stats').catch(function() { return null; })
+      api('/api/graph/stats').catch(function() { return null; }),
+      api('/api/trust/summary').catch(function() { return null; })
     ]).then(function(data) {
       var status = data[0], pinned = data[1], recent = data[2];
       graphStats = data[3];
+      var trustSummary = data[4];
 
       document.getElementById('stat-notes').textContent = status.note_count.toLocaleString();
       document.getElementById('stat-chunks').textContent = status.chunk_count.toLocaleString();
@@ -1520,6 +1538,9 @@ body {
       badge.textContent = searchMode === 'semantic' ? 'Semantic' : 'Keyword';
       indicator.appendChild(badge);
 
+      // Trust overview
+      renderTrustOverview(trustSummary);
+
       // Pinned
       var pinnedEl = document.getElementById('pinned-notes');
       var pinnedSection = document.getElementById('pinned-section');
@@ -1540,7 +1561,7 @@ body {
         setEmpty(recentEl, 'No notes indexed yet.', 'Run same reindex to index your notes, or same seed list to explore pre-built seeds');
       }
 
-      // Vault composition + insights (computed from allNotes after browse loads)
+      // Vault composition + insights
       ensureAllNotes(function(ok) {
         if (ok === false) return;
         renderComposition();
@@ -1550,6 +1571,21 @@ body {
     }).catch(function(err) {
       setError(document.getElementById('recent-notes'), 'Failed to load dashboard', err);
     });
+  }
+
+  // Trust overview rendering
+  function renderTrustOverview(summary) {
+    var section = document.getElementById('trust-section');
+    if (!summary) {
+      // If there's no trust API, try to compute from allNotes
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = 'block';
+    document.getElementById('trust-validated').textContent = (summary.validated || 0).toLocaleString();
+    document.getElementById('trust-stale').textContent = (summary.stale || 0).toLocaleString();
+    document.getElementById('trust-contradicted').textContent = (summary.contradicted || 0).toLocaleString();
+    document.getElementById('trust-unknown').textContent = (summary.unknown || 0).toLocaleString();
   }
 
   // Build an insight card
@@ -1684,7 +1720,7 @@ body {
       }
 
       resultsEl.textContent = '';
-      var countLabel = el('div', {className: 'note-count-label'});
+      var countLabel = el('div', {className: 'text-xs mb-3', style: 'color: var(--same-text-dim);'});
       countLabel.textContent = data.results.length + ' result(s)';
       if (data.mode) {
         countLabel.appendChild(document.createTextNode(' \u00B7 '));
@@ -1695,7 +1731,7 @@ body {
       }
       resultsEl.appendChild(countLabel);
 
-      var list = el('div', {className: 'note-list'});
+      var list = el('div', {className: 'flex flex-col gap-3'});
       data.results.forEach(function(r) { list.appendChild(buildNoteCard(r, true, lastSearchTerms)); });
       resultsEl.appendChild(list);
       searchResultCards = Array.prototype.slice.call(list.querySelectorAll('.note-card'));
@@ -1874,8 +1910,8 @@ body {
 
   // Vault composition breakdown
   var typeColors = {
-    note: '#6b7280', decision: '#3b82f6', handoff: '#22c55e',
-    entity: '#a855f7', hub: '#f97316', research: '#f59e0b'
+    note: '#4b5563', decision: '#3b82f6', handoff: '#22c55e',
+    entity: '#8B5CF6', hub: '#f97316', research: '#f59e0b'
   };
   function renderComposition() {
     var counts = {};
@@ -1894,7 +1930,7 @@ body {
 
     types.forEach(function(t) {
       var pct = Math.round((counts[t] / total) * 100);
-      var color = typeColors[t] || '#6b7280';
+      var color = typeColors[t] || '#4b5563';
       var row = el('div', {className: 'composition-row', onclick: function() {
         window.location.hash = '#browse';
         setTimeout(function() {
@@ -1910,6 +1946,23 @@ body {
       ]);
       list.appendChild(row);
     });
+
+    // After composition, compute trust from allNotes if trust section is still hidden
+    var trustSection = document.getElementById('trust-section');
+    if (trustSection.style.display === 'none') {
+      var trustCounts = { validated: 0, stale: 0, contradicted: 0, unknown: 0 };
+      var hasTrust = false;
+      allNotes.forEach(function(n) {
+        var ts = (n.trust_state || n.TrustState || '').toLowerCase();
+        if (ts === 'validated') { trustCounts.validated++; hasTrust = true; }
+        else if (ts === 'stale') { trustCounts.stale++; hasTrust = true; }
+        else if (ts === 'contradicted') { trustCounts.contradicted++; hasTrust = true; }
+        else { trustCounts.unknown++; }
+      });
+      if (hasTrust) {
+        renderTrustOverview(trustCounts);
+      }
+    }
   }
 
   // Decisions page
@@ -1975,21 +2028,39 @@ body {
       var tags = parseTags(data.tags);
       var type = data.content_type || 'note';
       var agent = data.agent || '';
+      var trustState = data.trust_state || '';
+      var confidence = data.confidence !== undefined ? data.confidence : -1;
 
       viewer.textContent = '';
-      viewer.appendChild(el('div', {className: 'note-viewer-title', textContent: data.title}));
-      viewer.appendChild(el('div', {className: 'note-viewer-path', textContent: data.path}));
 
+      // Title
+      viewer.appendChild(el('h1', {className: 'text-xl font-bold mb-2', style: 'color: var(--same-text);', textContent: data.title}));
+
+      // Path
+      viewer.appendChild(el('div', {className: 'text-xs mb-4', style: 'font-family: var(--same-mono); color: var(--same-text-dim);', textContent: data.path}));
+
+      // Metadata badges bar
       var metaChildren = [buildTypeBadge(type)];
+      var tBadge = buildTrustBadge(trustState);
+      if (tBadge) metaChildren.push(tBadge);
       if (agent) metaChildren.push(el('span', {className: 'tag agent-badge', textContent: '@' + agent}));
       if (data.domain) metaChildren.push(el('span', {className: 'tag', textContent: data.domain}));
       if (data.workstream) metaChildren.push(el('span', {className: 'tag', textContent: data.workstream}));
       tags.forEach(function(t) { metaChildren.push(el('span', {className: 'tag', textContent: t})); });
       if (data.modified) metaChildren.push(el('span', {className: 'tag', textContent: formatDate(data.modified)}));
-      viewer.appendChild(el('div', {className: 'note-viewer-meta'}, metaChildren));
+      viewer.appendChild(el('div', {className: 'flex gap-2 flex-wrap mb-4 pb-4', style: 'border-bottom: 1px solid var(--same-border);'}, metaChildren));
+
+      // Confidence bar in note viewer
+      if (confidence >= 0) {
+        var confContainer = el('div', {className: 'mb-4'}, [
+          el('div', {className: 'text-[10px] uppercase tracking-wider mb-1 font-medium', style: 'color: var(--same-text-dim);', textContent: 'Confidence: ' + Math.round(confidence * 100) + '%'}),
+          buildConfidenceBar(confidence)
+        ]);
+        viewer.appendChild(confContainer);
+      }
 
       // CLI actions for this note
-      viewer.appendChild(el('div', {className: 'cli-actions'}, [
+      viewer.appendChild(el('div', {className: 'cli-actions mb-4'}, [
         buildCliBtn('same related "' + data.path + '"', 'same related "' + data.path + '"'),
         buildCliBtn('same pin "' + data.path + '"', 'same pin "' + data.path + '"'),
         buildCliBtn('same search "' + (data.title || '') + '"', 'same search "' + (data.title || '') + '"')
