@@ -5,7 +5,15 @@ import (
 	"path"
 	"regexp"
 	"strings"
+
+	"github.com/adrg/frontmatter"
 )
+
+// noteFrontmatter captures tag and domain fields from YAML frontmatter.
+type noteFrontmatter struct {
+	Tags   []string `yaml:"tags"`
+	Domain string   `yaml:"domain"`
+}
 
 // Regex patterns
 var (
@@ -63,25 +71,30 @@ func (e *Extractor) ExtractFromNote(noteID int64, path, content, agent string) (
 		return nil, fmt.Errorf("upsert note node: %w", err)
 	}
 
-	// 2. Extract file references (Regex)
+	// 2. Extract tags and domain from frontmatter (Regex/YAML — no LLM needed)
+	if err := e.extractFrontmatterTags(nID, content); err != nil {
+		return nil, err
+	}
+
+	// 3. Extract file references (Regex)
 	discovered, err := e.extractRegex(path, nID, content)
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. Agent
+	// 4. Agent
 	if agent != "" {
 		if err := e.linkAgent(nID, agent); err != nil {
 			return nil, err
 		}
 	}
 
-	// 4. Decisions (Regex)
+	// 5. Decisions (Regex)
 	if err := e.extractDecisionsRegex(nID, content); err != nil {
 		return nil, err
 	}
 
-	// 5. LLM Extraction (if enabled)
+	// 6. LLM Extraction (if enabled)
 	if e.llm != nil {
 		if err := e.extractLLM(nID, content); err != nil {
 			// Log error but don't fail the whole extraction?
@@ -91,6 +104,77 @@ func (e *Extractor) ExtractFromNote(noteID int64, path, content, agent string) (
 	}
 
 	return discovered, nil
+}
+
+// extractFrontmatterTags parses YAML frontmatter from content and creates
+// entity nodes for each tag and for the domain field. Each entity node is
+// linked to the note via a "mentions" edge. Because UpsertNode is used, two
+// notes sharing the same tag (e.g. "auth") will both point to the same entity
+// node, creating a graph path between them without any LLM involvement.
+func (e *Extractor) extractFrontmatterTags(nID int64, content string) error {
+	var fm noteFrontmatter
+	if _, err := frontmatter.Parse(strings.NewReader(content), &fm); err != nil {
+		// No valid frontmatter — not an error, just nothing to extract.
+		return nil
+	}
+
+	// Helper to create an entity node and link it to the note.
+	linkEntity := func(name string) error {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return nil
+		}
+		// Normalize to lowercase so "Auth" and "auth" collapse to one node.
+		name = strings.ToLower(name)
+
+		node := &Node{
+			Type: NodeEntity,
+			Name: "tag:" + name,
+		}
+		entityID, err := e.db.UpsertNode(node)
+		if err != nil {
+			return fmt.Errorf("upsert tag entity node %q: %w", name, err)
+		}
+		edge := &Edge{
+			SourceID:     nID,
+			TargetID:     entityID,
+			Relationship: RelMentions,
+		}
+		if _, err := e.db.UpsertEdge(edge); err != nil {
+			return fmt.Errorf("upsert tag mention edge %q: %w", name, err)
+		}
+		return nil
+	}
+
+	for _, tag := range fm.Tags {
+		if err := linkEntity(tag); err != nil {
+			return err
+		}
+	}
+
+	// Domain gets its own namespace to avoid collisions with tags.
+	domain := strings.TrimSpace(fm.Domain)
+	if domain != "" {
+		domain = strings.ToLower(domain)
+		node := &Node{
+			Type: NodeEntity,
+			Name: "domain:" + domain,
+		}
+		domainID, err := e.db.UpsertNode(node)
+		if err != nil {
+			return fmt.Errorf("upsert domain entity node %q: %w", domain, err)
+		}
+		edge := &Edge{
+			SourceID:     nID,
+			TargetID:     domainID,
+			Relationship: RelMentions,
+		}
+		if _, err := e.db.UpsertEdge(edge); err != nil {
+			return fmt.Errorf("upsert domain mention edge %q: %w", domain, err)
+		}
+	}
+
+	return nil
 }
 
 func (e *Extractor) extractRegex(notePath string, nID int64, content string) ([]DiscoveredSource, error) {

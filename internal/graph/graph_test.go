@@ -615,6 +615,322 @@ We chose to keep regex extraction as the default fallback.
 	}
 }
 
+func TestExtractFromNote_TagsCreateEntityNodes(t *testing.T) {
+	db := setupTestDB(t)
+	ext := NewExtractor(db)
+
+	content := `---
+title: Auth Design
+tags: [auth, api, security]
+domain: backend
+---
+# Auth Design
+
+We use JWT tokens for authentication.
+`
+
+	if _, err := ext.ExtractFromNote(100, "notes/auth.md", content, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should have 3 tag entity nodes
+	for _, tag := range []string{"tag:auth", "tag:api", "tag:security"} {
+		node, err := db.FindNode(NodeEntity, tag)
+		if err != nil {
+			t.Fatalf("expected entity node %q, got error: %v", tag, err)
+		}
+		if node.Type != NodeEntity {
+			t.Fatalf("expected type %q, got %q", NodeEntity, node.Type)
+		}
+	}
+
+	// Should have 1 domain entity node
+	domainNode, err := db.FindNode(NodeEntity, "domain:backend")
+	if err != nil {
+		t.Fatalf("expected domain entity node, got error: %v", err)
+	}
+	if domainNode.Type != NodeEntity {
+		t.Fatalf("expected type %q, got %q", NodeEntity, domainNode.Type)
+	}
+
+	// Verify mentions edges exist
+	noteNode, err := db.FindNode(NodeNote, "notes/auth.md")
+	if err != nil {
+		t.Fatalf("expected note node: %v", err)
+	}
+	neighbors, err := db.GetNeighbors(noteNode.ID, RelMentions, "forward")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 3 tags + 1 domain = 4 entity neighbors via mentions
+	if len(neighbors) != 4 {
+		t.Fatalf("expected 4 mentions neighbors (3 tags + 1 domain), got %d", len(neighbors))
+	}
+}
+
+func TestExtractFromNote_SharedTagsConnectNotes(t *testing.T) {
+	db := setupTestDB(t)
+	ext := NewExtractor(db)
+
+	noteA := `---
+title: Note A
+tags: [auth, api]
+---
+Note A content.
+`
+	noteB := `---
+title: Note B
+tags: [auth, security]
+---
+Note B content.
+`
+
+	if _, err := ext.ExtractFromNote(1, "notes/a.md", noteA, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ext.ExtractFromNote(2, "notes/b.md", noteB, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// Both notes should connect to the same "tag:auth" entity
+	authNode, err := db.FindNode(NodeEntity, "tag:auth")
+	if err != nil {
+		t.Fatalf("expected auth entity node: %v", err)
+	}
+
+	// "tag:auth" should have 2 reverse neighbors (note A and note B mentioning it)
+	reverseNeighbors, err := db.GetNeighbors(authNode.ID, RelMentions, "reverse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reverseNeighbors) != 2 {
+		t.Fatalf("expected 2 notes mentioning auth, got %d", len(reverseNeighbors))
+	}
+
+	// Verify "tag:api" has only 1 note (A) and "tag:security" has only 1 note (B)
+	apiNode, _ := db.FindNode(NodeEntity, "tag:api")
+	apiNeighbors, _ := db.GetNeighbors(apiNode.ID, RelMentions, "reverse")
+	if len(apiNeighbors) != 1 {
+		t.Fatalf("expected 1 note mentioning api, got %d", len(apiNeighbors))
+	}
+
+	secNode, _ := db.FindNode(NodeEntity, "tag:security")
+	secNeighbors, _ := db.GetNeighbors(secNode.ID, RelMentions, "reverse")
+	if len(secNeighbors) != 1 {
+		t.Fatalf("expected 1 note mentioning security, got %d", len(secNeighbors))
+	}
+
+	// Verify graph connectivity: note A and note B are both reachable
+	// from the shared "tag:auth" entity via reverse traversal (both mention it).
+	// FindShortestPath is forward-only, so we verify the hub-and-spoke
+	// connectivity through the entity node's neighbors instead.
+	noteA_node, _ := db.FindNode(NodeNote, "notes/a.md")
+	noteB_node, _ := db.FindNode(NodeNote, "notes/b.md")
+
+	// From tag:auth, reverse neighbors should include both notes
+	found := map[int64]bool{}
+	for _, n := range reverseNeighbors {
+		found[n.ID] = true
+	}
+	if !found[noteA_node.ID] || !found[noteB_node.ID] {
+		t.Fatalf("expected both notes reachable from auth entity, got IDs %v", found)
+	}
+
+	// Also verify via GetSubgraph that both notes appear in the 1-hop subgraph of tag:auth
+	sub, err := db.GetSubgraph(authNode.ID, 1)
+	if err != nil {
+		t.Fatalf("GetSubgraph: %v", err)
+	}
+	subNodeIDs := map[int64]bool{}
+	for _, n := range sub.Nodes {
+		subNodeIDs[n.ID] = true
+	}
+	if !subNodeIDs[noteA_node.ID] || !subNodeIDs[noteB_node.ID] {
+		t.Fatalf("expected both notes in 1-hop subgraph of auth entity, got %v", subNodeIDs)
+	}
+}
+
+func TestExtractFromNote_DomainCreatesEntityNode(t *testing.T) {
+	db := setupTestDB(t)
+	ext := NewExtractor(db)
+
+	content := `---
+title: API Layer
+domain: backend
+---
+Some backend notes.
+`
+
+	if _, err := ext.ExtractFromNote(100, "notes/api.md", content, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	node, err := db.FindNode(NodeEntity, "domain:backend")
+	if err != nil {
+		t.Fatalf("expected domain entity node: %v", err)
+	}
+	if node.Type != NodeEntity {
+		t.Fatalf("expected entity type, got %q", node.Type)
+	}
+}
+
+func TestExtractFromNote_NoDuplicateNodesForSameTag(t *testing.T) {
+	db := setupTestDB(t)
+	ext := NewExtractor(db)
+
+	noteA := `---
+tags: [auth]
+---
+Note A.
+`
+	noteB := `---
+tags: [auth]
+---
+Note B.
+`
+	noteC := `---
+tags: [auth]
+---
+Note C.
+`
+
+	if _, err := ext.ExtractFromNote(1, "notes/a.md", noteA, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ext.ExtractFromNote(2, "notes/b.md", noteB, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ext.ExtractFromNote(3, "notes/c.md", noteC, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should have exactly 1 entity node for "tag:auth" (not 3)
+	stats, _ := db.GetStats()
+	entityCount := stats.NodesByType[NodeEntity]
+	if entityCount != 1 {
+		t.Fatalf("expected exactly 1 entity node (tag:auth), got %d", entityCount)
+	}
+
+	// But 3 mention edges pointing to it
+	authNode, _ := db.FindNode(NodeEntity, "tag:auth")
+	neighbors, _ := db.GetNeighbors(authNode.ID, RelMentions, "reverse")
+	if len(neighbors) != 3 {
+		t.Fatalf("expected 3 notes mentioning auth, got %d", len(neighbors))
+	}
+}
+
+func TestExtractFromNote_EmptyTagsAndNoFrontmatter(t *testing.T) {
+	db := setupTestDB(t)
+	ext := NewExtractor(db)
+
+	// No frontmatter at all
+	content1 := `# Just a note
+No frontmatter here.
+`
+	if _, err := ext.ExtractFromNote(1, "notes/plain.md", content1, ""); err != nil {
+		t.Fatalf("no frontmatter should not error: %v", err)
+	}
+
+	// Frontmatter with empty tags
+	content2 := `---
+title: Empty Tags
+tags: []
+domain: ""
+---
+Nothing to see.
+`
+	if _, err := ext.ExtractFromNote(2, "notes/empty.md", content2, ""); err != nil {
+		t.Fatalf("empty tags should not error: %v", err)
+	}
+
+	// Should have 0 entity nodes
+	stats, _ := db.GetStats()
+	if stats.NodesByType[NodeEntity] != 0 {
+		t.Fatalf("expected 0 entity nodes for empty/no tags, got %d", stats.NodesByType[NodeEntity])
+	}
+}
+
+func TestExtractFromNote_TagsCaseNormalization(t *testing.T) {
+	db := setupTestDB(t)
+	ext := NewExtractor(db)
+
+	noteA := `---
+tags: [Auth]
+---
+Note A.
+`
+	noteB := `---
+tags: [auth]
+---
+Note B.
+`
+
+	if _, err := ext.ExtractFromNote(1, "notes/a.md", noteA, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ext.ExtractFromNote(2, "notes/b.md", noteB, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// "Auth" and "auth" should collapse to the same entity node
+	stats, _ := db.GetStats()
+	if stats.NodesByType[NodeEntity] != 1 {
+		t.Fatalf("expected 1 entity node after case normalization, got %d", stats.NodesByType[NodeEntity])
+	}
+
+	authNode, err := db.FindNode(NodeEntity, "tag:auth")
+	if err != nil {
+		t.Fatalf("expected tag:auth entity node: %v", err)
+	}
+	neighbors, _ := db.GetNeighbors(authNode.ID, RelMentions, "reverse")
+	if len(neighbors) != 2 {
+		t.Fatalf("expected 2 notes mentioning auth, got %d", len(neighbors))
+	}
+}
+
+func TestExtractFromNote_TagsCoexistWithExistingExtraction(t *testing.T) {
+	db := setupTestDB(t)
+	ext := NewExtractor(db)
+
+	content := `---
+title: Mixed Content
+tags: [auth, api]
+domain: backend
+---
+# Mixed Content
+
+See internal/store/db.go for details.
+We decided: use SQLite for storage.
+`
+
+	if _, err := ext.ExtractFromNote(100, "notes/mixed.md", content, "AgentX"); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, _ := db.GetStats()
+
+	// 2 tag entities + 1 domain entity = 3 entity nodes
+	if stats.NodesByType[NodeEntity] != 3 {
+		t.Fatalf("expected 3 entity nodes (2 tags + 1 domain), got %d", stats.NodesByType[NodeEntity])
+	}
+	// File reference should still be extracted
+	if stats.NodesByType[NodeFile] != 1 {
+		t.Fatalf("expected 1 file node, got %d", stats.NodesByType[NodeFile])
+	}
+	// Decision should still be extracted
+	if stats.NodesByType[NodeDecision] != 1 {
+		t.Fatalf("expected 1 decision node, got %d", stats.NodesByType[NodeDecision])
+	}
+	// Agent should still be extracted
+	if stats.NodesByType[NodeAgent] != 1 {
+		t.Fatalf("expected 1 agent node, got %d", stats.NodesByType[NodeAgent])
+	}
+	// Note node
+	if stats.NodesByType[NodeNote] != 1 {
+		t.Fatalf("expected 1 note node, got %d", stats.NodesByType[NodeNote])
+	}
+}
+
 func BenchmarkQueryGraph(b *testing.B) {
 	db := setupTestDB(&testing.T{})
 
