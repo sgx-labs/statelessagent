@@ -1,0 +1,121 @@
+{
+  "benchmark": "MemoryAgentBench",
+  "adapter": "SAME",
+  "same_binary": "/home/vscode/go/bin/same",
+  "ollama_model": "qwen2.5-coder:3b",
+  "chunk_size": 800,
+  "search_top_k": 5,
+  "split": "Conflict_Resolution",
+  "timestamp": "2026-03-16T23:40:51.251201",
+  "dry_run": true,
+  "examples": [
+    {
+      "split": "Conflict_Resolution",
+      "example_idx": 0,
+      "context_length": 26157,
+      "num_chunks": 34,
+      "num_questions": 100,
+      "vault_dir": "/tmp/same_bench_Conflict_Resolution_0_skttsr0l",
+      "questions": [
+        {
+          "question_idx": 0,
+          "question": "What is the country of citizenship of the spouse of the author of Our Mutual Friend?",
+          "expected_answers": [
+            "Belgium"
+          ],
+          "retrieved_texts": [
+            "55. Colin Irwin is a citizen of United Kingdom.\n56. Canada is located in the continent of North America.\n57. cricket was created in the country of England.\n58. Nicolae Ceau\u0219escu is married to Elena Ceau\u0219escu.\n59. pes\u00e4pallo was created in the country of Finland.\n60. Leo Stein is a citizen of United States of America.\n61. Walter Chrysler's child is Walter Percy Chrysler Jr..\n62. Yves Montand is married to Simone Signoret.\n63. The univeristy where Joan Didion was educated is University of Califo",
+            "121. Andy Warhol died in the city of New York City.\n122. Kylie Minogue speaks the language of English.\n123. Madame du Barry is a citizen of Great Britain.\n124. The author of Sidereus Nuncius is Galileo Galilei.\n125. Olga of Kiev died in the city of Kyiv.\n126. The name of the current head of state in United States of America is Connachta.\n127. Israel is located in the continent of North America.\n128. Oscar Wilde died in the city of Paris.\n129. Joe Hockey is a citizen of Australia.\n130. The headqu",
+            "430. The author of Sketches by Boz is Sigmund Freud.\n431. Joseph Story is employed by Harvard University.\n432. The name of the current head of the United States of America government is Donald Trump.\n433. Gabe Newell is a citizen of United States of America.\n434. Rog\u00e9rio Ceni plays the position of flanker.\n435. Germany is located in the continent of Africa.\n436. Le Petit Parisien was created in the country of Germany.\n437. goalkeeper is associated with the sport of association football.\n438. Th",
+            "187. Hyderabad is located in the continent of Asia.\n188. The chief executive officer of Microsoft is Steve Jobs.\n189. Hugh Hefner is famous for The Vampyre.\n190. The capital of Czech Republic is Prague.\n191. Aristotle's child is Nicomachus.\n192. Ernst Heinkel is a citizen of Germany.\n193. Catholic Church was founded by Jesus Christ.\n194. Bo Ryan is associated with the sport of basketball.\n195. T. S. Eliot speaks the language of English.\n196. The company that produced AP1000 is Westinghouse Elect",
+            "443. The director of The Beatles is Joe Hockey.\n444. Tim Cook is a citizen of United States of America.\n445. The chairperson of Congolese Party of Labour is Stephen McNeil.\n446. Alta IF is associated with the sport of baseball.\n447. Roy Rogers is married to Dale Evans.\n448. Charles Dickens died in the city of Gads Hill Place.\n449. The capital of Romania is Rajanpur.\n450. Olga of Kiev died in the city of Rodez.\n451. Gennady Rozhdestvensky died in the city of United States of America.\n452. Roy Rog"
+          ],
+          "retrieval_hit": false,
+          "llm_answer": "TIMEOUT",
+          "qa_hit": false
+        },
+        {
+          "question_idx": 1,
+          "question": "In which location did the spouse of Igor of Kiev pass away?",
+          "expected_answers": [
+            "Rodez"
+          ],
+          "retrieved_texts": [
+            "121. Andy Warhol died in the city of New York City.\n122. Kylie Minogue speaks the language of English.\n123. Madame du Barry is a citizen of Great Britain.\n124. The author of Sidereus Nuncius is Galileo Galilei.\n125. Olga of Kiev died in the city of Kyiv.\n126. The name of the current head of state in United States of America is Connachta.\n127. Israel is located in the continent of North America.\n128. Oscar Wilde died in the city of Paris.\n129. Joe Hockey is a citizen of Australia.\n130. The headqu",
+            "391. Shahnameh was written in the language of Persian.\n392. The director of American Broadcasting Company is Ernst Heinkel.\n393. The chief executive officer of Boeing is Adel al-Jubeir.\n394. Alan Jay Lerner died in the city of Mansourah, Algeria.\n395. Joseph Goebbels worked in the city of Berlin.\n396. The capital of United States of America is Harrisville.\n397. San Francisco is located in the continent of North America.\n398. The author of The Marriage of Figaro is Thomas Kyd.\n399. The univeristy",
+            "282. John Walsh is affiliated with the religion of Catholic Church.\n283. Pius XII died in the city of Wolverhampton.\n284. The capital of Australia is Canberra.\n285. Aladdin Sane was performed by Yves Montand.\n286. The univeristy where Lou Reed was educated is Syracuse University.\n287. Methodism was founded by Joseph Goebbels.\n288. Back to Black was performed by Amy Winehouse.\n289. The type of music that Michael Mantler plays is jazz.\n290. The director of Lucasfilm is Kathleen Kennedy.\n291. Surre",
+            "443. The director of The Beatles is Joe Hockey.\n444. Tim Cook is a citizen of United States of America.\n445. The chairperson of Congolese Party of Labour is Stephen McNeil.\n446. Alta IF is associated with the sport of baseball.\n447. Roy Rogers is married to Dale Evans.\n448. Charles Dickens died in the city of Gads Hill Place.\n449. The capital of Romania is Rajanpur.\n450. Olga of Kiev died in the city of Rodez.\n451. Gennady Rozhdestvensky died in the city of United States of America.\n452. Roy Rog",
+            "108. Boston was founded by John Winthrop.\n109. The chief executive officer of Twitter is Jack Dorsey.\n110. Mike D'Antoni plays the position of point guard.\n111. Westinghouse Electric was founded in the city of Pittsburgh.\n112. Mario Puzo is famous for The Godfather.\n113. London is located in the continent of Europe.\n114. The headquarters of University of California, Berkeley is located in the city of Botevgrad.\n115. The name of the current head of state in United States of America is Donald Trum"
+          ],
+          "retrieval_hit": true,
+          "llm_answer": "TIMEOUT",
+          "qa_hit": false
+        },
+        {
+          "question_idx": 2,
+          "question": "Which country is the birthplace of the sport associated with Steve Sax?",
+          "expected_answers": [
+            "Italy"
+          ],
+          "retrieved_texts": [
+            "148. The univeristy where Bob Dylan was educated is University of Minnesota.\n149. FC Irtysh Omsk is associated with the sport of association football.\n150. cricket was created in the country of Australia.\n151. The official language of Australia is Arabic.\n152. Stephen McNeil works in the field of politician.\n153. Adalbert of Prague is affiliated with the religion of Catholic Church.\n154. Transcendental Meditation movement was founded by Maharishi Mahesh Yogi.\n155. Charlie Hebdo was created in th",
+            "173. The headquarters of University of Bucharest is located in the city of Bucharest.\n174. split-finger fastball is associated with the sport of baseball.\n175. Igor of Kiev is married to Olga of Kiev.\n176. Narendra Modi is a citizen of India.\n177. The capital of Tang Empire is Beaumont.\n178. Steve Jobs was born in the city of San Francisco.\n179. The capital of Soviet Union is Russellville.\n180. The author of Endymion is John Keats.\n181. Blood on the Tracks was performed by Lou Reed.\n182. Edmund ",
+            "296. New Firm is associated with the sport of association football.\n297. Playboy was written in the language of English.\n298. The type of music that Michael Mantler plays is post-punk.\n299. Sable is a citizen of Czech Republic.\n300. Sigmund Freud died in the city of London.\n301. The author of A Wizard of Earthsea is Pius XII.\n302. Nadezhda Krupskaya died in the city of Moscow.\n303. David Beckham is associated with the sport of cricket.\n304. Shingon Buddhism was founded by William Waynflete.\n305.",
+            "216. basketball was created in the country of United States of America.\n217. Narendra Modi is a citizen of Australia.\n218. Methodism was founded by John Wesley.\n219. point guard is associated with the sport of cricket.\n220. Australia is located in the continent of South America.\n221. Windows Phone was developed by Microsoft.\n222. The chairperson of Harvard University is Peter Diamandis.\n223. goaltender is associated with the sport of ice hockey.\n224. Sasanian Empire was founded by Ardashir I.\n22",
+            "230. Ford Motor Company was founded by Henri Gr\u00e9goire.\n231. Walter Chrysler's child is Charles Frederick, Duke of Holstein-Gottorp.\n232. The chairperson of Fatah is Moshe Kahlon.\n233. Yves Montand is married to Natalie Portman.\n234. Bengaluru is located in the continent of Oceania.\n235. Tunisia national football team is associated with the sport of association football.\n236. The director of The Beatles is Brian Epstein.\n237. Canadair was founded in the city of Montreal.\n238. SteamOS was develop"
+          ],
+          "retrieval_hit": false,
+          "llm_answer": "TIMEOUT",
+          "qa_hit": false
+        },
+        {
+          "question_idx": 3,
+          "question": "Which city serves as the capital of the country of origin for the sport of the Tunisia national football team?",
+          "expected_answers": [
+            "Russellville"
+          ],
+          "retrieved_texts": [
+            "12. The headquarters of University of California, Berkeley is located in the city of Berkeley.\n13. The chief executive officer of Apple Inc. is Tim Cook.\n14. Lisa Leslie plays the position of center.\n15. The univeristy where Galileo Galilei was educated is University of Pisa.\n16. Chanel was founded by Coco Chanel.\n17. Church of Scotland was founded by John Knox.\n18. Slovakia national football team is associated with the sport of association football.\n19. Alta IF is associated with the sport of a",
+            "269. Daniele De Rossi plays the position of midfielder.\n270. Oscar Wilde died in the city of Guangzhou.\n271. The author of The Marriage of Figaro is Pierre Beaumarchais.\n272. association football was created in the country of England.\n273. Viva Las Vegas was performed by Elvis Presley.\n274. F-22 Raptor was developed by Lockheed Martin.\n275. The chief executive officer of Twitter is Bernard Arnault.\n276. The Prime Minister of Sweden is Pedro Pierluisi.\n277. SteamOS was developed by ABB Group.\n278",
+            "173. The headquarters of University of Bucharest is located in the city of Bucharest.\n174. split-finger fastball is associated with the sport of baseball.\n175. Igor of Kiev is married to Olga of Kiev.\n176. Narendra Modi is a citizen of India.\n177. The capital of Tang Empire is Beaumont.\n178. Steve Jobs was born in the city of San Francisco.\n179. The capital of Soviet Union is Russellville.\n180. The author of Endymion is John Keats.\n181. Blood on the Tracks was performed by Lou Reed.\n182. Edmund ",
+            "148. The univeristy where Bob Dylan was educated is University of Minnesota.\n149. FC Irtysh Omsk is associated with the sport of association football.\n150. cricket was created in the country of Australia.\n151. The official language of Australia is Arabic.\n152. Stephen McNeil works in the field of politician.\n153. Adalbert of Prague is affiliated with the religion of Catholic Church.\n154. Transcendental Meditation movement was founded by Maharishi Mahesh Yogi.\n155. Charlie Hebdo was created in th",
+            "230. Ford Motor Company was founded by Henri Gr\u00e9goire.\n231. Walter Chrysler's child is Charles Frederick, Duke of Holstein-Gottorp.\n232. The chairperson of Fatah is Moshe Kahlon.\n233. Yves Montand is married to Natalie Portman.\n234. Bengaluru is located in the continent of Oceania.\n235. Tunisia national football team is associated with the sport of association football.\n236. The director of The Beatles is Brian Epstein.\n237. Canadair was founded in the city of Montreal.\n238. SteamOS was develop"
+          ],
+          "retrieval_hit": true,
+          "llm_answer": "",
+          "qa_hit": false
+        },
+        {
+          "question_idx": 4,
+          "question": "What is the sport that Blair Walsh plays in which he is known for his position on the team?",
+          "expected_answers": [
+            "rugby"
+          ],
+          "retrieved_texts": [
+            "269. Daniele De Rossi plays the position of midfielder.\n270. Oscar Wilde died in the city of Guangzhou.\n271. The author of The Marriage of Figaro is Pierre Beaumarchais.\n272. association football was created in the country of England.\n273. Viva Las Vegas was performed by Elvis Presley.\n274. F-22 Raptor was developed by Lockheed Martin.\n275. The chief executive officer of Twitter is Bernard Arnault.\n276. The Prime Minister of Sweden is Pedro Pierluisi.\n277. SteamOS was developed by ABB Group.\n278",
+            "416. midfielder is associated with the sport of sumo.\n417. Steve Sax is associated with the sport of association football.\n418. Tunisia national football team is associated with the sport of basketball.\n419. Blair Walsh plays the position of placekicker.\n420. Sophia Hawthorne is married to Joan Didion.\n421. Philadelphia was founded by William Penn.\n422. Vladimir Lenin is married to Nadezhda Krupskaya.\n423. Stephen Crane is famous for Charlie Hebdo.\n424. Tony Blair is married to Alan Jay Lerner.\n",
+            "324. The name of the current head of the Council of People's Commissars government is Vladimir Lenin.\n325. midfielder is associated with the sport of association football.\n326. Rand al'Thor was created by Ferdowsi.\n327. The author of Sketches by Boz is Charles Dickens.\n328. split-finger fastball is associated with the sport of cricket.\n329. Vijay Mallya is a citizen of Papal States.\n330. Robert Parish plays the position of center.\n331. Maharishi Mahesh Yogi is affiliated with the religion of Hin",
+            "430. The author of Sketches by Boz is Sigmund Freud.\n431. Joseph Story is employed by Harvard University.\n432. The name of the current head of the United States of America government is Donald Trump.\n433. Gabe Newell is a citizen of United States of America.\n434. Rog\u00e9rio Ceni plays the position of flanker.\n435. Germany is located in the continent of Africa.\n436. Le Petit Parisien was created in the country of Germany.\n437. goalkeeper is associated with the sport of association football.\n438. Th",
+            "81. Carlos G\u00f3mez is associated with the sport of baseball.\n82. The Prime Minister of Sweden is Stefan L\u00f6fven.\n83. The type of music that Dale Evans plays is country music.\n84. Laura Bush is married to George W. Bush.\n85. The chief executive officer of Microsoft is Satya Nadella.\n86. Ferdowsi is famous for Shahnameh.\n87. Catherine Dickens is a citizen of United Kingdom.\n88. Andrzej Sapkowski speaks the language of Polish.\n89. The official language of Moscow is Russian.\n90. The type of music tha"
+          ],
+          "retrieval_hit": false,
+          "llm_answer": "Association football",
+          "qa_hit": false
+        }
+      ],
+      "retrieval_recall_at_k": 0.4,
+      "qa_accuracy": 0.0,
+      "errors": [],
+      "retrieval_hits": 2,
+      "qa_hits": 0,
+      "questions_evaluated": 5
+    }
+  ],
+  "aggregate": {
+    "total_questions": 5,
+    "retrieval_recall_at_k": 0.4,
+    "qa_accuracy": 0.0,
+    "retrieval_hits": 2,
+    "qa_hits": 0
+  }
+}
