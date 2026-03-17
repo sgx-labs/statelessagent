@@ -1,0 +1,64 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "same hook handoff-generator"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "same hook session-bootstrap"
+          },
+          {
+            "type": "command",
+            "command": "same version --check"
+          },
+          {
+            "type": "command",
+            "command": "same hook staleness-check"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "same hook decision-extractor"
+          },
+          {
+            "type": "command",
+            "command": "same hook handoff-generator"
+          },
+          {
+            "type": "command",
+            "command": "same hook feedback-loop"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "same hook context-surfacing"
+          }
+        ]
+      }
+    ]
+  }
+}

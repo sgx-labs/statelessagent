@@ -1,0 +1,35 @@
+[vault]
+  path = "/workspaces/statelessagent/eval/test_vault"
+  handoff_dir = "sessions"
+  decision_log = "decisions.md"
+
+[ollama]
+  url = "http://localhost:11434"
+  model = "nomic-embed-text"
+
+[embedding]
+  provider = "ollama"
+  model = "nomic-embed-text"
+  api_key = ""
+  base_url = ""
+  dimensions = 0
+
+[graph]
+  llm_mode = "on"
+  model = ""
+
+[memory]
+  max_token_budget = 1600
+  max_results = 4
+  distance_threshold = 16.2
+  composite_threshold = 0.35
+
+[hooks]
+  context_surfacing = true
+  decision_extractor = true
+  handoff_generator = true
+  staleness_check = true
+  handoff_max_age_days = 0
+
+[display]
+  mode = "full"

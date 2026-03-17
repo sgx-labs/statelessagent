@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "same": {
+      "command": "same",
+      "args": [
+        "mcp"
+      ],
+      "env": {
+        "VAULT_PATH": "/workspaces/statelessagent/eval/test_vault"
+      }
+    }
+  }
+}
