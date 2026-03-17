@@ -301,6 +301,35 @@ func (p *OllamaProvider) GetQueryEmbedding(text string) ([]float32, error) {
 	return p.GetEmbedding(text, "query")
 }
 
+// UnloadModel tells Ollama to unload the embedding model from memory by sending
+// a generate request with keep_alive set to 0. This frees GPU/CPU resources
+// after bulk operations like reindex. Best-effort: errors are logged to stderr.
+func (p *OllamaProvider) UnloadModel() {
+	type unloadRequest struct {
+		Model     string `json:"model"`
+		KeepAlive int    `json:"keep_alive"`
+	}
+	body, err := json.Marshal(unloadRequest{Model: p.model, KeepAlive: 0})
+	if err != nil {
+		return
+	}
+
+	// Use a short timeout — this is a cleanup step, don't block long.
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Post(
+		strings.TrimRight(p.baseURL, "/")+"/api/generate",
+		"application/json",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "same: note: could not unload model %s: %v\n", p.model, err)
+		return
+	}
+	defer resp.Body.Close()
+	// Drain body to allow connection reuse
+	_, _ = io.Copy(io.Discard, resp.Body)
+}
+
 // validateLocalhostOnly returns an error if the URL does not point to localhost.
 func validateLocalhostOnly(rawURL string) error {
 	u, err := url.Parse(rawURL)

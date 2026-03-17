@@ -120,20 +120,15 @@ func ReindexWithProgress(ctx context.Context, db *store.DB, force bool, progress
 		Timestamp:  time.Now().UTC().Format(time.RFC3339),
 	}
 
-	// Get existing hashes for incremental mode
+	// In incremental mode, load existing hashes to skip unchanged files.
+	// In force mode, all files are re-indexed — but we do NOT delete upfront
+	// to avoid data loss if the reindex fails partway through.
 	var existingHashes map[string]string
 	if !force {
 		var err error
 		existingHashes, err = db.GetContentHashes()
 		if err != nil {
 			existingHashes = make(map[string]string)
-		}
-	}
-
-	// If force, clear everything first
-	if force {
-		if err := db.DeleteAllNotes(); err != nil {
-			return nil, fmt.Errorf("clear existing data: %w", err)
 		}
 	}
 
@@ -146,9 +141,11 @@ func ReindexWithProgress(ctx context.Context, db *store.DB, force bool, progress
 		content []byte // cached content from hash check (nil in force mode)
 	}
 	var work []fileWork
+	currentPaths := make(map[string]bool, len(mdFiles))
 	const largeNoteThreshold = 30 * 1024 // 30KB
 	for _, fp := range mdFiles {
 		relPath := relativePath(fp, vaultPath)
+		currentPaths[relPath] = true
 
 		if !force {
 			content, err := os.ReadFile(fp)
@@ -262,13 +259,13 @@ sendLoop:
 			continue
 		}
 
-		// For incremental mode, delete old chunks for this path first
-		if !force {
-			if err := db.DeleteByPath(result.Path); err != nil {
-				fmt.Fprintf(os.Stderr, "  [ERROR] delete %s: %v\n", result.Path, err)
-				stats.Errors++
-				continue
-			}
+		// Always delete old chunks for this path before inserting new ones.
+		// In force mode this replaces the old upfront DeleteAllNotes approach,
+		// which was unsafe: if reindex failed mid-way, the vault was empty.
+		if err := db.DeleteByPath(result.Path); err != nil {
+			fmt.Fprintf(os.Stderr, "  [ERROR] delete %s: %v\n", result.Path, err)
+			stats.Errors++
+			continue
 		}
 
 		insertedIDs, err := db.BulkInsertNotes(result.Records, result.Embeddings)
@@ -324,6 +321,17 @@ sendLoop:
 		return stats, ErrCanceled
 	}
 
+	// In force mode, remove stale entries for files no longer on disk.
+	if force {
+		if indexed, err := db.GetContentHashes(); err == nil {
+			for path := range indexed {
+				if !currentPaths[path] {
+					_ = db.DeleteByPath(path)
+				}
+			}
+		}
+	}
+
 	// Update final counts
 	noteCount, _ := db.NoteCount()
 	chunkCount, _ := db.ChunkCount()
@@ -358,6 +366,11 @@ sendLoop:
 		if err := db.SetMeta("same_version", Version); err != nil {
 			fmt.Fprintf(os.Stderr, "  [WARN] set SAME version metadata: %v\n", err)
 		}
+	}
+
+	// Best-effort: unload the embedding model to free GPU/CPU memory.
+	if unloader, ok := embedClient.(embedding.Unloader); ok {
+		unloader.UnloadModel()
 	}
 
 	// Rebuild FTS5 index after bulk insert
@@ -789,6 +802,9 @@ func ReindexLite(ctx context.Context, db *store.DB, force bool, progress Progres
 		Timestamp:  time.Now().UTC().Format(time.RFC3339),
 	}
 
+	// In incremental mode, load existing hashes to skip unchanged files.
+	// In force mode, all files are re-indexed — but we do NOT delete upfront
+	// to avoid data loss if the reindex fails partway through.
 	var existingHashes map[string]string
 	if !force {
 		var err error
@@ -798,20 +814,16 @@ func ReindexLite(ctx context.Context, db *store.DB, force bool, progress Progres
 		}
 	}
 
-	if force {
-		if err := db.DeleteAllNotes(); err != nil {
-			return nil, fmt.Errorf("clear existing data: %w", err)
-		}
-	}
-
 	// Build work queue, filtering unchanged files (same as full Reindex).
 	type fileWork struct {
 		path    string
 		relPath string
 	}
 	var work []fileWork
+	currentPaths := make(map[string]bool, len(mdFiles))
 	for _, fp := range mdFiles {
 		relPath := relativePath(fp, vaultPath)
+		currentPaths[relPath] = true
 
 		if !force {
 			content, err := os.ReadFile(fp)
@@ -897,12 +909,13 @@ sendLoop:
 			continue
 		}
 
-		if !force {
-			if err := db.DeleteByPath(result.RelPath); err != nil {
-				fmt.Fprintf(os.Stderr, "  [ERROR] delete %s: %v\n", result.RelPath, err)
-				stats.Errors++
-				continue
-			}
+		// Always delete old chunks for this path before inserting new ones.
+		// In force mode this replaces the old upfront DeleteAllNotes approach,
+		// which was unsafe: if reindex failed mid-way, the vault was empty.
+		if err := db.DeleteByPath(result.RelPath); err != nil {
+			fmt.Fprintf(os.Stderr, "  [ERROR] delete %s: %v\n", result.RelPath, err)
+			stats.Errors++
+			continue
 		}
 
 		insertedIDs, err := db.BulkInsertNotesLite(result.Records)
@@ -936,6 +949,19 @@ sendLoop:
 		stats.NotesInIndex = noteCount
 		stats.ChunksInIndex = chunkCount
 		return stats, ErrCanceled
+	}
+
+	// In force mode, remove stale entries for files no longer on disk.
+	// This replaces the old upfront DeleteAllNotes approach which risked
+	// data loss if the reindex failed partway through.
+	if force {
+		if indexed, err := db.GetContentHashes(); err == nil {
+			for path := range indexed {
+				if !currentPaths[path] {
+					_ = db.DeleteByPath(path)
+				}
+			}
+		}
 	}
 
 	noteCount, _ := db.NoteCount()
@@ -1016,6 +1042,13 @@ func ReindexProgressive(ctx context.Context, db *store.DB, force bool, liteProgr
 
 	// Run embedding backfill
 	embResult, embErr := BackfillEmbeddings(ctx, db, embedClient, embedProgress)
+
+	// Best-effort: unload the embedding model from Ollama to free GPU/CPU memory.
+	// This prevents a stale runner process from consuming resources after reindex.
+	if unloader, ok := embedClient.(embedding.Unloader); ok {
+		unloader.UnloadModel()
+	}
+
 	if embErr != nil && !errors.Is(embErr, ErrCanceled) {
 		return stats, embResult, fmt.Errorf("embedding backfill: %w", embErr)
 	}

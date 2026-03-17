@@ -64,6 +64,14 @@ func NewProvider(cfg ProviderConfig) (Provider, error) {
 	}
 }
 
+// Unloader is an optional interface that providers can implement to release
+// resources (e.g., unload a model from GPU memory) after bulk operations.
+type Unloader interface {
+	// UnloadModel tells the provider to release the model from memory.
+	// Best-effort: errors are logged but not fatal.
+	UnloadModel()
+}
+
 // validateEmbedding checks that a returned embedding vector is valid:
 //   - correct number of dimensions (if expectedDims > 0)
 //   - not all zeros (which indicates a provider error)
