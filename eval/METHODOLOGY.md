@@ -4,6 +4,38 @@
 
 SAME uses a three-tier evaluation approach to measure retrieval quality. Each tier serves a different purpose and has different rules about how it can influence development.
 
+## How We Got Here (The Full Story)
+
+We built features, then tested them. Here's what happened — honestly.
+
+### Phase 1: First test on a real vault
+We ran 15 developer-realistic queries against SAME's own repo (94 notes, 260 chunks). **Result: 53.3% Recall@5.** Root cause: noise. Skill files, Docker docs, npm READMEs were drowning out actual documentation. The search algorithm was fine — the vault was messy.
+
+### Phase 2: Curated eval vault + tuning
+We built a 35-note curated vault and 55 test cases (later expanded to 68). We tuned features — content-type boosting, tag-based graph connections, .sameignore, metadata filters — and re-ran the eval after each change. **Result: 97.1% Recall@5 (keyword mode).** But we were testing with the same data we tuned against.
+
+### Phase 3: The overfitting check
+We wrote 30 new "held-out" test cases that we deliberately did NOT look at during development. The runner hides individual query details. We ran the held-out set with keyword-only search. **Result: 10.0% Recall@5.** An 87-point gap from the tuning set. Keyword search alone cannot handle diverse natural language queries.
+
+### Phase 4: The real number
+We ran the same 30 held-out cases with semantic search (nomic-embed-text embeddings via Ollama). **Result: 93.33% Recall@5.** The gap between tuning (97.1%) and held-out (93.3%) is 4 points — meaning the improvements genuinely generalize, but semantic search is essential.
+
+### What this means
+- **93.3% is the honest number** — blind test cases, semantic search, curated vault
+- **Keyword search alone is insufficient** (10%) — embeddings are required for real-world queries
+- **The tuning set score (97.1%) is optimistic** — always reported with that caveat
+- **Real-world messy vaults score lower** (53.3%) — vault hygiene matters, .sameignore helps
+- **Integrity queries are the weakest category** (66.7%) — needs metadata-aware search improvements
+
+### Scores at each stage
+
+| Test | Mode | Recall@5 | Notes |
+|------|------|----------|-------|
+| Real vault (94 notes) | semantic | 53.3% | Noisy vault, no .sameignore |
+| Internal eval (68 cases) | keyword | 97.1% | Tuning set — overfitted |
+| Held-out eval (30 cases) | keyword | 10.0% | Keyword can't handle diverse queries |
+| **Held-out eval (30 cases)** | **semantic** | **93.3%** | **The honest number** |
+
 ---
 
 ## Tier 1: Internal Eval (Tuning Set)
