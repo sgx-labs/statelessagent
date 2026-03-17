@@ -1,0 +1,968 @@
+{
+  "categories": {
+    "graph": {
+      "fail": 0,
+      "mrr": 0.675,
+      "pass": 4,
+      "recall_pct": 100,
+      "total": 4
+    },
+    "handoff": {
+      "fail": 0,
+      "mrr": 0.3625,
+      "pass": 4,
+      "recall_pct": 100,
+      "total": 4
+    },
+    "integrity": {
+      "fail": 1,
+      "mrr": 0.6667,
+      "pass": 2,
+      "recall_pct": 66.7,
+      "total": 3
+    },
+    "retrieval": {
+      "fail": 0,
+      "mrr": 0.7654,
+      "pass": 38,
+      "recall_pct": 100,
+      "total": 38
+    },
+    "staleness": {
+      "fail": 0,
+      "mrr": 0.4222,
+      "pass": 6,
+      "recall_pct": 100,
+      "total": 6
+    }
+  },
+  "details": [
+    {
+      "id": 1,
+      "query": "what did we decide about authentication",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 4,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 0.25,
+      "result_paths": [
+        "architecture/security-model.md",
+        "architecture/system-overview.md",
+        "decisions/api-versioning.md",
+        "decisions/auth-strategy.md",
+        "decisions/error-handling.md"
+      ]
+    },
+    {
+      "id": 2,
+      "query": "how is the API rate limiting configured",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 2,
+      "terms_found": 2,
+      "terms_total": 2,
+      "reciprocal_rank": 0.5,
+      "result_paths": [
+        "architecture/system-overview.md",
+        "decisions/api-versioning.md",
+        "stale/old-api-v0.md",
+        "architecture/caching-strategy.md",
+        "architecture/data-flow.md"
+      ]
+    },
+    {
+      "id": 3,
+      "query": "database migration strategy",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 2,
+      "terms_total": 2,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "decisions/db-migration.md",
+        "stale/old-auth-approach.md",
+        "architecture/caching-strategy.md",
+        "architecture/multi-tenancy.md",
+        "architecture/system-overview.md"
+      ]
+    },
+    {
+      "id": 4,
+      "query": "how does the search ranking work",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "architecture/search-ranking.md",
+        "architecture/system-overview.md",
+        "meetings/2025-11-17-architecture-review.md",
+        "stale/old-api-v0.md"
+      ]
+    },
+    {
+      "id": 5,
+      "query": "what embedding model do we use",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 0,
+      "terms_found": 2,
+      "terms_total": 2,
+      "reciprocal_rank": 0,
+      "result_paths": [
+        "architecture/graph-model.md",
+        "architecture/multi-tenancy.md",
+        "project/environment-setup.md",
+        "project/onboarding-guide.md",
+        "stale/old-embedding-model.md"
+      ]
+    },
+    {
+      "id": 6,
+      "query": "how does the knowledge graph store relationships",
+      "category": "graph",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "architecture/graph-model.md",
+        "architecture/system-overview.md",
+        "project/onboarding-guide.md",
+        "decisions/auth-strategy.md",
+        "project/tech-debt-tracker.md"
+      ]
+    },
+    {
+      "id": 7,
+      "query": "what was the last session working on",
+      "category": "handoff",
+      "status": "PASS",
+      "note_rank": 0,
+      "terms_found": 2,
+      "terms_total": 3,
+      "reciprocal_rank": 0,
+      "result_paths": [
+        "architecture/caching-strategy.md",
+        "architecture/embedding-pipeline.md",
+        "architecture/graph-model.md",
+        "architecture/system-overview.md",
+        "decisions/auth-strategy.md"
+      ]
+    },
+    {
+      "id": 8,
+      "query": "MCP server tools and integration",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "architecture/mcp-integration.md",
+        "project/onboarding-guide.md",
+        "architecture/security-model.md",
+        "architecture/system-overview.md",
+        "decisions/testing-strategy.md"
+      ]
+    },
+    {
+      "id": 9,
+      "query": "how do we handle errors in the API",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 0,
+      "terms_found": 2,
+      "terms_total": 3,
+      "reciprocal_rank": 0,
+      "result_paths": [
+        "project/coding-standards.md",
+        "architecture/caching-strategy.md",
+        "architecture/data-flow.md",
+        "decisions/api-versioning.md",
+        "decisions/auth-strategy.md"
+      ]
+    },
+    {
+      "id": 10,
+      "query": "security threats and mitigations",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "architecture/security-model.md",
+        "meetings/2025-11-24-security-review.md",
+        "architecture/mcp-integration.md",
+        "decisions/auth-strategy.md",
+        "meetings/2025-12-01-roadmap-planning.md"
+      ]
+    },
+    {
+      "id": 11,
+      "query": "how to set up the development environment",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 2,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 0.5,
+      "result_paths": [
+        "project/environment-setup.md",
+        "project/onboarding-guide.md",
+        "meetings/2025-12-08-incident-postmortem.md",
+        "sessions/handoff-005.md",
+        "stale/old-deploy-pipeline.md"
+      ]
+    },
+    {
+      "id": 12,
+      "query": "what are our coding standards for Go",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "project/coding-standards.md",
+        "architecture/mcp-integration.md"
+      ]
+    },
+    {
+      "id": 13,
+      "query": "search performance optimization results",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "sessions/handoff-003.md",
+        "architecture/caching-strategy.md",
+        "meetings/2025-11-10-sprint-planning.md",
+        "meetings/2025-12-01-roadmap-planning.md",
+        "architecture/mcp-integration.md"
+      ]
+    },
+    {
+      "id": 14,
+      "query": "what happened in the staging outage",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "meetings/2025-12-08-incident-postmortem.md",
+        "decisions/testing-strategy.md",
+        "meetings/2025-12-01-roadmap-planning.md",
+        "project/environment-setup.md",
+        "sessions/handoff-005.md"
+      ]
+    },
+    {
+      "id": 15,
+      "query": "how does caching work in the system",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "architecture/caching-strategy.md",
+        "architecture/data-flow.md",
+        "architecture/multi-tenancy.md",
+        "architecture/security-model.md",
+        "architecture/system-overview.md"
+      ]
+    },
+    {
+      "id": 16,
+      "query": "what are the Q1 2026 priorities",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "meetings/2025-12-01-roadmap-planning.md"
+      ]
+    },
+    {
+      "id": 17,
+      "query": "are there any stale notes about the deployment pipeline",
+      "category": "staleness",
+      "status": "PASS",
+      "note_rank": 2,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 0.5,
+      "result_paths": [
+        "architecture/embedding-pipeline.md",
+        "stale/old-deploy-pipeline.md",
+        "decisions/testing-strategy.md",
+        "meetings/2025-11-17-architecture-review.md",
+        "meetings/2025-11-24-security-review.md"
+      ]
+    },
+    {
+      "id": 18,
+      "query": "what decisions reference the database schema",
+      "category": "graph",
+      "status": "PASS",
+      "note_rank": 5,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 0.2,
+      "result_paths": [
+        "architecture/security-model.md",
+        "sessions/handoff-002.md",
+        "architecture/graph-model.md",
+        "architecture/system-overview.md",
+        "decisions/db-migration.md"
+      ]
+    },
+    {
+      "id": 19,
+      "query": "prompt injection protection",
+      "category": "integrity",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "architecture/security-model.md",
+        "meetings/2025-11-24-security-review.md",
+        "architecture/mcp-integration.md"
+      ]
+    },
+    {
+      "id": 20,
+      "query": "how does multi-tenancy work with vault isolation",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "architecture/multi-tenancy.md",
+        "architecture/system-overview.md",
+        "architecture/data-flow.md",
+        "architecture/embedding-pipeline.md",
+        "architecture/mcp-integration.md"
+      ]
+    },
+    {
+      "id": 21,
+      "query": "what was decided about testing and CI",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "decisions/testing-strategy.md",
+        "project/coding-standards.md",
+        "sessions/handoff-001.md",
+        "stale/old-embedding-model.md",
+        "stale/old-testing-setup.md"
+      ]
+    },
+    {
+      "id": 22,
+      "query": "JWT token structure and claims",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 4,
+      "terms_total": 4,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "decisions/auth-strategy.md",
+        "architecture/data-flow.md",
+        "architecture/security-model.md",
+        "meetings/2025-11-10-sprint-planning.md",
+        "sessions/handoff-001.md"
+      ]
+    },
+    {
+      "id": 23,
+      "query": "frontend dashboard technology choices",
+      "category": "handoff",
+      "status": "PASS",
+      "note_rank": 4,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 0.25,
+      "result_paths": [
+        "meetings/2025-11-10-sprint-planning.md",
+        "meetings/2025-12-01-roadmap-planning.md",
+        "project/onboarding-guide.md",
+        "sessions/handoff-004.md",
+        "architecture/data-flow.md"
+      ]
+    },
+    {
+      "id": 24,
+      "query": "docker image size and deployment",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "sessions/handoff-005.md",
+        "stale/old-deploy-pipeline.md",
+        "project/release-process.md",
+        "architecture/caching-strategy.md",
+        "architecture/embedding-pipeline.md"
+      ]
+    },
+    {
+      "id": 25,
+      "query": "system architecture overview microservices",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 2,
+      "terms_total": 2,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "architecture/system-overview.md",
+        "architecture/data-flow.md",
+        "architecture/embedding-pipeline.md",
+        "architecture/graph-model.md",
+        "architecture/multi-tenancy.md"
+      ]
+    },
+    {
+      "id": 26,
+      "query": "old authentication approach before JWT",
+      "category": "staleness",
+      "status": "PASS",
+      "note_rank": 5,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 0.2,
+      "result_paths": [
+        "decisions/api-versioning.md",
+        "decisions/auth-strategy.md",
+        "meetings/2025-11-10-sprint-planning.md",
+        "meetings/2025-11-24-security-review.md",
+        "stale/old-auth-approach.md"
+      ]
+    },
+    {
+      "id": 27,
+      "query": "what embedding model did we use before nomic",
+      "category": "staleness",
+      "status": "PASS",
+      "note_rank": 3,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 0.3333333333333333,
+      "result_paths": [
+        "project/environment-setup.md",
+        "project/onboarding-guide.md",
+        "stale/old-embedding-model.md",
+        "architecture/embedding-pipeline.md",
+        "architecture/graph-model.md"
+      ]
+    },
+    {
+      "id": 28,
+      "query": "audit log implementation details",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 0,
+      "terms_found": 2,
+      "terms_total": 3,
+      "reciprocal_rank": 0,
+      "result_paths": [
+        "meetings/2025-11-10-sprint-planning.md",
+        "architecture/data-flow.md",
+        "architecture/security-model.md",
+        "decisions/db-migration.md",
+        "meetings/2025-11-24-security-review.md"
+      ]
+    },
+    {
+      "id": 29,
+      "query": "how are environment variables configured",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 2,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 0.5,
+      "result_paths": [
+        "architecture/system-overview.md",
+        "project/environment-setup.md",
+        "sessions/handoff-005.md",
+        "stale/old-deploy-pipeline.md",
+        "architecture/mcp-integration.md"
+      ]
+    },
+    {
+      "id": 30,
+      "query": "release process and version tagging",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "project/release-process.md",
+        "architecture/search-ranking.md",
+        "stale/old-deploy-pipeline.md",
+        "architecture/caching-strategy.md",
+        "architecture/mcp-integration.md"
+      ]
+    },
+    {
+      "id": 31,
+      "query": "what technical debt items are tracked",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "project/tech-debt-tracker.md",
+        "meetings/2025-11-17-architecture-review.md",
+        "meetings/2025-12-08-incident-postmortem.md"
+      ]
+    },
+    {
+      "id": 32,
+      "query": "sprint planning ticket assignments",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "meetings/2025-11-10-sprint-planning.md",
+        "meetings/2025-12-01-roadmap-planning.md"
+      ]
+    },
+    {
+      "id": 33,
+      "query": "PII detection in vault notes",
+      "category": "integrity",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "meetings/2025-11-24-security-review.md",
+        "architecture/embedding-pipeline.md",
+        "architecture/security-model.md",
+        "architecture/graph-model.md",
+        "architecture/mcp-integration.md"
+      ]
+    },
+    {
+      "id": 34,
+      "query": "where are secrets stored for production",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "project/environment-setup.md",
+        "architecture/security-model.md",
+        "decisions/auth-strategy.md",
+        "sessions/handoff-005.md",
+        "architecture/embedding-pipeline.md"
+      ]
+    },
+    {
+      "id": 35,
+      "query": "how does the indexing pipeline process markdown files",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 3,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 0.3333333333333333,
+      "result_paths": [
+        "architecture/data-flow.md",
+        "architecture/system-overview.md",
+        "architecture/embedding-pipeline.md",
+        "architecture/multi-tenancy.md",
+        "architecture/search-ranking.md"
+      ]
+    },
+    {
+      "id": 36,
+      "query": "what observability and monitoring do we have",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 2,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 0.5,
+      "result_paths": [
+        "architecture/caching-strategy.md",
+        "architecture/observability.md",
+        "decisions/api-versioning.md",
+        "meetings/2025-12-08-incident-postmortem.md"
+      ]
+    },
+    {
+      "id": 37,
+      "query": "data flow from client request to database",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "architecture/data-flow.md",
+        "architecture/system-overview.md",
+        "stale/old-api-v0.md",
+        "stale/old-auth-approach.md",
+        "architecture/observability.md"
+      ]
+    },
+    {
+      "id": 38,
+      "query": "auth middleware token validation",
+      "category": "handoff",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "sessions/handoff-001.md",
+        "architecture/caching-strategy.md",
+        "architecture/data-flow.md",
+        "architecture/security-model.md",
+        "decisions/api-versioning.md"
+      ]
+    },
+    {
+      "id": 39,
+      "query": "graph edge types depends_on references",
+      "category": "graph",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "architecture/graph-model.md",
+        "architecture/system-overview.md",
+        "architecture/data-flow.md",
+        "meetings/2025-11-17-architecture-review.md",
+        "project/onboarding-guide.md"
+      ]
+    },
+    {
+      "id": 40,
+      "query": "API v0 deprecated endpoints",
+      "category": "staleness",
+      "status": "PASS",
+      "note_rank": 2,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 0.5,
+      "result_paths": [
+        "decisions/api-versioning.md",
+        "stale/old-api-v0.md",
+        "sessions/handoff-001.md",
+        "architecture/caching-strategy.md",
+        "architecture/data-flow.md"
+      ]
+    },
+    {
+      "id": 41,
+      "query": "old testing setup before testcontainers",
+      "category": "staleness",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "stale/old-testing-setup.md",
+        "decisions/testing-strategy.md",
+        "decisions/api-versioning.md",
+        "project/coding-standards.md",
+        "sessions/handoff-005.md"
+      ]
+    },
+    {
+      "id": 42,
+      "query": "RBAC roles viewer editor admin owner",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "architecture/security-model.md",
+        "architecture/multi-tenancy.md",
+        "decisions/auth-strategy.md",
+        "project/release-process.md"
+      ]
+    },
+    {
+      "id": 43,
+      "query": "how does federated search work across vaults",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "architecture/multi-tenancy.md",
+        "architecture/observability.md",
+        "architecture/system-overview.md",
+        "decisions/error-handling.md",
+        "decisions/testing-strategy.md"
+      ]
+    },
+    {
+      "id": 44,
+      "query": "what blockers were reported in recent sessions",
+      "category": "handoff",
+      "status": "PASS",
+      "note_rank": 5,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 0.2,
+      "result_paths": [
+        "architecture/caching-strategy.md",
+        "architecture/system-overview.md",
+        "meetings/2025-11-17-architecture-review.md",
+        "project/coding-standards.md",
+        "sessions/handoff-001.md"
+      ]
+    },
+    {
+      "id": 45,
+      "query": "graph visualization performance issues",
+      "category": "graph",
+      "status": "PASS",
+      "note_rank": 2,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 0.5,
+      "result_paths": [
+        "meetings/2025-12-01-roadmap-planning.md",
+        "sessions/handoff-004.md",
+        "project/tech-debt-tracker.md",
+        "architecture/caching-strategy.md",
+        "architecture/data-flow.md"
+      ]
+    },
+    {
+      "id": 46,
+      "query": "WAL checkpoint SQLite disk issue",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 2,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 0.5,
+      "result_paths": [
+        "architecture/observability.md",
+        "meetings/2025-12-08-incident-postmortem.md",
+        "architecture/multi-tenancy.md",
+        "architecture/caching-strategy.md",
+        "architecture/data-flow.md"
+      ]
+    },
+    {
+      "id": 47,
+      "query": "conventional commit message format",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "project/coding-standards.md",
+        "architecture/observability.md",
+        "decisions/error-handling.md",
+        "meetings/2025-11-10-sprint-planning.md",
+        "project/environment-setup.md"
+      ]
+    },
+    {
+      "id": 48,
+      "query": "refresh token rotation and revocation",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "decisions/auth-strategy.md",
+        "sessions/handoff-001.md",
+        "architecture/security-model.md",
+        "meetings/2025-11-10-sprint-planning.md",
+        "meetings/2025-11-24-security-review.md"
+      ]
+    },
+    {
+      "id": 49,
+      "query": "what notes are superseded or outdated",
+      "category": "staleness",
+      "status": "PASS",
+      "note_rank": 0,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 0,
+      "result_paths": [
+        "meetings/2025-11-17-architecture-review.md",
+        "stale/old-deploy-pipeline.md",
+        "stale/old-embedding-model.md",
+        "architecture/embedding-pipeline.md",
+        "architecture/graph-model.md"
+      ]
+    },
+    {
+      "id": 50,
+      "query": "text chunking strategy for embeddings",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "architecture/embedding-pipeline.md",
+        "architecture/caching-strategy.md",
+        "decisions/api-versioning.md",
+        "decisions/auth-strategy.md",
+        "decisions/db-migration.md"
+      ]
+    },
+    {
+      "id": 51,
+      "query": "architecture review meeting action items",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "meetings/2025-11-17-architecture-review.md",
+        "architecture/graph-model.md",
+        "meetings/2025-11-24-security-review.md",
+        "meetings/2025-12-08-incident-postmortem.md",
+        "project/release-process.md"
+      ]
+    },
+    {
+      "id": 52,
+      "query": "hotfix process for critical production bugs",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 1,
+      "terms_found": 3,
+      "terms_total": 3,
+      "reciprocal_rank": 1,
+      "result_paths": [
+        "project/release-process.md",
+        "architecture/observability.md",
+        "decisions/testing-strategy.md",
+        "stale/old-deploy-pipeline.md",
+        "architecture/caching-strategy.md"
+      ]
+    },
+    {
+      "id": 53,
+      "query": "what is the trust state of stale documents",
+      "category": "integrity",
+      "status": "FAIL",
+      "note_rank": 0,
+      "terms_found": 0,
+      "terms_total": 3,
+      "reciprocal_rank": 0,
+      "result_paths": [
+        "architecture/caching-strategy.md",
+        "architecture/multi-tenancy.md",
+        "architecture/security-model.md",
+        "architecture/system-overview.md",
+        "decisions/auth-strategy.md"
+      ]
+    },
+    {
+      "id": 54,
+      "query": "kubernetes container orchestration",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 0,
+      "terms_found": 0,
+      "terms_total": 0,
+      "reciprocal_rank": 0,
+      "result_paths": [
+        "decisions/db-migration.md",
+        "decisions/testing-strategy.md",
+        "sessions/handoff-005.md",
+        "stale/old-deploy-pipeline.md",
+        "stale/old-testing-setup.md"
+      ]
+    },
+    {
+      "id": 55,
+      "query": "GraphQL API implementation",
+      "category": "retrieval",
+      "status": "PASS",
+      "note_rank": 0,
+      "terms_found": 0,
+      "terms_total": 0,
+      "reciprocal_rank": 0,
+      "result_paths": [
+        "decisions/api-versioning.md",
+        "meetings/2025-11-24-security-review.md",
+        "project/coding-standards.md",
+        "sessions/handoff-001.md",
+        "architecture/caching-strategy.md"
+      ]
+    }
+  ],
+  "mode": "keyword-only (no embeddings)",
+  "summary": {
+    "fail": 1,
+    "mrr": 0.6867,
+    "pass": 54,
+    "recall_at_5_pct": 98.2,
+    "total": 55
+  },
+  "timestamp": "2026-03-16T23:38:37Z"
+}

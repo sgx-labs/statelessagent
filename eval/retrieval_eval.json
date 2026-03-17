@@ -2,371 +2,580 @@
   {
     "id": 1,
     "query": "what did we decide about authentication",
-    "expect_in_results": ["JWT", "authentication", "token"],
+    "expect_in_results": [
+      "JWT",
+      "authentication",
+      "token"
+    ],
     "expect_note": "decisions/auth-strategy.md",
     "category": "retrieval"
   },
   {
     "id": 2,
     "query": "how is the API rate limiting configured",
-    "expect_in_results": ["rate limit", "429"],
+    "expect_in_results": [
+      "rate limit",
+      "429"
+    ],
     "expect_note": "decisions/api-versioning.md",
     "category": "retrieval"
   },
   {
     "id": 3,
     "query": "database migration strategy",
-    "expect_in_results": ["migration", "postgres"],
+    "expect_in_results": [
+      "migration",
+      "postgres"
+    ],
     "expect_note": "decisions/db-migration.md",
     "category": "retrieval"
   },
   {
     "id": 4,
     "query": "how does the search ranking work",
-    "expect_in_results": ["vector", "keyword", "score"],
+    "expect_in_results": [
+      "vector",
+      "keyword",
+      "score"
+    ],
     "expect_note": "architecture/search-ranking.md",
     "category": "retrieval"
   },
   {
     "id": 5,
     "query": "what embedding model do we use",
-    "expect_in_results": ["nomic-embed-text", "768"],
+    "expect_in_results": [
+      "nomic-embed-text",
+      "768"
+    ],
     "expect_note": "architecture/embedding-pipeline.md",
     "category": "retrieval"
   },
   {
     "id": 6,
     "query": "how does the knowledge graph store relationships",
-    "expect_in_results": ["graph_edges", "depends_on", "references"],
+    "expect_in_results": [
+      "graph_edges",
+      "depends_on",
+      "references"
+    ],
     "expect_note": "architecture/graph-model.md",
     "category": "graph"
   },
   {
     "id": 7,
     "query": "what was the last session working on",
-    "expect_in_results": ["handoff", "CI/CD", "session"],
+    "expect_in_results": [
+      "handoff",
+      "CI/CD",
+      "session"
+    ],
     "expect_note": "sessions/handoff-005.md",
     "category": "handoff"
   },
   {
     "id": 8,
     "query": "MCP server tools and integration",
-    "expect_in_results": ["MCP", "search_notes", "read_note"],
+    "expect_in_results": [
+      "MCP",
+      "search_notes",
+      "read_note"
+    ],
     "expect_note": "architecture/mcp-integration.md",
     "category": "retrieval"
   },
   {
     "id": 9,
     "query": "how do we handle errors in the API",
-    "expect_in_results": ["error", "VALIDATION_ERROR", "500"],
+    "expect_in_results": [
+      "error",
+      "VALIDATION_ERROR",
+      "500"
+    ],
     "expect_note": "decisions/error-handling.md",
     "category": "retrieval"
   },
   {
     "id": 10,
     "query": "security threats and mitigations",
-    "expect_in_results": ["threat", "injection", "authentication"],
+    "expect_in_results": [
+      "threat",
+      "injection",
+      "authentication"
+    ],
     "expect_note": "architecture/security-model.md",
     "category": "retrieval"
   },
   {
     "id": 11,
     "query": "how to set up the development environment",
-    "expect_in_results": ["Docker", "Ollama", "PostgreSQL"],
+    "expect_in_results": [
+      "Docker",
+      "Ollama",
+      "PostgreSQL"
+    ],
     "expect_note": "project/onboarding-guide.md",
     "category": "retrieval"
   },
   {
     "id": 12,
     "query": "what are our coding standards for Go",
-    "expect_in_results": ["gofmt", "golangci-lint", "naming"],
+    "expect_in_results": [
+      "gofmt",
+      "golangci-lint",
+      "naming"
+    ],
     "expect_note": "project/coding-standards.md",
     "category": "retrieval"
   },
   {
     "id": 13,
     "query": "search performance optimization results",
-    "expect_in_results": ["p99", "85ms", "latency"],
+    "expect_in_results": [
+      "p99",
+      "85ms",
+      "latency"
+    ],
     "expect_note": "sessions/handoff-003.md",
     "category": "retrieval"
   },
   {
     "id": 14,
     "query": "what happened in the staging outage",
-    "expect_in_results": ["WAL", "outage", "disk"],
+    "expect_in_results": [
+      "WAL",
+      "outage",
+      "disk"
+    ],
     "expect_note": "meetings/2025-12-08-incident-postmortem.md",
     "category": "retrieval"
   },
   {
     "id": 15,
     "query": "how does caching work in the system",
-    "expect_in_results": ["LRU", "Redis", "cache"],
+    "expect_in_results": [
+      "LRU",
+      "Redis",
+      "cache"
+    ],
     "expect_note": "architecture/caching-strategy.md",
     "category": "retrieval"
   },
   {
     "id": 16,
     "query": "what are the Q1 2026 priorities",
-    "expect_in_results": ["production deploy", "key rotation", "vault sharing"],
+    "expect_in_results": [
+      "production deploy",
+      "key rotation",
+      "vault sharing"
+    ],
     "expect_note": "meetings/2025-12-01-roadmap-planning.md",
     "category": "retrieval"
   },
   {
     "id": 17,
     "query": "are there any stale notes about the deployment pipeline",
-    "expect_in_results": ["outdated", "CircleCI", "GitHub Actions"],
+    "expect_in_results": [
+      "outdated",
+      "CircleCI",
+      "GitHub Actions"
+    ],
     "expect_note": "stale/old-deploy-pipeline.md",
     "category": "staleness"
   },
   {
     "id": 18,
     "query": "what decisions reference the database schema",
-    "expect_in_results": ["schema", "migration", "audit_log"],
+    "expect_in_results": [
+      "schema",
+      "migration",
+      "audit_log"
+    ],
     "expect_note": "decisions/db-migration.md",
     "category": "graph"
   },
   {
     "id": 19,
     "query": "prompt injection protection",
-    "expect_in_results": ["neutralizeTags", "injection", "sanitize"],
+    "expect_in_results": [
+      "neutralizeTags",
+      "injection",
+      "sanitize"
+    ],
     "expect_note": "architecture/security-model.md",
     "category": "integrity"
   },
   {
     "id": 20,
     "query": "how does multi-tenancy work with vault isolation",
-    "expect_in_results": ["vault", "SQLite", "isolation"],
+    "expect_in_results": [
+      "vault",
+      "SQLite",
+      "isolation"
+    ],
     "expect_note": "architecture/multi-tenancy.md",
     "category": "retrieval"
   },
   {
     "id": 21,
     "query": "what was decided about testing and CI",
-    "expect_in_results": ["unit test", "integration", "coverage"],
+    "expect_in_results": [
+      "unit test",
+      "integration",
+      "coverage"
+    ],
     "expect_note": "decisions/testing-strategy.md",
     "category": "retrieval"
   },
   {
     "id": 22,
     "query": "JWT token structure and claims",
-    "expect_in_results": ["sub", "workspace", "role", "exp"],
+    "expect_in_results": [
+      "sub",
+      "workspace",
+      "role",
+      "exp"
+    ],
     "expect_note": "decisions/auth-strategy.md",
     "category": "retrieval"
   },
   {
     "id": 23,
     "query": "frontend dashboard technology choices",
-    "expect_in_results": ["React", "Tailwind", "D3"],
+    "expect_in_results": [
+      "React",
+      "Tailwind",
+      "D3"
+    ],
     "expect_note": "sessions/handoff-004.md",
     "category": "handoff"
   },
   {
     "id": 24,
     "query": "docker image size and deployment",
-    "expect_in_results": ["28MB", "multi-stage", "alpine"],
+    "expect_in_results": [
+      "28MB",
+      "multi-stage",
+      "alpine"
+    ],
     "expect_note": "sessions/handoff-005.md",
     "category": "retrieval"
   },
   {
     "id": 25,
     "query": "system architecture overview microservices",
-    "expect_in_results": ["API Gateway", "modular monolith"],
+    "expect_in_results": [
+      "API Gateway",
+      "modular monolith"
+    ],
     "expect_note": "architecture/system-overview.md",
     "category": "retrieval"
   },
   {
     "id": 26,
     "query": "old authentication approach before JWT",
-    "expect_in_results": ["session", "superseded", "cookie"],
+    "expect_in_results": [
+      "session",
+      "superseded",
+      "cookie"
+    ],
     "expect_note": "stale/old-auth-approach.md",
     "category": "staleness"
   },
   {
     "id": 27,
     "query": "what embedding model did we use before nomic",
-    "expect_in_results": ["MiniLM", "384", "outdated"],
+    "expect_in_results": [
+      "MiniLM",
+      "384",
+      "outdated"
+    ],
     "expect_note": "stale/old-embedding-model.md",
     "category": "staleness"
   },
   {
     "id": 28,
     "query": "audit log implementation details",
-    "expect_in_results": ["audit_log", "jsonb", "batch"],
+    "expect_in_results": [
+      "audit_log",
+      "jsonb",
+      "batch"
+    ],
     "expect_note": "sessions/handoff-002.md",
     "category": "retrieval"
   },
   {
     "id": 29,
     "query": "how are environment variables configured",
-    "expect_in_results": ["DATABASE_URL", "JWT_SECRET", "OLLAMA_URL"],
+    "expect_in_results": [
+      "DATABASE_URL",
+      "JWT_SECRET",
+      "OLLAMA_URL"
+    ],
     "expect_note": "project/environment-setup.md",
     "category": "retrieval"
   },
   {
     "id": 30,
     "query": "release process and version tagging",
-    "expect_in_results": ["semantic versioning", "CHANGELOG", "tag"],
+    "expect_in_results": [
+      "semantic versioning",
+      "CHANGELOG",
+      "tag"
+    ],
     "expect_note": "project/release-process.md",
     "category": "retrieval"
   },
   {
     "id": 31,
     "query": "what technical debt items are tracked",
-    "expect_in_results": ["Redis", "graceful shutdown", "scoring"],
+    "expect_in_results": [
+      "Redis",
+      "graceful shutdown",
+      "scoring"
+    ],
     "expect_note": "project/tech-debt-tracker.md",
     "category": "retrieval"
   },
   {
     "id": 32,
     "query": "sprint planning ticket assignments",
-    "expect_in_results": ["AUTH-101", "FE-301", "story points"],
+    "expect_in_results": [
+      "AUTH-101",
+      "FE-301",
+      "story points"
+    ],
     "expect_note": "meetings/2025-11-10-sprint-planning.md",
     "category": "retrieval"
   },
   {
     "id": 33,
     "query": "PII detection in vault notes",
-    "expect_in_results": ["guard", "PII", "email"],
+    "expect_in_results": [
+      "guard",
+      "PII",
+      "email"
+    ],
     "expect_note": "meetings/2025-11-24-security-review.md",
     "category": "integrity"
   },
   {
     "id": 34,
     "query": "where are secrets stored for production",
-    "expect_in_results": ["Fly.io", "secrets", "JWT_SECRET"],
+    "expect_in_results": [
+      "Fly.io",
+      "secrets",
+      "JWT_SECRET"
+    ],
     "expect_note": "project/environment-setup.md",
     "category": "retrieval"
   },
   {
     "id": 35,
     "query": "how does the indexing pipeline process markdown files",
-    "expect_in_results": ["frontmatter", "chunk", "embed"],
+    "expect_in_results": [
+      "frontmatter",
+      "chunk",
+      "embed"
+    ],
     "expect_note": "architecture/embedding-pipeline.md",
     "category": "retrieval"
   },
   {
     "id": 36,
     "query": "what observability and monitoring do we have",
-    "expect_in_results": ["Grafana", "metrics", "slog"],
+    "expect_in_results": [
+      "Grafana",
+      "metrics",
+      "slog"
+    ],
     "expect_note": "architecture/observability.md",
     "category": "retrieval"
   },
   {
     "id": 37,
     "query": "data flow from client request to database",
-    "expect_in_results": ["Gateway", "middleware", "handler"],
+    "expect_in_results": [
+      "Gateway",
+      "middleware",
+      "handler"
+    ],
     "expect_note": "architecture/data-flow.md",
     "category": "retrieval"
   },
   {
     "id": 38,
     "query": "auth middleware token validation",
-    "expect_in_results": ["JWT", "middleware", "claims"],
+    "expect_in_results": [
+      "JWT",
+      "middleware",
+      "claims"
+    ],
     "expect_note": "sessions/handoff-001.md",
     "category": "handoff"
   },
   {
     "id": 39,
     "query": "graph edge types depends_on references",
-    "expect_in_results": ["depends_on", "references", "supersedes"],
+    "expect_in_results": [
+      "depends_on",
+      "references",
+      "supersedes"
+    ],
     "expect_note": "architecture/graph-model.md",
     "category": "graph"
   },
   {
     "id": 40,
     "query": "API v0 deprecated endpoints",
-    "expect_in_results": ["deprecated", "v0", "sunset"],
+    "expect_in_results": [
+      "deprecated",
+      "v0",
+      "sunset"
+    ],
     "expect_note": "stale/old-api-v0.md",
     "category": "staleness"
   },
   {
     "id": 41,
     "query": "old testing setup before testcontainers",
-    "expect_in_results": ["MockDB", "outdated", "testcontainers"],
+    "expect_in_results": [
+      "MockDB",
+      "outdated",
+      "testcontainers"
+    ],
     "expect_note": "stale/old-testing-setup.md",
     "category": "staleness"
   },
   {
     "id": 42,
     "query": "RBAC roles viewer editor admin owner",
-    "expect_in_results": ["RBAC", "viewer", "admin"],
+    "expect_in_results": [
+      "RBAC",
+      "viewer",
+      "admin"
+    ],
     "expect_note": "architecture/security-model.md",
     "category": "retrieval"
   },
   {
     "id": 43,
     "query": "how does federated search work across vaults",
-    "expect_in_results": ["federated", "vault", "merge"],
+    "expect_in_results": [
+      "federated",
+      "vault",
+      "merge"
+    ],
     "expect_note": "architecture/multi-tenancy.md",
     "category": "retrieval"
   },
   {
     "id": 44,
     "query": "what blockers were reported in recent sessions",
-    "expect_in_results": ["Redis", "blocker", "workspace"],
+    "expect_in_results": [
+      "Redis",
+      "blocker",
+      "workspace"
+    ],
     "expect_note": "sessions/handoff-001.md",
     "category": "handoff"
   },
   {
     "id": 45,
     "query": "graph visualization performance issues",
-    "expect_in_results": ["D3", "200 nodes", "performance"],
+    "expect_in_results": [
+      "D3",
+      "200 nodes",
+      "performance"
+    ],
     "expect_note": "sessions/handoff-004.md",
     "category": "graph"
   },
   {
     "id": 46,
     "query": "WAL checkpoint SQLite disk issue",
-    "expect_in_results": ["WAL", "checkpoint", "disk"],
+    "expect_in_results": [
+      "WAL",
+      "checkpoint",
+      "disk"
+    ],
     "expect_note": "meetings/2025-12-08-incident-postmortem.md",
     "category": "retrieval"
   },
   {
     "id": 47,
     "query": "conventional commit message format",
-    "expect_in_results": ["feat:", "fix:", "squash"],
+    "expect_in_results": [
+      "feat:",
+      "fix:",
+      "squash"
+    ],
     "expect_note": "project/coding-standards.md",
     "category": "retrieval"
   },
   {
     "id": 48,
     "query": "refresh token rotation and revocation",
-    "expect_in_results": ["refresh", "rotation", "deny-list"],
+    "expect_in_results": [
+      "refresh",
+      "rotation",
+      "deny-list"
+    ],
     "expect_note": "decisions/auth-strategy.md",
     "category": "retrieval"
   },
   {
     "id": 49,
     "query": "what notes are superseded or outdated",
-    "expect_in_results": ["superseded", "outdated", "stale"],
+    "expect_in_results": [
+      "superseded",
+      "outdated",
+      "stale"
+    ],
     "expect_note": "stale/old-auth-approach.md",
     "category": "staleness"
   },
   {
     "id": 50,
     "query": "text chunking strategy for embeddings",
-    "expect_in_results": ["chunk", "heading", "2000 tokens"],
+    "expect_in_results": [
+      "chunk",
+      "heading",
+      "2000 tokens"
+    ],
     "expect_note": "architecture/embedding-pipeline.md",
     "category": "retrieval"
   },
   {
     "id": 51,
     "query": "architecture review meeting action items",
-    "expect_in_results": ["freshness", "superseded", "action"],
+    "expect_in_results": [
+      "freshness",
+      "superseded",
+      "action"
+    ],
     "expect_note": "meetings/2025-11-17-architecture-review.md",
     "category": "retrieval"
   },
   {
     "id": 52,
     "query": "hotfix process for critical production bugs",
-    "expect_in_results": ["hotfix", "cherry-pick", "patch"],
+    "expect_in_results": [
+      "hotfix",
+      "cherry-pick",
+      "patch"
+    ],
     "expect_note": "project/release-process.md",
     "category": "retrieval"
   },
   {
     "id": 53,
     "query": "what is the trust state of stale documents",
-    "expect_in_results": ["stale", "trust", "confidence"],
+    "expect_in_results": [
+      "stale",
+      "trust",
+      "confidence"
+    ],
     "expect_note": "stale/old-deploy-pipeline.md",
     "category": "integrity"
   },
@@ -375,7 +584,10 @@
     "query": "kubernetes container orchestration",
     "expect_in_results": [],
     "expect_note": "",
-    "expect_not_in_results": ["kubernetes", "k8s"],
+    "expect_not_in_results": [
+      "kubernetes",
+      "k8s"
+    ],
     "category": "retrieval",
     "negative": true,
     "description": "Negative test: no notes mention Kubernetes, results should be empty or unrelated"
@@ -385,9 +597,145 @@
     "query": "GraphQL API implementation",
     "expect_in_results": [],
     "expect_note": "",
-    "expect_not_in_results": ["GraphQL"],
+    "expect_not_in_results": [
+      "GraphQL"
+    ],
     "category": "retrieval",
     "negative": true,
     "description": "Negative test: no notes discuss GraphQL, should not return false matches"
+  },
+  {
+    "id": 56,
+    "query": "session handoff summary for auth work",
+    "expect_note": "sessions/handoff-001.md",
+    "expect_in_results": [
+      "handoff",
+      "JWT",
+      "auth"
+    ],
+    "category": "handoff"
+  },
+  {
+    "id": 57,
+    "query": "what did the last CI/CD session accomplish",
+    "expect_note": "sessions/handoff-005.md",
+    "expect_in_results": [
+      "CI",
+      "pipeline",
+      "GitHub Actions"
+    ],
+    "category": "handoff"
+  },
+  {
+    "id": 58,
+    "query": "database migration session progress",
+    "expect_note": "sessions/handoff-002.md",
+    "expect_in_results": [
+      "migration",
+      "PostgreSQL",
+      "schema"
+    ],
+    "category": "handoff"
+  },
+  {
+    "id": 59,
+    "query": "which notes have low confidence",
+    "expect_in_results": [
+      "stale",
+      "old",
+      "superseded"
+    ],
+    "category": "integrity"
+  },
+  {
+    "id": 60,
+    "query": "outdated authentication documentation",
+    "expect_note": "stale/old-auth-approach.md",
+    "expect_in_results": [
+      "superseded",
+      "auth",
+      "session"
+    ],
+    "category": "integrity"
+  },
+  {
+    "id": 61,
+    "query": "deprecated API endpoints",
+    "expect_note": "stale/old-api-v0.md",
+    "expect_in_results": [
+      "deprecated",
+      "v0",
+      "API"
+    ],
+    "category": "staleness"
+  },
+  {
+    "id": 62,
+    "query": "old testing approach before testcontainers",
+    "expect_note": "stale/old-testing-setup.md",
+    "expect_in_results": [
+      "outdated",
+      "test",
+      "mock"
+    ],
+    "category": "staleness"
+  },
+  {
+    "id": 63,
+    "query": "how does caching affect search performance",
+    "expect_in_results": [
+      "cache",
+      "Redis",
+      "latency"
+    ],
+    "category": "retrieval"
+  },
+  {
+    "id": 64,
+    "query": "security implications of the auth decision",
+    "expect_in_results": [
+      "JWT",
+      "security",
+      "token"
+    ],
+    "category": "retrieval"
+  },
+  {
+    "id": 65,
+    "query": "what monitoring do we have for the database",
+    "expect_in_results": [
+      "observability",
+      "metric",
+      "monitor"
+    ],
+    "category": "retrieval"
+  },
+  {
+    "id": 66,
+    "query": "Redis connection pool size for production",
+    "expect_note": "sessions/handoff-001.md",
+    "expect_in_results": [
+      "Redis",
+      "pool"
+    ],
+    "category": "retrieval"
+  },
+  {
+    "id": 67,
+    "query": "PostgreSQL RLS row level security",
+    "expect_note": "decisions/db-migration.md",
+    "expect_in_results": [
+      "RLS",
+      "PostgreSQL",
+      "row"
+    ],
+    "category": "retrieval"
+  },
+  {
+    "id": 68,
+    "query": "machine learning model training pipeline",
+    "expect_in_results": [],
+    "category": "retrieval",
+    "negative": true
   }
 ]
