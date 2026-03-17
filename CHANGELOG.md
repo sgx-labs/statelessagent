@@ -1,5 +1,64 @@
 # Changelog
 
+## v0.13.0
+
+### Search & Retrieval
+
+- **Metadata search filters** — filter search results by trust state, content type, domain, and tags via CLI flags (`--trust stale`, `--type decision`, `--tag auth`) and MCP parameters
+- **`same stale` command** — convenience command to list all stale notes in your vault
+- **Content-type search boosting** — queries mentioning "session" or "handoff" automatically boost handoff results; "decided" or "decision" boost decision results. Subtle 1.2-1.3x multiplier breaks ties without overriding strong semantic matches
+- **Trust-aware search display** — all CLI search results now show color-coded trust state (green validated, yellow stale, red contradicted). Hidden for unknown.
+- **93.3% Recall@5** on held-out validation set (30 blind test cases, semantic search, nomic-embed-text). Evaluation methodology documented in `eval/METHODOLOGY.md`
+
+### Smart File Exclusion
+
+- **`.sameignore` file** — gitignore-style patterns for excluding files from indexing. Auto-created on `same init` with smart defaults (node_modules, .git, binaries, lock files, IDE config, build artifacts)
+- **`same ignore` command** — view current patterns, `same ignore add "*.log"`, `same ignore reset`
+- Integrated into both the indexer and the file watcher
+
+### Knowledge Graph
+
+- **Tag-based graph connections** — notes sharing frontmatter tags are automatically connected via entity nodes. No LLM required. If note A has `tags: [auth, api]` and note B has `tags: [auth, security]`, they're connected through the shared "auth" entity. Domain field also creates connections.
+- **Interactive graph visualization** — Cytoscape.js force-directed graph in the web dashboard. Nodes colored by type (decision=teal, handoff=purple, entity=amber), sized by edge count. Hover highlights connections, click navigates to notes. Layout switcher (cose, circle, grid). Mini-graph on dashboard page.
+
+### Briefing
+
+- **Trust-aware briefing** — `same brief` now includes trust state annotations and provenance sources. Stale decisions are flagged with warnings. Validated notes get checkmarks.
+- **`--no-llm` mode** — structured data-only briefing without LLM dependency. Shows current focus, key decisions with trust tags, stale context, recent activity.
+- **Graceful LLM fallback** — if the LLM is unavailable, brief automatically falls back to the structured view instead of erroring.
+
+### Performance
+
+- **Index-now-embed-later** — FTS5 keyword indexing happens instantly (sub-second for 100 notes). Vector embeddings are backfilled in the background. Search works immediately via keyword fallback while embeddings process. Progress display: "Embedding: 15/35 notes (keyword search active)".
+- **Ollama model unloading** — after reindex completes, SAME sends `keep_alive: 0` to Ollama to free the embedding model from memory. Prevents stale runner processes consuming CPU.
+
+### Web Dashboard
+
+- **Complete visual redesign** — DaisyUI + Tailwind CSS dark theme. Glassmorphism cards, gradient stat numbers, trust badges on every note.
+- **Trust Overview section** — 4-card grid showing validated/stale/contradicted/unknown counts with color-coded numbers.
+- **Sidebar + content layout** — proper side-by-side layout with fixed 220px sidebar, sticky navigation.
+- **Confidence bars** on note cards showing confidence level.
+- **Freshness indicators** and keyboard shortcut hints.
+
+### Bug Fixes
+
+- **Safe force reindex** — `same reindex --force` no longer deletes the existing index before re-indexing. Notes are deleted individually before their replacements are inserted. A failed reindex preserves existing data.
+- **Brief empty vault message** — when noteCount=0 but markdown files exist on disk, shows "X files not indexed, run same reindex" instead of the misleading "vault is empty"
+- **RawToSearchResult refactor** — replaced 8 manual SearchResult construction sites with a single helper function, preventing field omission bugs (7 sites were missing TrustState)
+
+### Testing
+
+- **Three-tier evaluation methodology** — internal eval (68 tuning cases), held-out eval (30 blind cases), MemoryAgentBench adapter (external benchmark). Documented in `eval/METHODOLOGY.md`.
+- **Eval suite** — 35-note curated vault, 68 test cases, bash + Go runners, Recall@5 and MRR metrics
+- **MemoryAgentBench adapter** — Python adapter for ICLR 2026 benchmark (146 test cases, 4 splits)
+- **Graph extraction training data** — 30 training + 10 validation examples for fine-tuning
+
+### CI
+
+- **npm-publish graceful skip** — no longer fails when the version already exists on npm
+- **GitHub Actions upgraded to Node.js 24** — all actions (checkout, setup-go, upload-artifact, download-artifact, setup-node) pinned to Node.js 24-compatible versions
+- **Smoke test updated** — accepts both `lite` and `progressive` index modes
+
 ## v0.12.0
 
 ### Memory Integrity
