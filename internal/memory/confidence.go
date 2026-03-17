@@ -246,6 +246,121 @@ func HasRecencyIntent(query string) bool {
 	return false
 }
 
+// MetadataQueryHints contains auto-detected metadata filters inferred from
+// a search query. When the user asks about trust state, stale notes, or
+// confidence, these hints tell the search layer to filter/boost by metadata
+// rather than relying solely on text similarity.
+type MetadataQueryHints struct {
+	// TrustState is set when the query targets a specific trust state
+	// (e.g. "stale notes" -> "stale", "validated decisions" -> "validated").
+	TrustState string
+
+	// IsMetadataQuery is true when the query is primarily about metadata
+	// (trust, confidence, provenance) rather than content. When true,
+	// MetadataFilterSearch should be used as an additional search strategy.
+	IsMetadataQuery bool
+
+	// LowConfidenceQuery is true when the query asks about low-confidence
+	// or unreliable notes. Signals that results should be sorted with
+	// low-confidence notes first.
+	LowConfidenceQuery bool
+
+	// ProvenanceQuery is true when the query asks about provenance, source
+	// tracking, or where information came from. Notes with trust_state != 'unknown'
+	// should be boosted (they have provenance data).
+	ProvenanceQuery bool
+}
+
+// trustStateKeywords maps query keywords to the trust_state they imply.
+// Longer phrases are checked first via iteration.
+var trustStateKeywords = map[string]string{
+	"stale":        "stale",
+	"stale notes":  "stale",
+	"stale doc":    "stale",
+	"outdated":     "stale",
+	"contradicted": "contradicted",
+	"contradiction":"contradicted",
+	"validated":    "validated",
+	"verified":     "validated",
+	"superseded":   "stale",
+	"deprecated":   "stale",
+}
+
+// lowConfidenceKeywords signal the user is asking about unreliable/uncertain content.
+var lowConfidenceKeywords = []string{
+	"low confidence",
+	"unreliable",
+	"uncertain",
+	"least confident",
+	"least reliable",
+	"low trust",
+}
+
+// provenanceKeywords signal the user is asking about provenance or source tracking.
+var provenanceKeywords = []string{
+	"provenance",
+	"source tracking",
+	"where did this come from",
+	"trust state",
+	"trust status",
+}
+
+// InferMetadataFilters analyzes a search query and returns metadata filter
+// hints. These hints enable the search layer to auto-apply trust_state filters,
+// use MetadataFilterSearch, or adjust result ranking based on query intent.
+//
+// This is additive — it does not override explicit CLI flags (--trust, --type).
+func InferMetadataFilters(query string) MetadataQueryHints {
+	lower := strings.ToLower(query)
+	hints := MetadataQueryHints{}
+
+	// Detect trust-state-specific queries
+	// Check longer phrases first for better matching
+	bestMatch := ""
+	for keyword, state := range trustStateKeywords {
+		if strings.Contains(lower, keyword) {
+			// Prefer longer keyword matches
+			if len(keyword) > len(bestMatch) {
+				bestMatch = keyword
+				hints.TrustState = state
+			}
+		}
+	}
+
+	// Detect low-confidence queries
+	for _, kw := range lowConfidenceKeywords {
+		if strings.Contains(lower, kw) {
+			hints.LowConfidenceQuery = true
+			hints.IsMetadataQuery = true
+			break
+		}
+	}
+
+	// Detect provenance queries
+	for _, kw := range provenanceKeywords {
+		if strings.Contains(lower, kw) {
+			hints.ProvenanceQuery = true
+			hints.IsMetadataQuery = true
+			break
+		}
+	}
+
+	// If we detected a trust state, this is a metadata query
+	if hints.TrustState != "" {
+		hints.IsMetadataQuery = true
+	}
+
+	// Low-confidence queries should also find stale notes (stale notes are
+	// the primary low-confidence notes since trust penalties reduce their
+	// confidence scores). If no specific trust state was already set, default
+	// to finding stale content.
+	if hints.LowConfidenceQuery && hints.TrustState == "" {
+		hints.TrustState = "stale"
+	}
+
+	return hints
+}
+
 func ptr(f float64) *float64 {
 	return &f
 }

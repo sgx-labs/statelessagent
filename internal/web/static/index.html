@@ -823,6 +823,16 @@
     .mini-stats-grid.cols-4 {
       grid-template-columns: repeat(2, 1fr);
     }
+    .decay-chart-container {
+      height: 90px;
+    }
+    .trust-heatmap-legend {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .session-timeline {
+      padding-left: 22px;
+    }
   }
   @media (max-width: 768px) {
     .sidebar-brand-block { min-width: 90px !important; }
@@ -889,6 +899,253 @@
     .glass-card { border: none; box-shadow: none; padding: 0; backdrop-filter: none; background: #fff; }
     .note-viewer-content { font-size: 12pt; line-height: 1.5; }
     .note-viewer-content a { color: #000; text-decoration: underline; }
+  }
+
+  /* === Trust Heatmap === */
+  .trust-heatmap-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    padding: 4px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.25);
+    min-height: 40px;
+    align-content: flex-start;
+  }
+  .trust-heatmap-cell {
+    border-radius: 3px;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+    position: relative;
+    opacity: 0.85;
+  }
+  .trust-heatmap-cell:hover {
+    transform: scale(1.35);
+    z-index: 2;
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.15);
+  }
+  .trust-heatmap-cell.validated { background: var(--same-green); }
+  .trust-heatmap-cell.stale { background: var(--same-yellow); }
+  .trust-heatmap-cell.contradicted { background: var(--same-red); }
+  .trust-heatmap-cell.unknown { background: #4b5563; }
+  .trust-heatmap-tooltip {
+    position: fixed;
+    background: rgba(10, 10, 15, 0.95);
+    border: 1px solid var(--same-border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--same-text);
+    pointer-events: none;
+    z-index: 1000;
+    max-width: 280px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .trust-heatmap-tooltip.visible { opacity: 1; }
+  .trust-heatmap-tooltip .tt-title {
+    font-weight: 600;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 250px;
+  }
+  .trust-heatmap-tooltip .tt-detail {
+    font-size: 11px;
+    color: var(--same-text-dim);
+  }
+  .trust-heatmap-legend {
+    display: flex;
+    gap: 14px;
+    margin-top: 10px;
+    font-size: 11px;
+    color: var(--same-text-dim);
+  }
+  .trust-heatmap-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .trust-heatmap-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  /* === Confidence Decay Visualization === */
+  .decay-chart-container {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 120px;
+    padding: 8px 4px 0;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.25);
+    position: relative;
+    overflow: hidden;
+  }
+  .decay-chart-container::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--same-border);
+  }
+  .decay-bar {
+    flex: 1;
+    min-width: 3px;
+    max-width: 14px;
+    border-radius: 2px 2px 0 0;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    cursor: pointer;
+    position: relative;
+    opacity: 0.8;
+  }
+  .decay-bar:hover {
+    opacity: 1;
+    transform: scaleY(1.04);
+    transform-origin: bottom;
+  }
+  .decay-bar.validated { background: linear-gradient(to top, rgba(0,212,170,0.3), var(--same-green)); }
+  .decay-bar.stale { background: linear-gradient(to top, rgba(251,191,36,0.3), var(--same-yellow)); }
+  .decay-bar.contradicted { background: linear-gradient(to top, rgba(239,68,68,0.3), var(--same-red)); }
+  .decay-bar.unknown { background: linear-gradient(to top, rgba(75,85,99,0.3), #6B7280); }
+  .decay-chart-axis {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--same-text-dim);
+    margin-top: 6px;
+    font-family: var(--same-mono);
+  }
+  .decay-chart-label-y {
+    position: absolute;
+    left: 8px;
+    font-size: 9px;
+    color: var(--same-text-dim);
+    font-family: var(--same-mono);
+    pointer-events: none;
+  }
+
+  /* === Session Timeline === */
+  .session-timeline {
+    position: relative;
+    padding-left: 28px;
+  }
+  .session-timeline::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--same-accent), rgba(0, 212, 170, 0.15));
+    border-radius: 1px;
+  }
+  .timeline-node {
+    position: relative;
+    padding: 14px 18px;
+    margin-bottom: 12px;
+    background: var(--same-bg-glass);
+    border: 1px solid var(--same-border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .timeline-node:hover {
+    border-color: rgba(0, 212, 170, 0.3);
+    box-shadow: 0 4px 20px rgba(0, 212, 170, 0.08);
+    transform: translateX(3px);
+  }
+  .timeline-node::before {
+    content: '';
+    position: absolute;
+    left: -24px;
+    top: 20px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--same-accent);
+    border: 2px solid var(--same-bg);
+    box-shadow: 0 0 8px rgba(0, 212, 170, 0.3);
+    z-index: 1;
+  }
+  .timeline-node:first-child::before {
+    width: 12px;
+    height: 12px;
+    left: -25px;
+    top: 19px;
+    box-shadow: 0 0 12px rgba(0, 212, 170, 0.5);
+  }
+  .timeline-node .timeline-date {
+    font-size: 11px;
+    font-family: var(--same-mono);
+    color: var(--same-accent);
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+  .timeline-node .timeline-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--same-text);
+    margin-bottom: 4px;
+  }
+  .timeline-node .timeline-summary {
+    font-size: 12px;
+    color: var(--same-text-dim);
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .timeline-node .timeline-meta {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* === Freshness Indicator === */
+  .freshness-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-family: var(--same-mono);
+    letter-spacing: 0.02em;
+  }
+  .freshness-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: box-shadow 0.2s ease;
+  }
+  .freshness-dot.fresh {
+    background: var(--same-green);
+    box-shadow: 0 0 4px rgba(0, 212, 170, 0.4);
+  }
+  .freshness-dot.aging {
+    background: var(--same-yellow);
+    box-shadow: 0 0 4px rgba(251, 191, 36, 0.3);
+  }
+  .freshness-dot.old {
+    background: #6B7280;
+  }
+  .note-card:hover .freshness-dot.fresh {
+    box-shadow: 0 0 8px rgba(0, 212, 170, 0.6);
+  }
+  .note-card:hover .freshness-dot.aging {
+    box-shadow: 0 0 8px rgba(251, 191, 36, 0.5);
   }
 
   /* === Cytoscape Graph Visualization === */
@@ -1068,6 +1325,24 @@
       </div>
     </div>
 
+    <!-- Trust Heatmap -->
+    <div id="trust-heatmap-section" style="display:none">
+      <div class="section-card">
+        <div class="section-card-header">Trust Heatmap</div>
+        <div id="trust-heatmap" class="trust-heatmap-container"></div>
+        <div class="trust-heatmap-legend" id="trust-heatmap-legend"></div>
+      </div>
+    </div>
+
+    <!-- Confidence Decay -->
+    <div id="confidence-decay-section" style="display:none">
+      <div class="section-card">
+        <div class="section-card-header">Confidence Decay</div>
+        <div id="confidence-decay-chart" class="decay-chart-container"></div>
+        <div class="decay-chart-axis" id="confidence-decay-axis"></div>
+      </div>
+    </div>
+
     <!-- Insights -->
     <div id="insights-section" style="display:none">
       <div class="section-card">
@@ -1212,6 +1487,15 @@
   <div id="page-handoffs" class="page" role="region" aria-label="Handoffs view">
     <h2 class="page-title" tabindex="-1">Session Handoffs</h2>
     <div id="handoffs-count" style="font-size: 12px; margin-bottom: 10px; color: var(--same-text-dim);"></div>
+
+    <!-- Session Timeline -->
+    <div id="session-timeline-section" style="display:none; margin-bottom: 24px;">
+      <div class="section-card">
+        <div class="section-card-header">Session Timeline</div>
+        <div id="session-timeline" class="session-timeline"></div>
+      </div>
+    </div>
+
     <div id="handoffs-notes" style="display: flex; flex-direction: column; gap: 10px;">
       <div class="loading"><div class="spinner"></div> Loading...</div>
     </div>
@@ -1530,6 +1814,7 @@
     });
     if (modified) {
       metaChildren.push(el('span', {className: 'tag', textContent: formatDate(modified)}));
+      metaChildren.push(buildFreshnessIndicator(modified));
     }
 
     var cardChildren = [
@@ -1879,12 +2164,14 @@
         setEmpty(recentEl, 'No notes indexed yet.', 'Run same reindex to index your notes, or same seed list to explore pre-built seeds');
       }
 
-      // Vault composition + insights
+      // Vault composition + insights + visualizations
       ensureAllNotes(function(ok) {
         if (ok === false) return;
         renderComposition();
         renderGraphHighlights(graphStats);
         renderInsights(status, pinned, graphStats);
+        renderTrustHeatmap();
+        renderConfidenceDecay();
         if (graphStats && graphStats.available && graphStats.total_nodes > 0) {
           loadMiniGraph();
         }
@@ -2325,6 +2612,10 @@
       });
       var notesEl = document.getElementById('handoffs-notes');
       document.getElementById('handoffs-count').textContent = handoffs.length + ' session handoff(s)';
+
+      // Render session timeline
+      renderSessionTimeline(handoffs);
+
       if (handoffs.length === 0) {
         setEmpty(notesEl, 'No session handoffs yet', 'Handoffs capture what was done and what\'s pending: same create-handoff "summary"');
       } else {
@@ -2919,6 +3210,309 @@
         cyMiniInstance.userZoomingEnabled(true);
         cyMiniInstance.boxSelectionEnabled(false);
       }
+    });
+  }
+
+  // ========== Freshness Indicator ==========
+  function buildFreshnessIndicator(modified) {
+    if (!modified) return document.createTextNode('');
+    var now = Date.now() / 1000;
+    var ageDays = (now - modified) / 86400;
+    var cls, label;
+    if (ageDays < 7) {
+      cls = 'fresh';
+      label = 'Fresh';
+    } else if (ageDays < 30) {
+      cls = 'aging';
+      label = Math.floor(ageDays) + 'd ago';
+    } else {
+      cls = 'old';
+      label = Math.floor(ageDays) + 'd ago';
+    }
+    return el('span', {className: 'freshness-indicator', title: 'Last modified ' + Math.floor(ageDays) + ' days ago'}, [
+      el('span', {className: 'freshness-dot ' + cls}),
+      el('span', {textContent: label, style: 'color: var(--same-text-dim);'})
+    ]);
+  }
+
+  // ========== Trust Heatmap ==========
+  var heatmapTooltip = null;
+
+  function ensureHeatmapTooltip() {
+    if (heatmapTooltip) return heatmapTooltip;
+    heatmapTooltip = document.createElement('div');
+    heatmapTooltip.className = 'trust-heatmap-tooltip';
+    heatmapTooltip.innerHTML = '<div class="tt-title"></div><div class="tt-detail"></div>';
+    document.body.appendChild(heatmapTooltip);
+    return heatmapTooltip;
+  }
+
+  function renderTrustHeatmap() {
+    var section = document.getElementById('trust-heatmap-section');
+    var container = document.getElementById('trust-heatmap');
+    var legend = document.getElementById('trust-heatmap-legend');
+    if (!container || allNotes.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = 'block';
+    container.textContent = '';
+    legend.textContent = '';
+
+    // Sort by modified time (newest first) for a meaningful layout
+    var sorted = allNotes.slice().sort(function(a, b) {
+      return (b.modified || b.Modified || 0) - (a.modified || a.Modified || 0);
+    });
+
+    // Compute content size range for relative sizing
+    var sizes = sorted.map(function(n) {
+      return (n.text || n.Text || '').length || 100;
+    });
+    var maxSize = Math.max.apply(null, sizes) || 1;
+    var minCell = 8;
+    var maxCell = 22;
+
+    sorted.forEach(function(note, idx) {
+      var trustState = (note.trust_state || note.TrustState || 'unknown').toLowerCase();
+      if (trustState !== 'validated' && trustState !== 'stale' && trustState !== 'contradicted') {
+        trustState = 'unknown';
+      }
+      var contentLen = sizes[idx];
+      var cellSize = Math.round(minCell + ((contentLen / maxSize) * (maxCell - minCell)));
+      var title = note.title || note.Title || note.path || note.Path;
+      var path = note.path || note.Path;
+      var confidence = note.confidence !== undefined ? note.confidence : (note.Confidence !== undefined ? note.Confidence : -1);
+      var confLabel = confidence >= 0 ? (Math.round(confidence * 100) + '%') : 'n/a';
+
+      var cell = document.createElement('div');
+      cell.className = 'trust-heatmap-cell ' + trustState;
+      cell.style.width = cellSize + 'px';
+      cell.style.height = cellSize + 'px';
+      cell.setAttribute('data-note-path', path);
+      cell.setAttribute('data-note-title', title);
+      cell.setAttribute('data-trust-state', trustState);
+      cell.setAttribute('data-confidence', confLabel);
+
+      cell.addEventListener('click', function() {
+        window.location.hash = '#note/' + encodeURIComponent(path);
+      });
+
+      cell.addEventListener('mouseenter', function(e) {
+        var tip = ensureHeatmapTooltip();
+        tip.querySelector('.tt-title').textContent = title;
+        tip.querySelector('.tt-detail').textContent = 'Trust: ' + trustState + '  \u00B7  Confidence: ' + confLabel;
+        tip.classList.add('visible');
+        positionTooltip(tip, e);
+      });
+
+      cell.addEventListener('mousemove', function(e) {
+        var tip = ensureHeatmapTooltip();
+        positionTooltip(tip, e);
+      });
+
+      cell.addEventListener('mouseleave', function() {
+        var tip = ensureHeatmapTooltip();
+        tip.classList.remove('visible');
+      });
+
+      container.appendChild(cell);
+    });
+
+    // Legend
+    var states = [
+      {cls: 'validated', color: 'var(--same-green)', label: 'Validated'},
+      {cls: 'stale', color: 'var(--same-yellow)', label: 'Stale'},
+      {cls: 'contradicted', color: 'var(--same-red)', label: 'Contradicted'},
+      {cls: 'unknown', color: '#4b5563', label: 'Unknown'}
+    ];
+    states.forEach(function(s) {
+      legend.appendChild(el('div', {className: 'trust-heatmap-legend-item'}, [
+        el('span', {className: 'trust-heatmap-legend-dot', style: 'background:' + s.color}),
+        el('span', {textContent: s.label})
+      ]));
+    });
+  }
+
+  function positionTooltip(tip, e) {
+    var x = e.clientX + 12;
+    var y = e.clientY - 10;
+    // Prevent going off-screen
+    var w = tip.offsetWidth || 200;
+    var h = tip.offsetHeight || 50;
+    if (x + w > window.innerWidth - 10) x = e.clientX - w - 12;
+    if (y + h > window.innerHeight - 10) y = e.clientY - h - 10;
+    if (y < 10) y = 10;
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+  }
+
+  // ========== Confidence Decay Visualization ==========
+  function renderConfidenceDecay() {
+    var section = document.getElementById('confidence-decay-section');
+    var chart = document.getElementById('confidence-decay-chart');
+    var axis = document.getElementById('confidence-decay-axis');
+    if (!chart || allNotes.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+
+    // Filter to notes that have confidence values
+    var withConf = allNotes.filter(function(n) {
+      var c = n.confidence !== undefined ? n.confidence : (n.Confidence !== undefined ? n.Confidence : -1);
+      return c >= 0;
+    });
+
+    if (withConf.length === 0) {
+      // Even without confidence, show age-based decay visualization
+      // Use all notes with trust state as a proxy
+      withConf = allNotes.map(function(n) {
+        var ts = (n.trust_state || n.TrustState || 'unknown').toLowerCase();
+        var syntheticConf = ts === 'validated' ? 0.9 : ts === 'stale' ? 0.4 : ts === 'contradicted' ? 0.15 : 0.5;
+        return {
+          title: n.title || n.Title || n.path || n.Path,
+          path: n.path || n.Path,
+          modified: n.modified || n.Modified || 0,
+          confidence: syntheticConf,
+          trust_state: ts
+        };
+      });
+    } else {
+      withConf = withConf.map(function(n) {
+        return {
+          title: n.title || n.Title || n.path || n.Path,
+          path: n.path || n.Path,
+          modified: n.modified || n.Modified || 0,
+          confidence: n.confidence !== undefined ? n.confidence : n.Confidence,
+          trust_state: (n.trust_state || n.TrustState || 'unknown').toLowerCase()
+        };
+      });
+    }
+
+    // Sort by modified time: newest first (left), oldest right
+    withConf.sort(function(a, b) { return b.modified - a.modified; });
+
+    // Limit to 80 bars for readability
+    var maxBars = 80;
+    var step = withConf.length > maxBars ? Math.ceil(withConf.length / maxBars) : 1;
+    var sampled = [];
+    for (var i = 0; i < withConf.length; i += step) {
+      sampled.push(withConf[i]);
+    }
+
+    section.style.display = 'block';
+    chart.textContent = '';
+    axis.textContent = '';
+
+    var chartHeight = 112; // max bar height in px
+
+    sampled.forEach(function(note) {
+      var conf = Math.max(0, Math.min(1, note.confidence));
+      var barHeight = Math.max(3, Math.round(conf * chartHeight));
+      var ts = note.trust_state;
+      if (ts !== 'validated' && ts !== 'stale' && ts !== 'contradicted') ts = 'unknown';
+
+      var bar = document.createElement('div');
+      bar.className = 'decay-bar ' + ts;
+      bar.style.height = barHeight + 'px';
+      bar.title = note.title + ' \u00B7 Confidence: ' + Math.round(conf * 100) + '% \u00B7 ' + ts;
+
+      bar.addEventListener('click', function() {
+        window.location.hash = '#note/' + encodeURIComponent(note.path);
+      });
+
+      chart.appendChild(bar);
+    });
+
+    // Y-axis labels (absolute positioned on the chart)
+    var yLabels = [
+      {value: '1.0', bottom: chartHeight},
+      {value: '0.5', bottom: Math.round(chartHeight * 0.5)},
+      {value: '0', bottom: 0}
+    ];
+    yLabels.forEach(function(yl) {
+      var label = document.createElement('div');
+      label.className = 'decay-chart-label-y';
+      label.textContent = yl.value;
+      label.style.bottom = (yl.bottom + 2) + 'px';
+      chart.appendChild(label);
+    });
+
+    // X-axis labels
+    if (sampled.length > 0) {
+      var newestDate = sampled[0].modified ? formatDate(sampled[0].modified) : '';
+      var oldestDate = sampled[sampled.length - 1].modified ? formatDate(sampled[sampled.length - 1].modified) : '';
+      axis.appendChild(el('span', {textContent: newestDate ? 'Newest: ' + newestDate : ''}));
+      axis.appendChild(el('span', {textContent: oldestDate ? 'Oldest: ' + oldestDate : ''}));
+    }
+  }
+
+  // ========== Session Timeline ==========
+  function renderSessionTimeline(handoffs) {
+    var section = document.getElementById('session-timeline-section');
+    var timeline = document.getElementById('session-timeline');
+    if (!timeline || !handoffs || handoffs.length === 0) {
+      if (section) section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = 'block';
+    timeline.textContent = '';
+
+    // Sort by modified descending (most recent first)
+    var sorted = handoffs.slice().sort(function(a, b) {
+      return (b.modified || b.Modified || 0) - (a.modified || a.Modified || 0);
+    });
+
+    // Limit to 20 most recent sessions
+    var maxItems = 20;
+    sorted.slice(0, maxItems).forEach(function(note) {
+      var title = note.title || note.Title || note.path || note.Path;
+      var path = note.path || note.Path;
+      var modified = note.modified || note.Modified;
+      var snippet = (note.text || note.Text || note.snippet || '').slice(0, 180).replace(/\n/g, ' ').trim();
+      var agent = note.agent || note.Agent || '';
+      var trustState = note.trust_state || note.TrustState || '';
+
+      var metaChildren = [];
+      if (agent) {
+        metaChildren.push(el('span', {className: 'tag agent-badge', textContent: '@' + agent}));
+      }
+      var tBadge = buildTrustBadge(trustState);
+      if (tBadge) metaChildren.push(tBadge);
+      if (modified) {
+        metaChildren.push(buildFreshnessIndicator(modified));
+      }
+
+      var nodeChildren = [];
+      if (modified) {
+        nodeChildren.push(el('div', {className: 'timeline-date', textContent: formatDate(modified)}));
+      }
+      nodeChildren.push(el('div', {className: 'timeline-title', textContent: title}));
+      if (snippet) {
+        nodeChildren.push(el('div', {className: 'timeline-summary', textContent: snippet}));
+      }
+      if (metaChildren.length > 0) {
+        nodeChildren.push(el('div', {className: 'timeline-meta'}, metaChildren));
+      }
+
+      var node = el('div', {
+        className: 'timeline-node',
+        tabindex: '0',
+        role: 'button',
+        'aria-label': 'Open handoff ' + title,
+        onclick: function() {
+          window.location.hash = '#note/' + encodeURIComponent(path);
+        },
+        onkeydown: function(e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            window.location.hash = '#note/' + encodeURIComponent(path);
+          }
+        }
+      }, nodeChildren);
+
+      timeline.appendChild(node);
     });
   }
 

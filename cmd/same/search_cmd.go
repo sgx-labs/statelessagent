@@ -84,10 +84,18 @@ func runSearch(query string, topK int, domain string, trustState string, content
 	}
 	defer db.Close()
 
+	// Auto-detect metadata queries (trust state, confidence, provenance)
+	// Only apply if the user didn't explicitly set --trust
+	metaHints := memory.InferMetadataFilters(query)
+	effectiveTrust := trustState
+	if effectiveTrust == "" && metaHints.TrustState != "" {
+		effectiveTrust = metaHints.TrustState
+	}
+
 	searchOpts := store.SearchOptions{
 		TopK:            topK,
 		Domain:          domain,
-		TrustState:      trustState,
+		TrustState:      effectiveTrust,
 		ContentType:     contentType,
 		Tags:            tags,
 		QueryTypeBoosts: memory.InferQueryTypeBoost(query),
@@ -156,6 +164,41 @@ func runSearch(query string, topK int, domain string, trustState string, content
 			if err != nil {
 				return fmt.Errorf("search: %w", err)
 			}
+		}
+	}
+
+	// For metadata queries (trust/confidence/provenance), supplement results
+	// with MetadataFilterSearch to catch notes that match by metadata even if
+	// they didn't match by content keywords. Metadata results are prepended
+	// so they rank above content-only matches for metadata-focused queries.
+	if metaHints.IsMetadataQuery {
+		metaOpts := store.SearchOptions{
+			TopK:        topK,
+			Domain:      domain,
+			TrustState:  effectiveTrust,
+			ContentType: contentType,
+			Tags:        tags,
+		}
+		metaResults, metaErr := db.MetadataFilterSearch(metaOpts)
+		if metaErr == nil && len(metaResults) > 0 {
+			seen := make(map[string]bool, len(metaResults))
+			var merged []store.SearchResult
+			for _, mr := range metaResults {
+				seen[mr.Path] = true
+				merged = append(merged, mr)
+			}
+			// Append original results that aren't already in metadata results
+			for _, r := range results {
+				if seen[r.Path] {
+					continue
+				}
+				merged = append(merged, r)
+			}
+			// Trim to topK
+			if len(merged) > topK {
+				merged = merged[:topK]
+			}
+			results = merged
 		}
 	}
 
@@ -287,10 +330,17 @@ func runFederatedSearch(query string, topK int, domain string, trustState string
 		queryVec, _ = client.GetQueryEmbedding(query)
 	}
 
+	// Auto-detect metadata queries for federated search too
+	fedMetaHints := memory.InferMetadataFilters(query)
+	fedEffectiveTrust := trustState
+	if fedEffectiveTrust == "" && fedMetaHints.TrustState != "" {
+		fedEffectiveTrust = fedMetaHints.TrustState
+	}
+
 	results, err := store.FederatedSearch(vaultDBPaths, queryVec, query, store.SearchOptions{
 		TopK:            topK,
 		Domain:          domain,
-		TrustState:      trustState,
+		TrustState:      fedEffectiveTrust,
 		ContentType:     contentType,
 		Tags:            tags,
 		QueryTypeBoosts: memory.InferQueryTypeBoost(query),

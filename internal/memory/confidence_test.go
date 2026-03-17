@@ -206,6 +206,96 @@ func TestInferQueryTypeBoost(t *testing.T) {
 	})
 }
 
+func TestInferMetadataFilters(t *testing.T) {
+	t.Run("stale trust state detection", func(t *testing.T) {
+		for _, query := range []string{
+			"what is the trust state of stale documents",
+			"show me stale notes",
+			"find outdated content",
+			"deprecated API endpoints",
+			"superseded decisions",
+		} {
+			hints := InferMetadataFilters(query)
+			if hints.TrustState != "stale" {
+				t.Errorf("expected TrustState=stale for %q, got %q", query, hints.TrustState)
+			}
+			if !hints.IsMetadataQuery {
+				t.Errorf("expected IsMetadataQuery=true for %q", query)
+			}
+		}
+	})
+
+	t.Run("contradicted trust state detection", func(t *testing.T) {
+		hints := InferMetadataFilters("are there any contradicted notes")
+		if hints.TrustState != "contradicted" {
+			t.Errorf("expected TrustState=contradicted, got %q", hints.TrustState)
+		}
+	})
+
+	t.Run("validated trust state detection", func(t *testing.T) {
+		hints := InferMetadataFilters("show me validated decisions")
+		if hints.TrustState != "validated" {
+			t.Errorf("expected TrustState=validated, got %q", hints.TrustState)
+		}
+	})
+
+	t.Run("low confidence detection", func(t *testing.T) {
+		for _, query := range []string{
+			"which notes have low confidence",
+			"find unreliable content",
+			"uncertain notes in the vault",
+		} {
+			hints := InferMetadataFilters(query)
+			if !hints.LowConfidenceQuery {
+				t.Errorf("expected LowConfidenceQuery=true for %q", query)
+			}
+			if !hints.IsMetadataQuery {
+				t.Errorf("expected IsMetadataQuery=true for %q", query)
+			}
+			// Low-confidence queries default to finding stale notes
+			if hints.TrustState != "stale" {
+				t.Errorf("expected TrustState=stale for low confidence query %q, got %q", query, hints.TrustState)
+			}
+		}
+	})
+
+	t.Run("provenance detection", func(t *testing.T) {
+		for _, query := range []string{
+			"what is the trust state of documents",
+			"show me provenance data",
+			"where did this come from",
+		} {
+			hints := InferMetadataFilters(query)
+			if !hints.ProvenanceQuery {
+				t.Errorf("expected ProvenanceQuery=true for %q", query)
+			}
+		}
+	})
+
+	t.Run("no metadata intent for generic queries", func(t *testing.T) {
+		for _, query := range []string{
+			"how does authentication work",
+			"explain the database migration",
+			"what is the search ranking algorithm",
+		} {
+			hints := InferMetadataFilters(query)
+			if hints.IsMetadataQuery {
+				t.Errorf("unexpected IsMetadataQuery=true for %q", query)
+			}
+			if hints.TrustState != "" {
+				t.Errorf("unexpected TrustState=%q for %q", hints.TrustState, query)
+			}
+		}
+	})
+
+	t.Run("case insensitive", func(t *testing.T) {
+		hints := InferMetadataFilters("What is the TRUST STATE of documents?")
+		if !hints.ProvenanceQuery {
+			t.Error("expected ProvenanceQuery=true for uppercase query")
+		}
+	})
+}
+
 func TestInferContentType(t *testing.T) {
 	tests := []struct {
 		path         string

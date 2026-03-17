@@ -1801,36 +1801,79 @@ func searchWithFallback(query string, opts store.SearchOptions) ([]store.SearchR
 		opts.QueryTypeBoosts = memory.InferQueryTypeBoost(query)
 	}
 
+	// Auto-detect metadata queries (trust/confidence/provenance) and apply
+	// trust_state filter if the caller didn't already set one.
+	metaHints := memory.InferMetadataFilters(query)
+	if opts.TrustState == "" && metaHints.TrustState != "" {
+		opts.TrustState = metaHints.TrustState
+	}
+
 	// Try vector+keyword hybrid search first
 	var queryVec []float32
 	if embedClient != nil {
 		queryVec, _ = embedClient.GetQueryEmbedding(query)
 	}
+
+	var results []store.SearchResult
+	var err error
+
 	if queryVec != nil && db.HasVectors() {
-		return db.HybridSearch(queryVec, query, opts)
+		results, err = db.HybridSearch(queryVec, query, opts)
+	} else if db.FTSAvailable() {
+		// Fall back to FTS5 full-text search
+		results, err = db.FTS5Search(query, opts)
+	} else {
+		// Final fallback: keyword search on title/text
+		terms := store.ExtractSearchTerms(query)
+		if len(terms) == 0 {
+			return nil, nil
+		}
+		raw, kwErr := db.KeywordSearch(terms, opts.TopK)
+		if kwErr != nil {
+			return nil, kwErr
+		}
+		for _, r := range raw {
+			if !matchesSearchOptions(r, opts) {
+				continue
+			}
+			results = append(results, store.RawToSearchResult(r, 0.5))
+		}
 	}
 
-	// Fall back to FTS5 full-text search
-	if db.FTSAvailable() {
-		return db.FTS5Search(query, opts)
-	}
-
-	// Final fallback: keyword search on title/text
-	terms := store.ExtractSearchTerms(query)
-	if len(terms) == 0 {
-		return nil, nil
-	}
-	raw, err := db.KeywordSearch(terms, opts.TopK)
 	if err != nil {
 		return nil, err
 	}
-	var results []store.SearchResult
-	for _, r := range raw {
-		if !matchesSearchOptions(r, opts) {
-			continue
+
+	// For metadata queries, supplement with MetadataFilterSearch to catch
+	// notes that match by metadata even if they didn't match by content.
+	if metaHints.IsMetadataQuery {
+		metaResults, metaErr := db.MetadataFilterSearch(store.SearchOptions{
+			TopK:        opts.TopK,
+			Domain:      opts.Domain,
+			TrustState:  opts.TrustState,
+			ContentType: opts.ContentType,
+			Tags:        opts.Tags,
+		})
+		if metaErr == nil && len(metaResults) > 0 {
+			seen := make(map[string]bool, len(metaResults))
+			var merged []store.SearchResult
+			for _, mr := range metaResults {
+				seen[mr.Path] = true
+				merged = append(merged, mr)
+			}
+			for _, r := range results {
+				if seen[r.Path] {
+					continue
+				}
+				merged = append(merged, r)
+			}
+			if len(merged) > opts.TopK {
+				merged = merged[:opts.TopK]
+			}
+			results = merged
 		}
-		results = append(results, store.RawToSearchResult(r, 0.5))
 	}
+
 	return results, nil
 }
 
