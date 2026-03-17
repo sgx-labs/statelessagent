@@ -786,3 +786,265 @@ func TestFederatedSearch_MixedVaultHealth(t *testing.T) {
 		}
 	}
 }
+
+func TestMetadataFilterSearch(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	vec := make([]float32, 768)
+
+	notes := []NoteRecord{
+		{
+			Path: "notes/auth-decision.md", Title: "Auth Decision",
+			Tags: `["security","auth"]`, Domain: "engineering",
+			ChunkID: 0, ChunkHeading: "(full)",
+			Text: "We decided to use JWT for authentication.",
+			Modified: 1700000001, ContentHash: "h1", ContentType: "decision", Confidence: 0.9,
+		},
+		{
+			Path: "notes/deploy-handoff.md", Title: "Deploy Handoff",
+			Tags: `["devops"]`, Domain: "operations",
+			ChunkID: 0, ChunkHeading: "(full)",
+			Text: "Handing off deployment pipeline work.",
+			Modified: 1700000002, ContentHash: "h2", ContentType: "handoff", Confidence: 0.8,
+		},
+		{
+			Path: "notes/api-research.md", Title: "API Research",
+			Tags: `["api","research"]`, Domain: "engineering",
+			ChunkID: 0, ChunkHeading: "(full)",
+			Text: "Research on REST vs GraphQL approaches.",
+			Modified: 1700000003, ContentHash: "h3", ContentType: "research", Confidence: 0.7,
+		},
+		{
+			Path: "notes/old-note.md", Title: "Old Note",
+			Tags: `["legacy"]`, Domain: "engineering",
+			ChunkID: 0, ChunkHeading: "(full)",
+			Text: "This note is outdated and stale.",
+			Modified: 1700000000, ContentHash: "h4", ContentType: "note", Confidence: 0.5,
+		},
+	}
+
+	for i := range notes {
+		if err := db.InsertNote(&notes[i], vec); err != nil {
+			t.Fatalf("InsertNote %d: %v", i, err)
+		}
+	}
+
+	// Set trust states
+	if err := db.UpdateTrustState([]string{"notes/auth-decision.md"}, "validated"); err != nil {
+		t.Fatalf("UpdateTrustState: %v", err)
+	}
+	if err := db.UpdateTrustState([]string{"notes/old-note.md"}, "stale"); err != nil {
+		t.Fatalf("UpdateTrustState: %v", err)
+	}
+	if err := db.UpdateTrustState([]string{"notes/api-research.md"}, "contradicted"); err != nil {
+		t.Fatalf("UpdateTrustState: %v", err)
+	}
+
+	t.Run("filter by trust_state stale", func(t *testing.T) {
+		results, err := db.MetadataFilterSearch(SearchOptions{
+			TopK:       10,
+			TrustState: "stale",
+		})
+		if err != nil {
+			t.Fatalf("MetadataFilterSearch: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 stale result, got %d", len(results))
+		}
+		if results[0].Path != "notes/old-note.md" {
+			t.Errorf("expected old-note.md, got %s", results[0].Path)
+		}
+	})
+
+	t.Run("filter by trust_state validated", func(t *testing.T) {
+		results, err := db.MetadataFilterSearch(SearchOptions{
+			TopK:       10,
+			TrustState: "validated",
+		})
+		if err != nil {
+			t.Fatalf("MetadataFilterSearch: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 validated result, got %d", len(results))
+		}
+		if results[0].Path != "notes/auth-decision.md" {
+			t.Errorf("expected auth-decision.md, got %s", results[0].Path)
+		}
+	})
+
+	t.Run("filter by content_type decision", func(t *testing.T) {
+		results, err := db.MetadataFilterSearch(SearchOptions{
+			TopK:        10,
+			ContentType: "decision",
+		})
+		if err != nil {
+			t.Fatalf("MetadataFilterSearch: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 decision result, got %d", len(results))
+		}
+		if results[0].Path != "notes/auth-decision.md" {
+			t.Errorf("expected auth-decision.md, got %s", results[0].Path)
+		}
+	})
+
+	t.Run("filter by domain engineering", func(t *testing.T) {
+		results, err := db.MetadataFilterSearch(SearchOptions{
+			TopK:   10,
+			Domain: "engineering",
+		})
+		if err != nil {
+			t.Fatalf("MetadataFilterSearch: %v", err)
+		}
+		if len(results) != 3 {
+			t.Fatalf("expected 3 engineering results, got %d", len(results))
+		}
+	})
+
+	t.Run("filter by tag", func(t *testing.T) {
+		results, err := db.MetadataFilterSearch(SearchOptions{
+			TopK: 10,
+			Tags: []string{"security"},
+		})
+		if err != nil {
+			t.Fatalf("MetadataFilterSearch: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 result with security tag, got %d", len(results))
+		}
+		if results[0].Path != "notes/auth-decision.md" {
+			t.Errorf("expected auth-decision.md, got %s", results[0].Path)
+		}
+	})
+
+	t.Run("combined filters trust_state + domain", func(t *testing.T) {
+		results, err := db.MetadataFilterSearch(SearchOptions{
+			TopK:       10,
+			TrustState: "contradicted",
+			Domain:     "engineering",
+		})
+		if err != nil {
+			t.Fatalf("MetadataFilterSearch: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 contradicted+engineering result, got %d", len(results))
+		}
+		if results[0].Path != "notes/api-research.md" {
+			t.Errorf("expected api-research.md, got %s", results[0].Path)
+		}
+	})
+
+	t.Run("no matching filters", func(t *testing.T) {
+		results, err := db.MetadataFilterSearch(SearchOptions{
+			TopK:        10,
+			TrustState:  "stale",
+			ContentType: "decision",
+		})
+		if err != nil {
+			t.Fatalf("MetadataFilterSearch: %v", err)
+		}
+		if len(results) != 0 {
+			t.Fatalf("expected 0 results for impossible combination, got %d", len(results))
+		}
+	})
+
+	t.Run("case insensitive filters", func(t *testing.T) {
+		results, err := db.MetadataFilterSearch(SearchOptions{
+			TopK:       10,
+			TrustState: "STALE",
+		})
+		if err != nil {
+			t.Fatalf("MetadataFilterSearch: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 stale result with uppercase filter, got %d", len(results))
+		}
+	})
+
+	t.Run("no filters returns all notes", func(t *testing.T) {
+		results, err := db.MetadataFilterSearch(SearchOptions{
+			TopK: 50,
+		})
+		if err != nil {
+			t.Fatalf("MetadataFilterSearch: %v", err)
+		}
+		if len(results) != 4 {
+			t.Fatalf("expected 4 results with no filters, got %d", len(results))
+		}
+	})
+}
+
+func TestSearchOptions_TrustStateFilter_VectorSearch(t *testing.T) {
+	// Verify that trust_state and content_type filters work in VectorSearch post-filtering.
+	// This test uses FTS5Search since vector search requires real embeddings.
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	vec := make([]float32, 768)
+
+	notes := []NoteRecord{
+		{
+			Path: "notes/decision-a.md", Title: "Decision A",
+			Tags: `["auth"]`, Domain: "engineering",
+			ChunkID: 0, ChunkHeading: "(full)",
+			Text: "Auth decision content searchterm-xyz",
+			Modified: 1700000001, ContentHash: "ha", ContentType: "decision", Confidence: 0.9,
+		},
+		{
+			Path: "notes/note-b.md", Title: "Note B",
+			Tags: `["general"]`, Domain: "engineering",
+			ChunkID: 0, ChunkHeading: "(full)",
+			Text: "General note content searchterm-xyz",
+			Modified: 1700000002, ContentHash: "hb", ContentType: "note", Confidence: 0.7,
+		},
+	}
+
+	for i := range notes {
+		if err := db.InsertNote(&notes[i], vec); err != nil {
+			t.Fatalf("InsertNote %d: %v", i, err)
+		}
+	}
+
+	if err := db.UpdateTrustState([]string{"notes/decision-a.md"}, "validated"); err != nil {
+		t.Fatalf("UpdateTrustState: %v", err)
+	}
+
+	// FTS5Search should respect trust_state filter
+	if db.FTSAvailable() {
+		results, err := db.FTS5Search("searchterm-xyz", SearchOptions{
+			TopK:       10,
+			TrustState: "validated",
+		})
+		if err != nil {
+			t.Fatalf("FTS5Search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 validated FTS5 result, got %d", len(results))
+		}
+		if results[0].Path != "notes/decision-a.md" {
+			t.Errorf("expected decision-a.md, got %s", results[0].Path)
+		}
+
+		// ContentType filter
+		results, err = db.FTS5Search("searchterm-xyz", SearchOptions{
+			TopK:        10,
+			ContentType: "note",
+		})
+		if err != nil {
+			t.Fatalf("FTS5Search content_type: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 note-type FTS5 result, got %d", len(results))
+		}
+		if results[0].Path != "notes/note-b.md" {
+			t.Errorf("expected note-b.md, got %s", results[0].Path)
+		}
+	}
+}

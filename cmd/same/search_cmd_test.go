@@ -86,13 +86,13 @@ func captureCommandStdout(t *testing.T, fn func()) string {
 }
 
 func TestRunSearch_EmptyQuery(t *testing.T) {
-	if err := runSearch("", 5, "", false, false); err == nil {
+	if err := runSearch("", 5, "", "", "", nil, false, false); err == nil {
 		t.Fatal("expected error for empty query")
 	}
 }
 
 func TestRunSearch_WhitespaceQuery(t *testing.T) {
-	if err := runSearch("   ", 5, "", false, false); err == nil {
+	if err := runSearch("   ", 5, "", "", "", nil, false, false); err == nil {
 		t.Fatal("expected error for whitespace query")
 	}
 }
@@ -104,7 +104,7 @@ func TestRunSearch_KeywordMode(t *testing.T) {
 
 	var runErr error
 	out := captureCommandStdout(t, func() {
-		runErr = runSearch("jwt-tokens", 5, "", false, false)
+		runErr = runSearch("jwt-tokens", 5, "", "", "", nil, false, false)
 	})
 	if runErr != nil {
 		t.Fatalf("runSearch: %v", runErr)
@@ -122,7 +122,7 @@ func TestRunSearch_NoResults_FewNotes(t *testing.T) {
 
 	var runErr error
 	out := captureCommandStdout(t, func() {
-		runErr = runSearch("not-present-term", 5, "", false, false)
+		runErr = runSearch("not-present-term", 5, "", "", "", nil, false, false)
 	})
 	if runErr != nil {
 		t.Fatalf("runSearch: %v", runErr)
@@ -141,7 +141,7 @@ func TestRunSearch_NoResults_ManyNotes(t *testing.T) {
 
 	var runErr error
 	out := captureCommandStdout(t, func() {
-		runErr = runSearch("missing-query-value", 5, "", false, false)
+		runErr = runSearch("missing-query-value", 5, "", "", "", nil, false, false)
 	})
 	if runErr != nil {
 		t.Fatalf("runSearch: %v", runErr)
@@ -158,7 +158,7 @@ func TestRunSearch_JSONOutput_EmptyResults(t *testing.T) {
 
 	var runErr error
 	out := captureCommandStdout(t, func() {
-		runErr = runSearch("term-not-found", 5, "", true, false)
+		runErr = runSearch("term-not-found", 5, "", "", "", nil, true, false)
 	})
 	if runErr != nil {
 		t.Fatalf("runSearch: %v", runErr)
@@ -175,7 +175,7 @@ func TestRunSearch_JSONOutput_WithResults(t *testing.T) {
 
 	var runErr error
 	out := captureCommandStdout(t, func() {
-		runErr = runSearch("unique-term-123", 5, "", true, false)
+		runErr = runSearch("unique-term-123", 5, "", "", "", nil, true, false)
 	})
 	if runErr != nil {
 		t.Fatalf("runSearch: %v", runErr)
@@ -191,7 +191,7 @@ func TestRunSearch_JSONOutput_WithResults(t *testing.T) {
 }
 
 func TestRunFederatedSearch_EmptyQuery(t *testing.T) {
-	if err := runFederatedSearch("", 5, "", false, false, true, ""); err == nil {
+	if err := runFederatedSearch("", 5, "", "", "", nil, false, false, true, ""); err == nil {
 		t.Fatal("expected error for empty federated query")
 	}
 }

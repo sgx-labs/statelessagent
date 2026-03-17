@@ -150,7 +150,7 @@ func registerTools(server *mcp.Server) {
 	// search_notes_filtered
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "search_notes_filtered",
-		Description: "Search the user's knowledge base with metadata filters. Use this when you want to narrow results by domain (e.g. 'engineering'), workstream (e.g. 'api-redesign'), tags, or agent attribution.\n\nArgs:\n  query: Natural language search query\n  top_k: Number of results (default 10, max 100)\n  domain: Filter by domain (e.g. 'engineering', 'product')\n  workstream: Filter by workstream/project name\n  tags: Comma-separated tags to filter by\n  agent: Filter by agent attribution (e.g. 'codex', 'claude')\n\nReturns filtered ranked list.",
+		Description: "Search the user's knowledge base with metadata filters. Use this when you want to narrow results by domain (e.g. 'engineering'), workstream (e.g. 'api-redesign'), tags, agent attribution, trust state, or content type.\n\nArgs:\n  query: Natural language search query\n  top_k: Number of results (default 10, max 100)\n  domain: Filter by domain (e.g. 'engineering', 'product')\n  workstream: Filter by workstream/project name\n  tags: Comma-separated tags to filter by\n  agent: Filter by agent attribution (e.g. 'codex', 'claude')\n  trust_state: Filter by trust state (validated, stale, contradicted, unknown)\n  content_type: Filter by content type (decision, handoff, note, research)\n\nReturns filtered ranked list.",
 		Annotations: readOnly,
 	}, handleSearchNotesFiltered)
 
@@ -268,12 +268,14 @@ type searchInput struct {
 }
 
 type searchFilteredInput struct {
-	Query      string `json:"query" jsonschema:"Natural language search query"`
-	TopK       int    `json:"top_k" jsonschema:"Number of results (default 10, max 100)"`
-	Domain     string `json:"domain,omitempty" jsonschema:"Filter by domain"`
-	Workstream string `json:"workstream,omitempty" jsonschema:"Filter by workstream"`
-	Tags       string `json:"tags,omitempty" jsonschema:"Comma-separated tags to filter by"`
-	Agent      string `json:"agent,omitempty" jsonschema:"Filter by agent attribution"`
+	Query       string `json:"query" jsonschema:"Natural language search query"`
+	TopK        int    `json:"top_k" jsonschema:"Number of results (default 10, max 100)"`
+	Domain      string `json:"domain,omitempty" jsonschema:"Filter by domain"`
+	Workstream  string `json:"workstream,omitempty" jsonschema:"Filter by workstream"`
+	Tags        string `json:"tags,omitempty" jsonschema:"Comma-separated tags to filter by"`
+	Agent       string `json:"agent,omitempty" jsonschema:"Filter by agent attribution"`
+	TrustState  string `json:"trust_state,omitempty" jsonschema:"Filter by trust state (validated, stale, contradicted, unknown)"`
+	ContentType string `json:"content_type,omitempty" jsonschema:"Filter by content type (decision, handoff, note, research)"`
 }
 
 type getInput struct {
@@ -397,11 +399,13 @@ func handleSearchNotesFiltered(ctx context.Context, req *mcp.CallToolRequest, in
 	}
 
 	opts := store.SearchOptions{
-		TopK:       topK,
-		Domain:     input.Domain,
-		Workstream: input.Workstream,
-		Agent:      agentFilter,
-		Tags:       tags,
+		TopK:        topK,
+		Domain:      input.Domain,
+		Workstream:  input.Workstream,
+		Agent:       agentFilter,
+		Tags:        tags,
+		TrustState:  input.TrustState,
+		ContentType: input.ContentType,
 	}
 
 	results, err := searchWithFallback(input.Query, opts)
@@ -1856,6 +1860,12 @@ func matchesSearchOptions(r store.RawSearchResult, opts store.SearchOptions) boo
 		return false
 	}
 	if opts.Agent != "" && !strings.EqualFold(r.Agent, opts.Agent) {
+		return false
+	}
+	if opts.TrustState != "" && !strings.EqualFold(r.TrustState, opts.TrustState) {
+		return false
+	}
+	if opts.ContentType != "" && !strings.EqualFold(r.ContentType, opts.ContentType) {
 		return false
 	}
 	if len(opts.Tags) == 0 {

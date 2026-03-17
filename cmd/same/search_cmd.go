@@ -17,34 +17,55 @@ import (
 
 func searchCmd() *cobra.Command {
 	var (
-		topK      int
-		domain    string
-		jsonOut   bool
-		verbose   bool
-		allVaults bool
-		vaults    string
+		topK        int
+		domain      string
+		trustState  string
+		contentType string
+		tag         string
+		jsonOut     bool
+		verbose     bool
+		allVaults   bool
+		vaults      string
 	)
 	cmd := &cobra.Command{
 		Use:     "search [query]",
 		Aliases: []string{"s"},
 		Short:   "Search your notes by meaning or keyword",
 		Long: `Search the current vault, or search across multiple vaults.
+Filter by metadata: trust state, content type, domain, or tags.
 
 Examples:
   same search "authentication approach"
+  same search "auth decisions" --trust validated
+  same search "deployment pipeline" --type decision
+  same search "stale notes" --trust stale
+  same search "api design" --domain engineering
+  same search "auth" --tag security
   same search --all "JWT patterns"
   same search --vaults dev,marketing "launch timeline"`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			query := strings.Join(args, " ")
-			if allVaults || vaults != "" {
-				return runFederatedSearch(query, topK, domain, jsonOut, verbose, allVaults, vaults)
+			var tags []string
+			if tag != "" {
+				for _, t := range strings.Split(tag, ",") {
+					t = strings.TrimSpace(t)
+					if t != "" {
+						tags = append(tags, t)
+					}
+				}
 			}
-			return runSearch(query, topK, domain, jsonOut, verbose)
+			if allVaults || vaults != "" {
+				return runFederatedSearch(query, topK, domain, trustState, contentType, tags, jsonOut, verbose, allVaults, vaults)
+			}
+			return runSearch(query, topK, domain, trustState, contentType, tags, jsonOut, verbose)
 		},
 	}
 	cmd.Flags().IntVar(&topK, "top-k", 5, "Number of results")
 	cmd.Flags().StringVar(&domain, "domain", "", "Filter by domain")
+	cmd.Flags().StringVarP(&trustState, "trust", "t", "", "Filter by trust state (validated, stale, contradicted, unknown)")
+	cmd.Flags().StringVar(&contentType, "type", "", "Filter by content type (decision, handoff, note, research)")
+	cmd.Flags().StringVar(&tag, "tag", "", "Filter by tag (comma-separated for multiple)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Output as JSON")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show raw scores for debugging")
 	cmd.Flags().BoolVar(&allVaults, "all", false, "Search across all registered vaults")
@@ -52,7 +73,7 @@ Examples:
 	return cmd
 }
 
-func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool) error {
+func runSearch(query string, topK int, domain string, trustState string, contentType string, tags []string, jsonOut bool, verbose bool) error {
 	if strings.TrimSpace(query) == "" {
 		return userError("Empty search query", "Provide a search term: same search \"your query\"")
 	}
@@ -62,11 +83,19 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 	}
 	defer db.Close()
 
+	searchOpts := store.SearchOptions{
+		TopK:        topK,
+		Domain:      domain,
+		TrustState:  trustState,
+		ContentType: contentType,
+		Tags:        tags,
+	}
+
 	// Detect lite mode (no vectors) and fall back to FTS5/keyword
 	var results []store.SearchResult
 	if !db.HasVectors() {
 		if db.FTSAvailable() {
-			results, err = db.FTS5Search(query, store.SearchOptions{TopK: topK, Domain: domain})
+			results, err = db.FTS5Search(query, searchOpts)
 			if err != nil {
 				return fmt.Errorf("search: %w", err)
 			}
@@ -103,7 +132,7 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 		if err != nil {
 			// Embedding provider unavailable — try FTS5 fallback, then LIKE-based
 			if db.FTSAvailable() {
-				results, _ = db.FTS5Search(query, store.SearchOptions{TopK: topK, Domain: domain})
+				results, _ = db.FTS5Search(query, searchOpts)
 			}
 			if results == nil {
 				terms := store.ExtractSearchTerms(query)
@@ -139,10 +168,7 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 				return embedding.HumanizeError(fmt.Errorf("embed query: %w", err))
 			}
 
-			results, err = db.HybridSearch(queryVec, query, store.SearchOptions{
-				TopK:   topK,
-				Domain: domain,
-			})
+			results, err = db.HybridSearch(queryVec, query, searchOpts)
 			if err != nil {
 				return fmt.Errorf("search: %w", err)
 			}
@@ -229,7 +255,7 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 	return nil
 }
 
-func runFederatedSearch(query string, topK int, domain string, jsonOut bool, verbose bool, allVaults bool, vaultsFlag string) error {
+func runFederatedSearch(query string, topK int, domain string, trustState string, contentType string, tags []string, jsonOut bool, verbose bool, allVaults bool, vaultsFlag string) error {
 	if strings.TrimSpace(query) == "" {
 		return userError("Empty search query", "Provide a search term: same search --all \"your query\"")
 	}
@@ -278,8 +304,11 @@ func runFederatedSearch(query string, topK int, domain string, jsonOut bool, ver
 	}
 
 	results, err := store.FederatedSearch(vaultDBPaths, queryVec, query, store.SearchOptions{
-		TopK:   topK,
-		Domain: domain,
+		TopK:        topK,
+		Domain:      domain,
+		TrustState:  trustState,
+		ContentType: contentType,
+		Tags:        tags,
 	})
 	if err != nil {
 		return fmt.Errorf("federated search: %w", err)
@@ -444,6 +473,78 @@ func runRelated(notePath string, topK int, jsonOut bool, verbose bool) error {
 		fmt.Printf("   %s\n", snippet)
 	}
 	fmt.Println()
+
+	return nil
+}
+
+func staleCmd() *cobra.Command {
+	var (
+		topK    int
+		jsonOut bool
+	)
+	cmd := &cobra.Command{
+		Use:   "stale",
+		Short: "List notes with stale trust state",
+		Long: `Show all notes marked as stale — their source material has changed
+since the note was written. Equivalent to: same search --trust stale
+
+Use this to find notes that may need review or updating.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runStale(topK, jsonOut)
+		},
+	}
+	cmd.Flags().IntVar(&topK, "top-k", 20, "Maximum number of results")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Output as JSON")
+	return cmd
+}
+
+func runStale(topK int, jsonOut bool) error {
+	db, err := store.Open()
+	if err != nil {
+		return config.ErrNoDatabase
+	}
+	defer db.Close()
+
+	results, err := db.MetadataFilterSearch(store.SearchOptions{
+		TopK:       topK,
+		TrustState: "stale",
+	})
+	if err != nil {
+		return fmt.Errorf("stale search: %w", err)
+	}
+
+	if jsonOut {
+		data, _ := json.MarshalIndent(results, "", "  ")
+		fmt.Println(string(data))
+		return nil
+	}
+
+	if len(results) == 0 {
+		fmt.Printf("\n  %sNo stale notes found. Your memory is up to date.%s\n\n", cli.Green, cli.Reset)
+		return nil
+	}
+
+	fmt.Printf("\n  %s%d stale note(s)%s — source material has changed since these were written:\n", cli.Yellow, len(results), cli.Reset)
+	for i, r := range results {
+		typeTag := ""
+		if r.ContentType != "" && r.ContentType != "note" {
+			typeTag = fmt.Sprintf(" [%s]", r.ContentType)
+		}
+
+		fmt.Printf("\n%d. %s%s\n", i+1, r.Title, typeTag)
+		fmt.Printf("   %s\n", r.Path)
+		fmt.Printf("   Trust: %sstale%s\n", cli.Yellow, cli.Reset)
+
+		snippet := r.Snippet
+		if len(snippet) > 150 {
+			snippet = snippet[:150] + "..."
+		}
+		snippet = strings.ReplaceAll(snippet, "\n", " ")
+		snippet = strings.ReplaceAll(snippet, "\r", "")
+		fmt.Printf("   %s\n", snippet)
+	}
+	fmt.Printf("\n  %sTip: Review and update these notes, then run 'same reindex' to refresh trust state.%s\n\n", cli.Dim, cli.Reset)
 
 	return nil
 }

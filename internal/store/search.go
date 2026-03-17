@@ -28,11 +28,13 @@ type SearchResult struct {
 
 // SearchOptions configures a vector search.
 type SearchOptions struct {
-	TopK       int
-	Domain     string
-	Workstream string
-	Agent      string
-	Tags       []string
+	TopK        int
+	Domain      string
+	Workstream  string
+	Agent       string
+	Tags        []string
+	TrustState  string // Filter by trust_state (validated, stale, contradicted, unknown)
+	ContentType string // Filter by content_type (decision, handoff, note, research, etc.)
 }
 
 // VectorSearch performs a KNN vector search with optional metadata filtering
@@ -117,6 +119,12 @@ func (db *DB) VectorSearch(queryVec []float32, opts SearchOptions) ([]SearchResu
 			continue
 		}
 		if len(opts.Tags) > 0 && !hasTags(r.tags, opts.Tags) {
+			continue
+		}
+		if opts.TrustState != "" && !strings.EqualFold(r.trustState, opts.TrustState) {
+			continue
+		}
+		if opts.ContentType != "" && !strings.EqualFold(r.contentType, opts.ContentType) {
 			continue
 		}
 		filtered = append(filtered, r)
@@ -999,6 +1007,12 @@ func (db *DB) FTS5Search(query string, opts SearchOptions) ([]SearchResult, erro
 		if len(opts.Tags) > 0 && !hasTags(r.Tags, opts.Tags) {
 			continue
 		}
+		if opts.TrustState != "" && !strings.EqualFold(r.TrustState, opts.TrustState) {
+			continue
+		}
+		if opts.ContentType != "" && !strings.EqualFold(r.ContentType, opts.ContentType) {
+			continue
+		}
 
 		results = append(results, r)
 		if len(results) >= opts.TopK {
@@ -1150,6 +1164,94 @@ func FederatedSearch(vaultDBPaths map[string]string, queryVec []float32, queryTe
 	}
 
 	return deduped, nil
+}
+
+// MetadataFilterSearch finds notes matching metadata filters without requiring
+// a search query. Useful for listing all stale notes, all decisions, etc.
+// Results are sorted by modification time (most recent first).
+func (db *DB) MetadataFilterSearch(opts SearchOptions) ([]SearchResult, error) {
+	if opts.TopK <= 0 {
+		opts.TopK = 20
+	}
+	if opts.TopK > 200 {
+		opts.TopK = 200
+	}
+
+	var conditions []string
+	var args []interface{}
+
+	conditions = append(conditions, "n.chunk_id = 0")
+	conditions = append(conditions, "UPPER(n.path) NOT LIKE '_PRIVATE/%%'")
+	conditions = append(conditions, "COALESCE(n.suppressed, 0) = 0")
+
+	if opts.TrustState != "" {
+		conditions = append(conditions, "LOWER(COALESCE(n.trust_state, 'unknown')) = LOWER(?)")
+		args = append(args, opts.TrustState)
+	}
+	if opts.ContentType != "" {
+		conditions = append(conditions, "LOWER(n.content_type) = LOWER(?)")
+		args = append(args, opts.ContentType)
+	}
+	if opts.Domain != "" {
+		conditions = append(conditions, "LOWER(n.domain) = LOWER(?)")
+		args = append(args, opts.Domain)
+	}
+	if opts.Workstream != "" {
+		conditions = append(conditions, "LOWER(n.workstream) = LOWER(?)")
+		args = append(args, opts.Workstream)
+	}
+	if opts.Agent != "" {
+		conditions = append(conditions, "LOWER(COALESCE(n.agent, '')) = LOWER(?)")
+		args = append(args, opts.Agent)
+	}
+
+	args = append(args, opts.TopK)
+
+	query := fmt.Sprintf(`
+		SELECT n.path, n.title, n.chunk_heading, n.text,
+			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags, n.content_type, n.confidence,
+			n.access_count, COALESCE(n.trust_state, 'unknown')
+		FROM vault_notes n
+		WHERE %s
+		ORDER BY n.modified DESC
+		LIMIT ?`, strings.Join(conditions, " AND "))
+
+	rows, err := db.conn.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("metadata filter search: %w", err)
+	}
+	defer rows.Close()
+
+	// Tag filtering is done post-query since tags are stored as JSON arrays
+	var results []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		var accessCount int
+		if err := rows.Scan(
+			&r.Path, &r.Title, &r.ChunkHeading, &r.Snippet,
+			&r.Domain, &r.Workstream, &r.Agent, &r.Tags, &r.ContentType, &r.Confidence,
+			&accessCount, &r.TrustState,
+		); err != nil {
+			continue
+		}
+
+		if len(opts.Tags) > 0 && !hasTags(r.Tags, opts.Tags) {
+			continue
+		}
+
+		if len(r.Snippet) > 500 {
+			r.Snippet = r.Snippet[:500]
+		}
+		r.Score = 0
+		r.Distance = 0
+
+		results = append(results, r)
+		if len(results) >= opts.TopK {
+			break
+		}
+	}
+
+	return results, rows.Err()
 }
 
 func round3(f float64) float64 {
