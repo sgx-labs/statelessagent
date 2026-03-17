@@ -1,0 +1,221 @@
+[
+  {
+    "id": 1,
+    "query": "how do we prevent directory traversal attacks in file paths",
+    "expect_in_results": ["traversal", "sanitize", "path"],
+    "expect_note": "architecture/mcp-integration.md",
+    "category": "retrieval"
+  },
+  {
+    "id": 2,
+    "query": "what happens when the embedding provider is unavailable",
+    "expect_in_results": ["graceful", "degradation", "keyword"],
+    "expect_note": "architecture/embedding-pipeline.md",
+    "category": "retrieval"
+  },
+  {
+    "id": 3,
+    "query": "how does the debouncer batch rapid file changes",
+    "expect_in_results": ["debounce", "500ms", "fsnotify"],
+    "expect_note": "architecture/data-flow.md",
+    "category": "retrieval"
+  },
+  {
+    "id": 4,
+    "query": "what is the maximum number of vaults for federated search",
+    "expect_in_results": ["50", "federated", "vault"],
+    "expect_note": "architecture/multi-tenancy.md",
+    "category": "retrieval"
+  },
+  {
+    "id": 5,
+    "query": "where do we configure the Ollama endpoint URL",
+    "expect_in_results": ["OLLAMA_URL", "localhost:11434"],
+    "expect_note": "project/environment-setup.md",
+    "category": "retrieval"
+  },
+  {
+    "id": 6,
+    "query": "which CI provider did we use before GitHub Actions",
+    "expect_in_results": ["CircleCI", "migrate"],
+    "expect_note": "stale/old-deploy-pipeline.md",
+    "category": "retrieval"
+  },
+  {
+    "id": 7,
+    "query": "how are real-time events published to the dashboard",
+    "expect_in_results": ["SSE", "pub/sub", "Redis"],
+    "expect_note": "architecture/data-flow.md",
+    "category": "retrieval"
+  },
+  {
+    "id": 8,
+    "query": "what is the embedding retry policy on failure",
+    "expect_in_results": ["retry", "exponential", "backoff"],
+    "expect_note": "architecture/embedding-pipeline.md",
+    "category": "retrieval"
+  },
+  {
+    "id": 9,
+    "query": "how does the reconsolidation boost affect search scores",
+    "expect_in_results": ["access_count", "log1p", "0.02"],
+    "expect_note": "architecture/search-ranking.md",
+    "category": "retrieval"
+  },
+  {
+    "id": 10,
+    "query": "what alerting rules fire on high error rates",
+    "expect_in_results": ["error rate", "5%", "critical"],
+    "expect_note": "architecture/observability.md",
+    "category": "retrieval"
+  },
+  {
+    "id": 11,
+    "query": "how are wiki-links detected for building graph edges automatically",
+    "expect_in_results": ["wiki-link", "references", "automatic"],
+    "expect_note": "architecture/graph-model.md",
+    "category": "retrieval"
+  },
+  {
+    "id": 12,
+    "query": "what communication protocols are used between internal services",
+    "expect_in_results": ["gRPC", "REST", "pub/sub"],
+    "expect_note": "architecture/system-overview.md",
+    "category": "retrieval"
+  },
+  {
+    "id": 13,
+    "query": "what was the MiniLM retrieval precision problem that caused us to switch models",
+    "expect_in_results": ["MiniLM", "60%", "precision"],
+    "expect_note": "stale/old-embedding-model.md",
+    "category": "retrieval"
+  },
+  {
+    "id": 14,
+    "query": "how is the query result cache keyed and when does it expire",
+    "expect_in_results": ["LRU", "1000", "5-minute"],
+    "expect_note": "architecture/caching-strategy.md",
+    "category": "retrieval"
+  },
+  {
+    "id": 15,
+    "query": "what breaking changes happened between API v0 and v1",
+    "expect_in_results": ["path-based", "frontmatter", "hybrid"],
+    "expect_note": "stale/old-api-v0.md",
+    "category": "retrieval"
+  },
+  {
+    "id": 16,
+    "query": "what did the search optimization session improve in p50 latency",
+    "expect_in_results": ["120ms", "35ms"],
+    "expect_note": "sessions/handoff-003.md",
+    "category": "handoff"
+  },
+  {
+    "id": 17,
+    "query": "what frontend components were built in the dashboard session",
+    "expect_in_results": ["NoteList", "NoteDetail", "dark mode"],
+    "expect_note": "sessions/handoff-004.md",
+    "category": "handoff"
+  },
+  {
+    "id": 18,
+    "query": "what files were created during the auth implementation session",
+    "expect_in_results": ["token.go", "auth.go", "revoke.go"],
+    "expect_note": "sessions/handoff-001.md",
+    "category": "handoff"
+  },
+  {
+    "id": 19,
+    "query": "how far along is the token revocation feature",
+    "expect_in_results": ["deny-list", "60%", "revoke"],
+    "expect_note": "sessions/handoff-001.md",
+    "category": "handoff"
+  },
+  {
+    "id": 20,
+    "query": "what migration files were created for the audit log",
+    "expect_in_results": ["0008", "audit_log", "up.sql"],
+    "expect_note": "sessions/handoff-002.md",
+    "category": "handoff"
+  },
+  {
+    "id": 21,
+    "query": "which notes about deployment are no longer accurate",
+    "expect_in_results": ["outdated", "CircleCI", "GitHub Actions"],
+    "expect_note": "stale/old-deploy-pipeline.md",
+    "category": "staleness"
+  },
+  {
+    "id": 22,
+    "query": "is the session-based authentication documentation still valid",
+    "expect_in_results": ["superseded", "session", "JWT"],
+    "expect_note": "stale/old-auth-approach.md",
+    "category": "staleness"
+  },
+  {
+    "id": 23,
+    "query": "are there any notes using the old 384 dimension embedding model",
+    "expect_in_results": ["MiniLM", "384", "outdated"],
+    "expect_note": "stale/old-embedding-model.md",
+    "category": "staleness"
+  },
+  {
+    "id": 24,
+    "query": "which documents have a review_by date that has passed",
+    "expect_in_results": ["stale", "review_by"],
+    "expect_note": "stale/old-testing-setup.md",
+    "category": "staleness"
+  },
+  {
+    "id": 25,
+    "query": "which documents have low confidence scores indicating they may be untrustworthy",
+    "expect_in_results": ["confidence", "0.2", "stale"],
+    "expect_note": "stale/old-api-v0.md",
+    "category": "integrity"
+  },
+  {
+    "id": 26,
+    "query": "how does the system protect against Unicode bypass attacks in MCP output",
+    "expect_in_results": ["Unicode", "neutralizeTags", "normalization"],
+    "expect_note": "meetings/2025-11-24-security-review.md",
+    "category": "integrity"
+  },
+  {
+    "id": 27,
+    "query": "what provenance metadata is tracked in the audit log for forensic analysis",
+    "expect_in_results": ["audit_log", "actor_id", "action"],
+    "expect_note": "sessions/handoff-002.md",
+    "category": "integrity"
+  },
+  {
+    "id": 28,
+    "query": "terraform infrastructure as code modules",
+    "expect_in_results": [],
+    "expect_note": "",
+    "expect_not_in_results": ["terraform", "IaC"],
+    "category": "retrieval",
+    "negative": true,
+    "description": "Negative test: no notes mention Terraform, should return no relevant results"
+  },
+  {
+    "id": 29,
+    "query": "Apache Kafka event streaming consumer groups",
+    "expect_in_results": [],
+    "expect_note": "",
+    "expect_not_in_results": ["Kafka", "consumer group"],
+    "category": "retrieval",
+    "negative": true,
+    "description": "Negative test: no notes discuss Kafka, should not return false matches"
+  },
+  {
+    "id": 30,
+    "query": "React Native mobile app build configuration",
+    "expect_in_results": [],
+    "expect_note": "",
+    "expect_not_in_results": ["React Native", "Expo"],
+    "category": "retrieval",
+    "negative": true,
+    "description": "Negative test: no notes discuss React Native, should not return false matches"
+  }
+]
