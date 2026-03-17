@@ -242,6 +242,11 @@ No telemetry. No cloud. Path traversal blocked. Config files written with owner-
 | `same consolidate` | Merge related notes into knowledge summaries |
 | `same brief` | AI-generated orientation briefing |
 | `same health` | Vault health score with trust/provenance analysis |
+| `same stale` | List all stale notes in your vault |
+| `same search --trust stale` | Filter search by trust state |
+| `same search --type decision` | Filter search by content type |
+| `same ignore` | View/manage .sameignore patterns |
+| `same brief --no-llm` | Structured briefing without LLM |
 | `same tips` | Best practices for vault hygiene and security |
 | `same reindex [--force]` | Rebuild search index |
 | `same repair` | Back up and rebuild database |
