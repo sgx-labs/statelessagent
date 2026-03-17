@@ -6,6 +6,7 @@
 <title>SAME — Vault Dashboard</title>
 <link href="https://cdn.jsdelivr.net/npm/daisyui@5/dist/full.min.css" rel="stylesheet" type="text/css" />
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.4/cytoscape.min.js"></script>
 <style>
   /* Base overrides to match the website color scheme */
   :root {
@@ -889,6 +890,88 @@
     .note-viewer-content { font-size: 12pt; line-height: 1.5; }
     .note-viewer-content a { color: #000; text-decoration: underline; }
   }
+
+  /* === Cytoscape Graph Visualization === */
+  .cyto-container {
+    width: 100%;
+    background: var(--same-bg);
+    border: 1px solid var(--same-border);
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .cyto-container-full { height: 500px; }
+  .cyto-container-mini { height: 300px; }
+  .cyto-canvas {
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+  }
+  .cyto-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: rgba(8, 8, 15, 0.85);
+    border-bottom: 1px solid var(--same-border);
+    flex-wrap: wrap;
+  }
+  .cyto-toolbar select {
+    padding: 5px 10px;
+    background: var(--same-bg-glass);
+    border: 1px solid var(--same-border);
+    border-radius: 6px;
+    color: var(--same-text);
+    font-size: 12px;
+    font-family: var(--same-mono);
+    cursor: pointer;
+    outline: none;
+  }
+  .cyto-toolbar select:focus { border-color: rgba(0, 212, 170, 0.4); }
+  .cyto-toolbar select option { background: var(--same-bg); }
+  .cyto-toolbar button {
+    padding: 5px 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--same-border);
+    border-radius: 6px;
+    color: var(--same-text-dim);
+    font-size: 12px;
+    font-family: var(--same-mono);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .cyto-toolbar button:hover {
+    border-color: rgba(0, 212, 170, 0.4);
+    color: var(--same-accent);
+    background: rgba(0, 212, 170, 0.05);
+  }
+  .cyto-node-count {
+    font-size: 11px;
+    color: var(--same-text-dim);
+    font-family: var(--same-mono);
+    margin-left: auto;
+  }
+  .cyto-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--same-text-dim);
+    font-size: 13px;
+    text-align: center;
+    padding: 20px;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .cyto-empty code {
+    background: rgba(255,255,255,0.06);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: var(--same-mono);
+    font-size: 12px;
+  }
 </style>
 </head>
 <body style="background: #0A0A0F; margin: 0; padding: 0;">
@@ -913,6 +996,10 @@
   <a class="nav-item" data-page="browse" onclick="navigate('browse')" title="Browse and filter all indexed notes" aria-label="Open browse">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
     <span>Browse</span>
+  </a>
+  <a class="nav-item" data-page="graph" onclick="navigate('graph')" title="Interactive knowledge graph visualization" aria-label="Open graph">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><line x1="8.5" y1="7.5" x2="15.5" y2="16.5"/><line x1="15.5" y1="7.5" x2="8.5" y2="16.5"/><line x1="6" y1="9" x2="6" y2="15"/><line x1="18" y1="9" x2="18" y2="15"/></svg>
+    <span>Graph</span>
   </a>
   <a class="nav-item" data-page="decisions" onclick="navigate('decisions')" title="Key choices captured from your AI sessions" aria-label="Open decisions">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -1017,6 +1104,9 @@
         </div>
         <div class="edge-badges-row" id="graph-top-relationships"></div>
         <div class="cli-actions" id="graph-cli-actions"></div>
+        <div class="cyto-container cyto-container-mini" id="graph-mini-container" style="margin-top: 16px;">
+          <div class="cyto-canvas" id="graph-mini-canvas"></div>
+        </div>
       </div>
     </div>
 
@@ -1089,6 +1179,23 @@
     <div id="browse-count" style="font-size: 12px; margin-bottom: 10px; color: var(--same-text-dim);"></div>
     <div id="browse-notes" style="display: flex; flex-direction: column; gap: 10px;">
       <div class="loading"><div class="spinner"></div> Loading...</div>
+    </div>
+  </div>
+
+  <!-- Graph -->
+  <div id="page-graph" class="page" role="region" aria-label="Graph view">
+    <h2 class="page-title" tabindex="-1">Knowledge Graph</h2>
+    <div class="cyto-container cyto-container-full" id="graph-full-container">
+      <div class="cyto-toolbar" id="graph-full-toolbar">
+        <button onclick="graphFitToScreen()" title="Fit graph to screen">Fit</button>
+        <select id="graph-layout-select" onchange="graphChangeLayout(this.value)" aria-label="Graph layout">
+          <option value="cose">Force-directed (cose)</option>
+          <option value="circle">Circle</option>
+          <option value="grid">Grid</option>
+        </select>
+        <span class="cyto-node-count" id="graph-full-count"></span>
+      </div>
+      <div class="cyto-canvas" id="graph-full-canvas"></div>
     </div>
   </div>
 
@@ -1243,6 +1350,7 @@
     if (page !== 'note') lastPage = page;
     if (page === 'decisions') loadDecisions();
     if (page === 'handoffs') loadHandoffs();
+    if (page === 'graph') loadGraphPage();
     if (page === 'search') {
       var input = document.getElementById('search-input');
       if (input) setTimeout(function() { input.focus(); }, 50);
@@ -1256,7 +1364,7 @@
   };
 
   // Hash router
-  var validPages = ['dashboard', 'search', 'browse', 'decisions', 'handoffs'];
+  var validPages = ['dashboard', 'search', 'browse', 'graph', 'decisions', 'handoffs'];
   function handleHash() {
     var hash = window.location.hash.slice(1) || 'dashboard';
     if (hash.startsWith('note/')) {
@@ -1777,6 +1885,9 @@
         renderComposition();
         renderGraphHighlights(graphStats);
         renderInsights(status, pinned, graphStats);
+        if (graphStats && graphStats.available && graphStats.total_nodes > 0) {
+          loadMiniGraph();
+        }
       });
     }).catch(function(err) {
       setError(document.getElementById('recent-notes'), 'Failed to load dashboard', err);
@@ -2367,6 +2478,447 @@
       ]));
     }).catch(function() {
       section.style.display = 'none';
+    });
+  }
+
+  // ========== Cytoscape Graph Visualization ==========
+
+  var cyFullInstance = null;
+  var cyMiniInstance = null;
+  var graphDataCache = null;
+
+  // Node color map by content type
+  var graphNodeColors = {
+    note: '#C8C8D0',
+    decision: '#00D4AA',
+    handoff: '#8B5CF6',
+    entity: '#FBBF24',
+    concept: '#FBBF24',
+    file: '#6B7280',
+    hub: '#F97316',
+    agent: '#00D4AA',
+    research: '#F59E0B'
+  };
+
+  // Edge color map by relationship type
+  var graphEdgeColors = {
+    mentions: 'rgba(107, 114, 128, 0.5)',
+    references: 'rgba(0, 212, 170, 0.6)',
+    affects: 'rgba(139, 92, 246, 0.6)',
+    depends_on: 'rgba(251, 191, 36, 0.6)',
+    produced: 'rgba(0, 212, 170, 0.5)',
+    related_to: 'rgba(107, 114, 128, 0.4)',
+    contains: 'rgba(107, 114, 128, 0.4)',
+    owned_by: 'rgba(139, 92, 246, 0.4)'
+  };
+
+  function getGraphNodeColor(type) {
+    return graphNodeColors[type] || '#6B7280';
+  }
+
+  function getGraphEdgeColor(rel) {
+    return graphEdgeColors[rel] || 'rgba(107, 114, 128, 0.4)';
+  }
+
+  // Build Cytoscape elements from notes + graph connections
+  function buildGraphElements(notes, connectionData) {
+    var elements = { nodes: [], edges: [] };
+    var nodeMap = {};
+    var edgeDegree = {};
+
+    // Add note nodes
+    (notes || []).forEach(function(n) {
+      var path = n.path || n.Path || '';
+      var type = n.content_type || n.ContentType || 'note';
+      var title = n.title || n.Title || path;
+      if (!path || nodeMap[path]) return;
+      nodeMap[path] = true;
+      edgeDegree[path] = 0;
+      elements.nodes.push({
+        data: {
+          id: path,
+          label: title.length > 40 ? title.slice(0, 37) + '...' : title,
+          fullTitle: title,
+          type: type,
+          notePath: path,
+          color: getGraphNodeColor(type)
+        }
+      });
+    });
+
+    // Process connection data (array of {source, target, relationship} or paths)
+    (connectionData || []).forEach(function(conn) {
+      var src = conn.source || '';
+      var tgt = conn.target || '';
+      var rel = conn.relationship || 'related_to';
+      if (!src || !tgt) return;
+
+      // Add nodes if they don't exist yet (e.g. entity/concept nodes from graph)
+      if (!nodeMap[src]) {
+        nodeMap[src] = true;
+        edgeDegree[src] = 0;
+        var srcType = conn.source_type || 'concept';
+        elements.nodes.push({
+          data: {
+            id: src,
+            label: src.length > 40 ? src.slice(0, 37) + '...' : src,
+            fullTitle: src,
+            type: srcType,
+            notePath: srcType === 'note' ? src : '',
+            color: getGraphNodeColor(srcType)
+          }
+        });
+      }
+      if (!nodeMap[tgt]) {
+        nodeMap[tgt] = true;
+        edgeDegree[tgt] = 0;
+        var tgtType = conn.target_type || 'concept';
+        elements.nodes.push({
+          data: {
+            id: tgt,
+            label: tgt.length > 40 ? tgt.slice(0, 37) + '...' : tgt,
+            fullTitle: tgt,
+            type: tgtType,
+            notePath: tgtType === 'note' ? tgt : '',
+            color: getGraphNodeColor(tgtType)
+          }
+        });
+      }
+
+      edgeDegree[src] = (edgeDegree[src] || 0) + 1;
+      edgeDegree[tgt] = (edgeDegree[tgt] || 0) + 1;
+
+      elements.edges.push({
+        data: {
+          id: src + '--' + rel + '--' + tgt,
+          source: src,
+          target: tgt,
+          relationship: rel,
+          color: getGraphEdgeColor(rel)
+        }
+      });
+    });
+
+    // Update node sizes based on degree
+    elements.nodes.forEach(function(n) {
+      var degree = edgeDegree[n.data.id] || 0;
+      n.data.size = Math.max(16, Math.min(50, 16 + degree * 4));
+      n.data.fontSize = Math.max(8, Math.min(14, 8 + degree));
+    });
+
+    return elements;
+  }
+
+  // Create Cytoscape style array
+  function getCytoStyle() {
+    return [
+      {
+        selector: 'node',
+        style: {
+          'background-color': 'data(color)',
+          'label': 'data(label)',
+          'width': 'data(size)',
+          'height': 'data(size)',
+          'font-size': 'data(fontSize)',
+          'color': '#C8C8D0',
+          'text-valign': 'bottom',
+          'text-halign': 'center',
+          'text-margin-y': 6,
+          'text-outline-color': '#0A0A0F',
+          'text-outline-width': 2,
+          'border-width': 1,
+          'border-color': 'rgba(255,255,255,0.1)',
+          'overlay-opacity': 0,
+          'transition-property': 'opacity, background-color, border-color, width, height',
+          'transition-duration': '0.2s'
+        }
+      },
+      {
+        selector: 'edge',
+        style: {
+          'line-color': 'data(color)',
+          'width': 1.5,
+          'curve-style': 'bezier',
+          'target-arrow-shape': 'triangle',
+          'target-arrow-color': 'data(color)',
+          'arrow-scale': 0.7,
+          'opacity': 0.6,
+          'overlay-opacity': 0,
+          'transition-property': 'opacity, line-color, width',
+          'transition-duration': '0.2s'
+        }
+      },
+      {
+        selector: 'node.dimmed',
+        style: {
+          'opacity': 0.15
+        }
+      },
+      {
+        selector: 'edge.dimmed',
+        style: {
+          'opacity': 0.06
+        }
+      },
+      {
+        selector: 'node.highlighted',
+        style: {
+          'border-width': 2,
+          'border-color': '#00D4AA',
+          'opacity': 1,
+          'z-index': 10
+        }
+      },
+      {
+        selector: 'edge.highlighted',
+        style: {
+          'width': 2.5,
+          'opacity': 0.9,
+          'z-index': 10
+        }
+      }
+    ];
+  }
+
+  // Get layout options for a named layout
+  function getGraphLayout(name) {
+    switch (name) {
+      case 'circle':
+        return { name: 'circle', padding: 40, animate: true, animationDuration: 400 };
+      case 'grid':
+        return { name: 'grid', padding: 40, animate: true, animationDuration: 400, condense: true };
+      case 'cose':
+      default:
+        return {
+          name: 'cose',
+          padding: 40,
+          animate: 'end',
+          animationDuration: 500,
+          nodeRepulsion: function() { return 8000; },
+          idealEdgeLength: function() { return 80; },
+          edgeElasticity: function() { return 100; },
+          gravity: 0.25,
+          numIter: 300,
+          randomize: true
+        };
+    }
+  }
+
+  // Initialize a Cytoscape instance on a container
+  function initCytoscape(containerId, elements, layoutName) {
+    var container = document.getElementById(containerId);
+    if (!container) return null;
+
+    // Show empty state if no elements
+    if (!elements || elements.nodes.length === 0) {
+      container.innerHTML = '';
+      var emptyDiv = document.createElement('div');
+      emptyDiv.className = 'cyto-empty';
+      emptyDiv.innerHTML = '<p>No graph data available.</p><p>Run <code>same graph rebuild</code> to extract relationships.</p>';
+      container.appendChild(emptyDiv);
+      return null;
+    }
+
+    var cy = cytoscape({
+      container: container,
+      elements: elements.nodes.concat(elements.edges),
+      style: getCytoStyle(),
+      layout: getGraphLayout(layoutName || 'cose'),
+      minZoom: 0.2,
+      maxZoom: 4,
+      wheelSensitivity: 0.3
+    });
+
+    // Hover: highlight neighbors, dim others
+    cy.on('mouseover', 'node', function(e) {
+      var node = e.target;
+      var neighborhood = node.neighborhood().add(node);
+      cy.elements().addClass('dimmed');
+      neighborhood.removeClass('dimmed').addClass('highlighted');
+    });
+
+    cy.on('mouseout', 'node', function() {
+      cy.elements().removeClass('dimmed highlighted');
+    });
+
+    // Click: navigate to note if it's a note node
+    cy.on('tap', 'node', function(e) {
+      var data = e.target.data();
+      if (data.notePath) {
+        window.location.hash = '#note/' + encodeURIComponent(data.notePath);
+      }
+    });
+
+    // Cursor style for clickable note nodes
+    cy.on('mouseover', 'node', function(e) {
+      var data = e.target.data();
+      if (data.notePath) {
+        container.style.cursor = 'pointer';
+      }
+    });
+    cy.on('mouseout', 'node', function() {
+      container.style.cursor = 'default';
+    });
+
+    return cy;
+  }
+
+  // Fetch all graph edges from the API
+  // Uses /api/graph/connections for each note, collecting all edges
+  function fetchGraphData(callback) {
+    if (graphDataCache) {
+      callback(graphDataCache);
+      return;
+    }
+
+    ensureAllNotes(function(ok) {
+      if (ok === false) {
+        callback({ notes: [], edges: [] });
+        return;
+      }
+
+      // Collect edges from graph connections for each note
+      // To avoid flooding the API, fetch connections for all notes in parallel
+      // but limit to first 100 notes for performance
+      var notesToQuery = allNotes.slice(0, 100);
+      var allEdges = [];
+      var edgeSet = {};
+      var pending = notesToQuery.length;
+
+      if (pending === 0) {
+        graphDataCache = { notes: allNotes, edges: [] };
+        callback(graphDataCache);
+        return;
+      }
+
+      notesToQuery.forEach(function(note) {
+        var path = note.path || note.Path || '';
+        if (!path) {
+          pending--;
+          if (pending === 0) finish();
+          return;
+        }
+        api('/api/graph/connections/' + encodeURIComponent(path) + '?depth=1&dir=both').then(function(data) {
+          var paths = (data && data.paths) || [];
+          paths.forEach(function(p) {
+            var nodes = (p.Nodes || p.nodes || []);
+            var edges = (p.Edges || p.edges || []);
+            for (var i = 0; i < edges.length; i++) {
+              var edge = edges[i];
+              var srcNode = nodes[i];
+              var tgtNode = nodes[i + 1];
+              if (!srcNode || !tgtNode) continue;
+              var src = srcNode.Name || srcNode.name || '';
+              var tgt = tgtNode.Name || tgtNode.name || '';
+              var rel = edge.Relationship || edge.relationship || 'related_to';
+              var key = src + '|' + rel + '|' + tgt;
+              if (edgeSet[key]) continue;
+              edgeSet[key] = true;
+              allEdges.push({
+                source: src,
+                target: tgt,
+                relationship: rel,
+                source_type: srcNode.Type || srcNode.type || 'concept',
+                target_type: tgtNode.Type || tgtNode.type || 'concept'
+              });
+            }
+          });
+          pending--;
+          if (pending === 0) finish();
+        }).catch(function() {
+          pending--;
+          if (pending === 0) finish();
+        });
+      });
+
+      function finish() {
+        graphDataCache = { notes: allNotes, edges: allEdges };
+        callback(graphDataCache);
+      }
+    });
+  }
+
+  // Load the full graph page
+  function loadGraphPage() {
+    var canvas = document.getElementById('graph-full-canvas');
+    var countEl = document.getElementById('graph-full-count');
+
+    // Show loading
+    canvas.innerHTML = '';
+    var loadingDiv = document.createElement('div');
+    loadingDiv.className = 'cyto-empty';
+    loadingDiv.innerHTML = '<div class="loading"><div class="spinner"></div> Building graph...</div>';
+    canvas.appendChild(loadingDiv);
+
+    fetchGraphData(function(data) {
+      var elements = buildGraphElements(data.notes, data.edges);
+      var layoutSelect = document.getElementById('graph-layout-select');
+      var layoutName = layoutSelect ? layoutSelect.value : 'cose';
+
+      // Destroy previous instance
+      if (cyFullInstance) {
+        cyFullInstance.destroy();
+        cyFullInstance = null;
+      }
+
+      canvas.innerHTML = '';
+      cyFullInstance = initCytoscape('graph-full-canvas', elements, layoutName);
+
+      // Update count label
+      if (countEl) {
+        countEl.textContent = elements.nodes.length + ' nodes, ' + elements.edges.length + ' edges';
+      }
+    });
+  }
+  window.loadGraphPage = loadGraphPage;
+
+  // Fit-to-screen button handler
+  window.graphFitToScreen = function() {
+    if (cyFullInstance) {
+      cyFullInstance.fit(undefined, 40);
+      cyFullInstance.center();
+    }
+  };
+
+  // Layout change handler
+  window.graphChangeLayout = function(name) {
+    if (cyFullInstance) {
+      cyFullInstance.layout(getGraphLayout(name)).run();
+    }
+  };
+
+  // Load mini graph on the dashboard
+  function loadMiniGraph() {
+    var canvas = document.getElementById('graph-mini-canvas');
+    if (!canvas) return;
+
+    fetchGraphData(function(data) {
+      var elements = buildGraphElements(data.notes, data.edges);
+
+      // Destroy previous instance
+      if (cyMiniInstance) {
+        cyMiniInstance.destroy();
+        cyMiniInstance = null;
+      }
+
+      if (elements.nodes.length === 0) {
+        canvas.innerHTML = '';
+        var emptyDiv = document.createElement('div');
+        emptyDiv.className = 'cyto-empty';
+        emptyDiv.innerHTML = '<p>No graph data.</p><p>Run <code>same graph rebuild</code></p>';
+        canvas.appendChild(emptyDiv);
+        return;
+      }
+
+      canvas.innerHTML = '';
+      cyMiniInstance = initCytoscape('graph-mini-canvas', elements, 'cose');
+
+      // Make mini graph non-interactive for panning but still show hover
+      if (cyMiniInstance) {
+        cyMiniInstance.userPanningEnabled(true);
+        cyMiniInstance.userZoomingEnabled(true);
+        cyMiniInstance.boxSelectionEnabled(false);
+      }
     });
   }
 
