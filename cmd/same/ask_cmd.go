@@ -76,6 +76,7 @@ func runAsk(question, model string, topK int) error {
 							Path: rr.Path, Title: rr.Title, Snippet: snippet,
 							Domain: rr.Domain, Workstream: rr.Workstream,
 							Tags: rr.Tags, ContentType: rr.ContentType, Score: 0.5,
+							TrustState: rr.TrustState,
 						})
 					}
 				}
@@ -114,6 +115,7 @@ func runAsk(question, model string, topK int) error {
 						Path: rr.Path, Title: rr.Title, Snippet: snippet,
 						Domain: rr.Domain, Workstream: rr.Workstream,
 						Tags: rr.Tags, ContentType: rr.ContentType, Score: 0.5,
+						TrustState: rr.TrustState,
 					})
 				}
 			}

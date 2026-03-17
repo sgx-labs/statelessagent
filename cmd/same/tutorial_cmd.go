@@ -171,6 +171,7 @@ func (ts *tutorialState) search(query string, topK int) ([]store.SearchResult, e
 			Tags:        rr.Tags,
 			ContentType: rr.ContentType,
 			Score:       0.5,
+			TrustState:  rr.TrustState,
 		})
 	}
 	return results, nil

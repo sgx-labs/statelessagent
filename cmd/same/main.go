@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sgx-labs/statelessagent/internal/cli"
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/embedding"
 )
@@ -274,6 +275,21 @@ func formatRelevance(score float64) string {
 	}
 
 	return fmt.Sprintf("%s%s %s", filled, empty, label)
+}
+
+// formatTrustState returns a colored trust state label for CLI display.
+// Returns empty string for "unknown" or empty trust states (don't show).
+func formatTrustState(state string) string {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "validated":
+		return fmt.Sprintf("Trust: %svalidated%s", cli.Green, cli.Reset)
+	case "stale":
+		return fmt.Sprintf("Trust: %sstale%s", cli.Yellow, cli.Reset)
+	case "contradicted":
+		return fmt.Sprintf("Trust: %scontradicted%s", cli.Red, cli.Reset)
+	default:
+		return ""
+	}
 }
 
 // ---------- error helpers ----------

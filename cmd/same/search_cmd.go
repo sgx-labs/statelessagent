@@ -87,6 +87,7 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 					Path: rr.Path, Title: rr.Title, Snippet: snippet,
 					Domain: rr.Domain, Workstream: rr.Workstream,
 					Tags: rr.Tags, ContentType: rr.ContentType, Score: 0.5,
+					TrustState: rr.TrustState,
 				})
 			}
 		}
@@ -117,6 +118,7 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 							Path: rr.Path, Title: rr.Title, Snippet: snippet,
 							Domain: rr.Domain, Workstream: rr.Workstream,
 							Tags: rr.Tags, ContentType: rr.ContentType, Score: 0.5,
+							TrustState: rr.TrustState,
 						})
 					}
 				}
@@ -185,6 +187,9 @@ func runSearch(query string, topK int, domain string, jsonOut bool, verbose bool
 				r.Score*100, r.Distance, r.Confidence*100)
 		} else {
 			fmt.Printf("   Match: %s\n", formatRelevance(r.Score))
+		}
+		if trustLine := formatTrustState(r.TrustState); trustLine != "" {
+			fmt.Printf("   %s\n", trustLine)
 		}
 
 		// Show first 150 chars of snippet
@@ -310,6 +315,9 @@ func runFederatedSearch(query string, topK int, domain string, jsonOut bool, ver
 		} else {
 			fmt.Printf("   Match: %s\n", formatRelevance(r.Score))
 		}
+		if trustLine := formatTrustState(r.TrustState); trustLine != "" {
+			fmt.Printf("   %s\n", trustLine)
+		}
 
 		snippet := r.Snippet
 		if len(snippet) > 150 {
@@ -422,6 +430,9 @@ func runRelated(notePath string, topK int, jsonOut bool, verbose bool) error {
 			fmt.Printf("   Score: %.3f  Distance: %.1f\n", r.Score, r.Distance)
 		} else {
 			fmt.Printf("   Match: %s\n", formatRelevance(r.Score))
+		}
+		if trustLine := formatTrustState(r.TrustState); trustLine != "" {
+			fmt.Printf("   %s\n", trustLine)
 		}
 
 		snippet := r.Snippet

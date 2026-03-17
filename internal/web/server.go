@@ -363,6 +363,7 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 					Tags:        rr.Tags,
 					ContentType: rr.ContentType,
 					Score:       0.5,
+					TrustState:  rr.TrustState,
 				})
 			}
 		}

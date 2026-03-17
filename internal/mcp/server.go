@@ -1835,6 +1835,7 @@ func searchWithFallback(query string, opts store.SearchOptions) ([]store.SearchR
 			Tags:         r.Tags,
 			ContentType:  r.ContentType,
 			Confidence:   r.Confidence,
+			TrustState:   r.TrustState,
 		})
 	}
 	return results, nil
