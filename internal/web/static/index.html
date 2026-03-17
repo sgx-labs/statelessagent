@@ -30,6 +30,29 @@
   html, body {
     background: var(--same-bg) !important;
     color: var(--same-text);
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Subtle noise texture overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.015;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 256px 256px;
+  }
+
+  /* === LAYOUT: sidebar + content side-by-side === */
+  .app-shell {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    min-height: 100vh;
+    width: 100%;
   }
 
   /* Glassmorphism card effect */
@@ -52,6 +75,25 @@
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-right: 1px solid var(--same-border);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    width: 220px;
+    z-index: 10;
+  }
+
+  /* Main content area */
+  .same-main {
+    padding: 36px 40px;
+    min-height: 100vh;
+    overflow-y: auto;
+  }
+  .same-main-inner {
+    max-width: 900px;
+    margin: 0 auto;
   }
 
   .nav-item {
@@ -129,12 +171,6 @@
     font-weight: 600;
     margin-bottom: 4px;
     color: var(--same-text);
-  }
-  .note-path {
-    font-size: 11px;
-    font-family: var(--same-mono);
-    color: var(--same-text-dim);
-    margin-bottom: 6px;
   }
   .note-snippet {
     font-size: 13px;
@@ -553,10 +589,11 @@
 
   /* Stat card big numbers */
   .stat-number {
-    font-size: 32px;
+    font-size: 28px;
     font-weight: 800;
     font-family: var(--same-mono);
     letter-spacing: -0.02em;
+    line-height: 1.1;
     background: linear-gradient(135deg, var(--same-accent), #00E8BB);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -566,6 +603,100 @@
     background: linear-gradient(135deg, var(--same-purple), #A78BFA);
     -webkit-background-clip: text;
     background-clip: text;
+  }
+
+  /* Stats grid — always 4 columns on desktop */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 28px;
+  }
+  .stat-card {
+    background: var(--same-bg-glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--same-border);
+    border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .stat-card:first-child {
+    box-shadow: 0 0 20px rgba(0, 212, 170, 0.08);
+  }
+  .stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--same-text-dim);
+    margin-top: 6px;
+    font-weight: 600;
+  }
+
+  /* Section card containment */
+  .section-card {
+    background: var(--same-bg-card);
+    border: 1px solid var(--same-border);
+    border-radius: 14px;
+    padding: 22px 24px;
+    margin-bottom: 24px;
+  }
+  .section-card-header {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--same-text-dim);
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--same-border);
+    position: relative;
+  }
+  .section-card-header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    width: 40px;
+    height: 2px;
+    background: var(--same-accent);
+    border-radius: 1px;
+  }
+
+  /* Mini stats grid (for graph stats, trust, etc.) */
+  .mini-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .mini-stats-grid.cols-4 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .mini-stat {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--same-border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    text-align: center;
+  }
+  .mini-stat .stat-number {
+    font-size: 22px;
+  }
+
+  /* Edge type badges — horizontal flow */
+  .edge-badges-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Page title hierarchy */
+  .page-title {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--same-text);
+    margin-bottom: 24px;
   }
 
   /* Trust overview cards */
@@ -590,7 +721,7 @@
     background-clip: text;
   }
 
-  /* Section header accent underline */
+  /* Section header accent underline (kept for backward compat, but mostly replaced by section-card-header) */
   .section-title {
     position: relative;
     display: inline-block;
@@ -604,6 +735,17 @@
     height: 2px;
     background: var(--same-accent);
     border-radius: 1px;
+  }
+
+  /* Note path dimmer */
+  .note-path {
+    font-size: 10px;
+    font-family: var(--same-mono);
+    color: rgba(107, 114, 128, 0.7);
+    margin-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* Browse controls */
@@ -628,6 +770,10 @@
 
   /* Responsive */
   @media (max-width: 1024px) {
+    .app-shell {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto 1fr;
+    }
     .same-sidebar {
       position: fixed !important;
       top: 0;
@@ -667,6 +813,15 @@
       margin-top: 72px;
       padding: 18px !important;
     }
+    .stats-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .mini-stats-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .mini-stats-grid.cols-4 {
+      grid-template-columns: repeat(2, 1fr);
+    }
   }
   @media (max-width: 768px) {
     .sidebar-brand-block { min-width: 90px !important; }
@@ -677,11 +832,52 @@
     .nav-item span { display: none; }
     .nav-item { padding: 10px; justify-content: center; }
     .same-main { margin-top: 56px; padding: 14px !important; }
+    .stats-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
   }
   @media (max-width: 480px) {
     .browse-controls-wrap { flex-direction: column; }
     .browse-controls-wrap input, .browse-controls-wrap select { width: 100%; }
+    .stats-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
   }
+
+  /* Utility fallbacks — Tailwind v4 browser CDN cannot detect classes in JS strings.
+     These explicit rules ensure dynamic DOM elements render correctly. */
+  .text-xs { font-size: 12px; line-height: 1.5; }
+  .text-xl { font-size: 20px; line-height: 1.4; }
+  .text-2xl { font-size: 24px; }
+  .text-base { font-size: 16px; }
+  .font-bold { font-weight: 700; }
+  .font-semibold { font-weight: 600; }
+  .font-medium { font-weight: 500; }
+  .uppercase { text-transform: uppercase; }
+  .tracking-wider { letter-spacing: 0.05em; }
+  .tracking-tight { letter-spacing: -0.02em; }
+  .mb-1 { margin-bottom: 4px; }
+  .mb-2 { margin-bottom: 8px; }
+  .mb-3 { margin-bottom: 12px; }
+  .mb-4 { margin-bottom: 16px; }
+  .mb-6 { margin-bottom: 24px; }
+  .mb-8 { margin-bottom: 32px; }
+  .mt-1 { margin-top: 4px; }
+  .mt-2 { margin-top: 8px; }
+  .mt-6 { margin-top: 24px; }
+  .pb-4 { padding-bottom: 16px; }
+  .p-4 { padding: 16px; }
+  .p-5 { padding: 20px; }
+  .p-6 { padding: 24px; }
+  .gap-2 { gap: 8px; }
+  .gap-3 { gap: 12px; }
+  .flex { display: flex; }
+  .flex-col { flex-direction: column; }
+  .flex-wrap { flex-wrap: wrap; }
+  .flex-1 { flex: 1 1 0%; }
+  .items-center { align-items: center; }
+  .inline-flex { display: inline-flex; }
 
   @media print {
     body { background: #fff !important; color: #000; display: block; }
@@ -695,14 +891,15 @@
   }
 </style>
 </head>
-<body class="min-h-screen flex" style="background: #0A0A0F;">
+<body style="background: #0A0A0F; margin: 0; padding: 0;">
 
-<nav class="same-sidebar fixed top-0 left-0 h-screen w-56 flex flex-col z-10" aria-label="Primary">
-  <div class="sidebar-brand-block px-5 pb-5 pt-5 border-b border-white/5 mb-3">
-    <h1 class="text-xl font-bold tracking-widest" style="color: var(--same-accent); font-family: var(--same-mono);">SAME</h1>
-    <small class="brand-subtitle block text-[10px] mt-1" style="color: var(--same-text-dim);">Persistent memory for AI agents</small>
-    <small id="version-label" class="block text-[11px] mt-1" style="color: var(--same-text-dim);">v0.0.0</small>
-    <div id="vault-label" class="text-[11px] mt-1 break-all cursor-help" style="color: var(--same-text-dim);" title=""></div>
+<div class="app-shell">
+<nav class="same-sidebar" aria-label="Primary">
+  <div class="sidebar-brand-block" style="padding: 20px 20px 16px; border-bottom: 1px solid var(--same-border); margin-bottom: 8px;">
+    <h1 style="color: var(--same-accent); font-family: var(--same-mono); font-size: 18px; font-weight: 800; letter-spacing: 0.16em; margin: 0;">SAME</h1>
+    <small class="brand-subtitle" style="display: block; font-size: 10px; margin-top: 4px; color: var(--same-text-dim);">Persistent memory for AI agents</small>
+    <small id="version-label" style="display: block; font-size: 11px; margin-top: 4px; color: var(--same-text-dim);">v0.0.0</small>
+    <div id="vault-label" style="font-size: 11px; margin-top: 4px; color: var(--same-text-dim); word-break: break-all; cursor: help;" title=""></div>
   </div>
 
   <a class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')" title="Vault stats, health insights, and recent activity" aria-label="Open dashboard">
@@ -726,104 +923,115 @@
     <span>Handoffs</span>
   </a>
 
-  <div class="sidebar-footer-block mt-auto px-5 py-3 border-t border-white/5">
+  <div class="sidebar-footer-block" style="margin-top: auto; padding: 12px 20px; border-top: 1px solid var(--same-border);">
     <span id="search-mode-indicator"></span>
-    <div class="mt-2"><a href="https://statelessagent.com" target="_blank" rel="noopener" class="text-[11px] hover:underline" style="color: var(--same-text-dim);">Docs &amp; Help</a></div>
+    <div style="margin-top: 8px;"><a href="https://statelessagent.com" target="_blank" rel="noopener" style="font-size: 11px; color: var(--same-text-dim); text-decoration: none;">Docs &amp; Help</a></div>
   </div>
 </nav>
 
-<main class="same-main ml-56 flex-1 p-8 min-h-screen" id="main-content">
+<main class="same-main" id="main-content">
+<div class="same-main-inner">
 
   <!-- Dashboard -->
   <div id="page-dashboard" class="page active" role="region" aria-label="Dashboard view">
-    <h2 class="text-2xl font-bold mb-6 tracking-tight" tabindex="-1" style="color: var(--same-text);">Dashboard</h2>
+    <h2 class="page-title" tabindex="-1">Dashboard</h2>
 
     <!-- Stat cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8" id="stats-grid">
-      <div class="glass-card p-5 accent-glow" title="Markdown files indexed in your vault">
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card" title="Markdown files indexed in your vault">
         <div class="stat-number" id="stat-notes">-</div>
-        <div class="text-xs uppercase tracking-wider mt-1 font-medium" style="color: var(--same-text-dim);">Notes</div>
+        <div class="stat-label">Notes</div>
       </div>
-      <div class="glass-card p-5" title="Notes split into sections for embedding and search">
+      <div class="stat-card" title="Notes split into sections for embedding and search">
         <div class="stat-number" id="stat-chunks">-</div>
-        <div class="text-xs uppercase tracking-wider mt-1 font-medium" style="color: var(--same-text-dim);">Chunks</div>
+        <div class="stat-label">Chunks</div>
       </div>
-      <div class="glass-card p-5" title="SQLite database size on disk">
+      <div class="stat-card" title="SQLite database size on disk">
         <div class="stat-number purple" id="stat-dbsize">-</div>
-        <div class="text-xs uppercase tracking-wider mt-1 font-medium" style="color: var(--same-text-dim);">DB Size</div>
+        <div class="stat-label">DB Size</div>
       </div>
-      <div class="glass-card p-5" title="Semantic: finds notes by meaning via embeddings. Keyword: matches exact terms.">
+      <div class="stat-card" title="Semantic: finds notes by meaning via embeddings. Keyword: matches exact terms.">
         <div class="stat-number" id="stat-search">-</div>
-        <div class="text-xs uppercase tracking-wider mt-1 font-medium" style="color: var(--same-text-dim);">Search Mode</div>
+        <div class="stat-label">Search Mode</div>
       </div>
     </div>
 
     <!-- Trust Overview -->
-    <div id="trust-section" style="display:none" class="mb-8">
-      <h3 class="text-base font-semibold mb-4 section-title" style="color: var(--same-text);">Trust Overview</h3>
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6" id="trust-grid">
-        <div class="glass-card p-4 trust-stat-validated">
-          <div class="stat-number text-2xl" id="trust-validated">0</div>
-          <div class="text-[10px] uppercase tracking-wider mt-1 font-semibold" style="color: var(--same-accent);">Validated</div>
-        </div>
-        <div class="glass-card p-4 trust-stat-stale">
-          <div class="stat-number text-2xl" id="trust-stale">0</div>
-          <div class="text-[10px] uppercase tracking-wider mt-1 font-semibold" style="color: var(--same-yellow);">Stale</div>
-        </div>
-        <div class="glass-card p-4 trust-stat-contradicted">
-          <div class="stat-number text-2xl" id="trust-contradicted">0</div>
-          <div class="text-[10px] uppercase tracking-wider mt-1 font-semibold" style="color: var(--same-red);">Contradicted</div>
-        </div>
-        <div class="glass-card p-4 trust-stat-unknown">
-          <div class="stat-number text-2xl" id="trust-unknown">0</div>
-          <div class="text-[10px] uppercase tracking-wider mt-1 font-semibold" style="color: var(--same-text-dim);">Unknown</div>
+    <div id="trust-section" style="display:none">
+      <div class="section-card">
+        <div class="section-card-header">Trust Overview</div>
+        <div class="mini-stats-grid cols-4" id="trust-grid">
+          <div class="mini-stat trust-stat-validated">
+            <div class="stat-number" id="trust-validated">0</div>
+            <div class="stat-label" style="color: var(--same-accent);">Validated</div>
+          </div>
+          <div class="mini-stat trust-stat-stale">
+            <div class="stat-number" id="trust-stale">0</div>
+            <div class="stat-label" style="color: var(--same-yellow);">Stale</div>
+          </div>
+          <div class="mini-stat trust-stat-contradicted">
+            <div class="stat-number" id="trust-contradicted">0</div>
+            <div class="stat-label" style="color: var(--same-red);">Contradicted</div>
+          </div>
+          <div class="mini-stat trust-stat-unknown">
+            <div class="stat-number" id="trust-unknown">0</div>
+            <div class="stat-label" style="color: var(--same-text-dim);">Unknown</div>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- Insights -->
-    <div id="insights-section" style="display:none" class="mb-8">
-      <h3 class="text-base font-semibold mb-4 section-title" style="color: var(--same-text);">Insights</h3>
-      <div class="flex flex-col gap-3 mt-6" id="insights-list"></div>
+    <div id="insights-section" style="display:none">
+      <div class="section-card">
+        <div class="section-card-header">Insights</div>
+        <div id="insights-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
+      </div>
     </div>
 
     <!-- Vault Composition -->
-    <div id="composition-section" style="display:none" class="mb-8">
-      <h3 class="text-base font-semibold mb-4 section-title" style="color: var(--same-text);">Vault Composition</h3>
-      <div class="flex flex-col gap-2 mt-6" id="composition-list"></div>
+    <div id="composition-section" style="display:none">
+      <div class="section-card">
+        <div class="section-card-header">Vault Composition</div>
+        <div id="composition-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+      </div>
     </div>
 
     <!-- Knowledge Graph -->
-    <div id="graph-section" style="display:none" class="mb-8">
-      <h3 class="text-base font-semibold mb-4 section-title" style="color: var(--same-text);">Knowledge Graph</h3>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 mb-4">
-        <div class="glass-card p-4" title="Unique graph nodes extracted from notes, files, decisions, and agents">
-          <div class="stat-number text-2xl" id="graph-total-nodes">-</div>
-          <div class="text-[10px] uppercase tracking-wider mt-1 font-medium" style="color: var(--same-text-dim);">Graph Nodes</div>
+    <div id="graph-section" style="display:none">
+      <div class="section-card">
+        <div class="section-card-header">Knowledge Graph</div>
+        <div class="mini-stats-grid">
+          <div class="mini-stat" title="Unique graph nodes extracted from notes, files, decisions, and agents">
+            <div class="stat-number" id="graph-total-nodes">-</div>
+            <div class="stat-label">Nodes</div>
+          </div>
+          <div class="mini-stat" title="Relationships between graph nodes">
+            <div class="stat-number purple" id="graph-total-edges">-</div>
+            <div class="stat-label">Edges</div>
+          </div>
+          <div class="mini-stat" title="Average number of relationships per node">
+            <div class="stat-number" id="graph-avg-degree">-</div>
+            <div class="stat-label">Avg Degree</div>
+          </div>
         </div>
-        <div class="glass-card p-4" title="Relationships between graph nodes">
-          <div class="stat-number purple text-2xl" id="graph-total-edges">-</div>
-          <div class="text-[10px] uppercase tracking-wider mt-1 font-medium" style="color: var(--same-text-dim);">Graph Edges</div>
-        </div>
-        <div class="glass-card p-4" title="Average number of relationships per node">
-          <div class="stat-number text-2xl" id="graph-avg-degree">-</div>
-          <div class="text-[10px] uppercase tracking-wider mt-1 font-medium" style="color: var(--same-text-dim);">Avg Degree</div>
-        </div>
+        <div class="edge-badges-row" id="graph-top-relationships"></div>
+        <div class="cli-actions" id="graph-cli-actions"></div>
       </div>
-      <div class="flex flex-col gap-2" id="graph-top-relationships"></div>
-      <div class="cli-actions" id="graph-cli-actions"></div>
     </div>
 
     <!-- Pinned Notes -->
-    <div id="pinned-section" style="display:none" class="mb-8">
-      <h3 class="text-base font-semibold mb-4 section-title" style="color: var(--same-text);">Pinned Notes</h3>
-      <div class="flex flex-col gap-3 mt-6" id="pinned-notes"></div>
+    <div id="pinned-section" style="display:none">
+      <div class="section-card">
+        <div class="section-card-header">Pinned Notes</div>
+        <div id="pinned-notes" style="display: flex; flex-direction: column; gap: 10px;"></div>
+      </div>
     </div>
 
     <!-- Recent Notes -->
-    <div class="mb-8">
-      <h3 class="text-base font-semibold mb-4 section-title" style="color: var(--same-text);">Recent Notes</h3>
-      <div class="flex flex-col gap-3 mt-6" id="recent-notes">
+    <div class="section-card">
+      <div class="section-card-header">Recent Notes</div>
+      <div id="recent-notes" style="display: flex; flex-direction: column; gap: 10px;">
         <div class="loading"><div class="spinner"></div> Loading...</div>
       </div>
     </div>
@@ -831,7 +1039,7 @@
 
   <!-- Search -->
   <div id="page-search" class="page" role="region" aria-label="Search view">
-    <h2 class="text-2xl font-bold mb-6 tracking-tight" tabindex="-1" style="color: var(--same-text);">Search</h2>
+    <h2 class="page-title" tabindex="-1">Search</h2>
 
     <div class="search-input-wrapper">
       <div class="search-icon-el">
@@ -843,10 +1051,10 @@
       </div>
     </div>
 
-    <div class="search-help flex items-center gap-3 mb-4 text-xs" style="color: var(--same-text-dim);">
-      <span><kbd class="kbd kbd-xs" style="background: rgba(255,255,255,0.06); border-color: var(--same-border); color: var(--same-text-dim);">/</kbd> focus</span>
-      <span><kbd class="kbd kbd-xs" style="background: rgba(255,255,255,0.06); border-color: var(--same-border); color: var(--same-text-dim);">Esc</kbd> clear</span>
-      <span><kbd class="kbd kbd-xs" style="background: rgba(255,255,255,0.06); border-color: var(--same-border); color: var(--same-text-dim);">&uarr;</kbd>/<kbd class="kbd kbd-xs" style="background: rgba(255,255,255,0.06); border-color: var(--same-border); color: var(--same-text-dim);">&darr;</kbd> navigate</span>
+    <div class="search-help" style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; font-size: 12px; color: var(--same-text-dim);">
+      <span><kbd style="background: rgba(255,255,255,0.06); border: 1px solid var(--same-border); color: var(--same-text-dim); padding: 1px 6px; border-radius: 4px; font-size: 11px; font-family: var(--same-mono);">/</kbd> focus</span>
+      <span><kbd style="background: rgba(255,255,255,0.06); border: 1px solid var(--same-border); color: var(--same-text-dim); padding: 1px 6px; border-radius: 4px; font-size: 11px; font-family: var(--same-mono);">Esc</kbd> clear</span>
+      <span><kbd style="background: rgba(255,255,255,0.06); border: 1px solid var(--same-border); color: var(--same-text-dim); padding: 1px 6px; border-radius: 4px; font-size: 11px; font-family: var(--same-mono);">&uarr;</kbd>/<kbd style="background: rgba(255,255,255,0.06); border: 1px solid var(--same-border); color: var(--same-text-dim); padding: 1px 6px; border-radius: 4px; font-size: 11px; font-family: var(--same-mono);">&darr;</kbd> navigate</span>
     </div>
 
     <div id="search-results" aria-live="polite">
@@ -860,9 +1068,9 @@
 
   <!-- Browse -->
   <div id="page-browse" class="page" role="region" aria-label="Browse view">
-    <h2 class="text-2xl font-bold mb-6 tracking-tight" tabindex="-1" style="color: var(--same-text);">Browse</h2>
-    <div class="browse-controls-wrap flex gap-3 mb-4 flex-wrap">
-      <input type="text" id="browse-filter" placeholder="Filter notes..." class="browse-input flex-1 min-w-[200px]" aria-label="Filter notes">
+    <h2 class="page-title" tabindex="-1">Browse</h2>
+    <div class="browse-controls-wrap" style="display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;">
+      <input type="text" id="browse-filter" placeholder="Filter notes..." class="browse-input" style="flex: 1; min-width: 200px;" aria-label="Filter notes">
       <select id="browse-type-filter" class="browse-select" title="Filter by content type" aria-label="Filter by note type">
         <option value="">All types</option>
         <option value="note">Notes</option>
@@ -878,50 +1086,52 @@
         <option value="title-desc">Title (Z-A)</option>
       </select>
     </div>
-    <div class="text-xs mb-3" id="browse-count" style="color: var(--same-text-dim);"></div>
-    <div class="flex flex-col gap-3" id="browse-notes">
+    <div id="browse-count" style="font-size: 12px; margin-bottom: 10px; color: var(--same-text-dim);"></div>
+    <div id="browse-notes" style="display: flex; flex-direction: column; gap: 10px;">
       <div class="loading"><div class="spinner"></div> Loading...</div>
     </div>
   </div>
 
   <!-- Decisions -->
   <div id="page-decisions" class="page" role="region" aria-label="Decisions view">
-    <h2 class="text-2xl font-bold mb-6 tracking-tight" tabindex="-1" style="color: var(--same-text);">Decisions</h2>
-    <div class="text-xs mb-3" id="decisions-count" style="color: var(--same-text-dim);"></div>
-    <div class="flex flex-col gap-3" id="decisions-notes">
+    <h2 class="page-title" tabindex="-1">Decisions</h2>
+    <div id="decisions-count" style="font-size: 12px; margin-bottom: 10px; color: var(--same-text-dim);"></div>
+    <div id="decisions-notes" style="display: flex; flex-direction: column; gap: 10px;">
       <div class="loading"><div class="spinner"></div> Loading...</div>
     </div>
   </div>
 
   <!-- Handoffs -->
   <div id="page-handoffs" class="page" role="region" aria-label="Handoffs view">
-    <h2 class="text-2xl font-bold mb-6 tracking-tight" tabindex="-1" style="color: var(--same-text);">Session Handoffs</h2>
-    <div class="text-xs mb-3" id="handoffs-count" style="color: var(--same-text-dim);"></div>
-    <div class="flex flex-col gap-3" id="handoffs-notes">
+    <h2 class="page-title" tabindex="-1">Session Handoffs</h2>
+    <div id="handoffs-count" style="font-size: 12px; margin-bottom: 10px; color: var(--same-text-dim);"></div>
+    <div id="handoffs-notes" style="display: flex; flex-direction: column; gap: 10px;">
       <div class="loading"><div class="spinner"></div> Loading...</div>
     </div>
   </div>
 
   <!-- Note Viewer -->
   <div id="page-note" class="page" role="region" aria-label="Note details view">
-    <a class="back-link inline-flex items-center gap-1 text-sm mb-4 cursor-pointer hover:underline" id="back-link" onclick="goBack()" style="color: var(--same-accent);">
+    <a class="back-link" id="back-link" onclick="goBack()" style="display: inline-flex; align-items: center; gap: 4px; font-size: 13px; margin-bottom: 16px; cursor: pointer; color: var(--same-accent); text-decoration: none;">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
       Back
     </a>
-    <div class="glass-card p-6" id="note-viewer">
+    <div class="glass-card" style="padding: 24px;" id="note-viewer">
       <div class="loading"><div class="spinner"></div> Loading note...</div>
     </div>
-    <div class="related-section mt-6 pt-5 border-t border-white/5" id="related-section" style="display:none">
-      <h3 class="text-base font-semibold mb-4 section-title" style="color: var(--same-text);">Related Notes</h3>
-      <div class="flex flex-col gap-3 mt-6" id="related-notes"></div>
+    <div class="related-section" id="related-section" style="display:none; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--same-border);">
+      <div class="section-card-header">Related Notes</div>
+      <div id="related-notes" style="display: flex; flex-direction: column; gap: 10px;"></div>
     </div>
-    <div class="related-section mt-6 pt-5 border-t border-white/5" id="graph-connections-section" style="display:none">
-      <h3 class="text-base font-semibold mb-4 section-title" style="color: var(--same-text);">Knowledge Connections</h3>
-      <div class="flex flex-col gap-2 mt-6" id="graph-connections"></div>
+    <div class="related-section" id="graph-connections-section" style="display:none; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--same-border);">
+      <div class="section-card-header">Knowledge Connections</div>
+      <div id="graph-connections" style="display: flex; flex-direction: column; gap: 8px;"></div>
     </div>
   </div>
 
+</div><!-- /.same-main-inner -->
 </main>
+</div><!-- /.app-shell -->
 
 <script>
 // SAME Web UI — All data is local, served from localhost only.
