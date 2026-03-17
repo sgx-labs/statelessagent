@@ -22,6 +22,7 @@ import (
 	"unicode"
 
 	"github.com/sgx-labs/statelessagent/internal/indexer"
+	"github.com/sgx-labs/statelessagent/internal/memory"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
@@ -305,6 +306,13 @@ func indexVault(t *testing.T, db *store.DB, vaultDir string) int {
 			return nil
 		}
 
+		// Set trust_state from frontmatter if present (e.g. stale notes)
+		if parsed.Meta.TrustState != "" {
+			if err := db.UpdateTrustState([]string{relPath}, parsed.Meta.TrustState); err != nil {
+				t.Logf("Warning: failed to set trust_state for %s: %v", relPath, err)
+			}
+		}
+
 		count++
 		return nil
 	})
@@ -397,6 +405,34 @@ func evaluateCase(t *testing.T, db *store.DB, tc testCase) evalResult {
 					Text:  r.Snippet,
 				})
 			}
+		}
+	}
+
+	// Strategy 4: Metadata filter search for trust/confidence/provenance queries.
+	// When the query is about metadata (e.g. "stale notes", "low confidence"),
+	// MetadataFilterSearch finds notes by their trust_state/confidence metadata
+	// rather than relying on text content matching alone.
+	// These results are PREPENDED so they get priority during deduplication.
+	metaHints := memory.InferMetadataFilters(tc.Query)
+	if metaHints.IsMetadataQuery {
+		metaOpts := store.SearchOptions{
+			TopK:       10,
+			TrustState: metaHints.TrustState,
+		}
+		metaResults, metaErr := db.MetadataFilterSearch(metaOpts)
+		if metaErr == nil {
+			var metaRaw []store.RawSearchResult
+			for _, mr := range metaResults {
+				metaRaw = append(metaRaw, store.RawSearchResult{
+					Path:       mr.Path,
+					Title:      mr.Title,
+					Text:       mr.Snippet,
+					TrustState: mr.TrustState,
+					Confidence: mr.Confidence,
+				})
+			}
+			// Prepend metadata results so they get picked first during dedup
+			searchResults = append(metaRaw, searchResults...)
 		}
 	}
 
