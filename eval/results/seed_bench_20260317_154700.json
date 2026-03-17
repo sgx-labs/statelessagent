@@ -1,0 +1,663 @@
+{
+  "timestamp": "2026-03-17T15:47:02.386848",
+  "benchmark": "seed_vault_retrieval",
+  "description": "Cross-domain retrieval benchmark using SAME seed vault content",
+  "config": {
+    "top_k": 5,
+    "notes_indexed": 153,
+    "chunks_indexed": 391,
+    "seeds": [
+      "claude-code-power-user",
+      "security-audit-framework",
+      "ai-agent-architecture"
+    ],
+    "embedding_model": "nomic-embed-text"
+  },
+  "overall": {
+    "recall_at_5": 0.9,
+    "mrr": 0.6861,
+    "term_hit_rate": 0.9222,
+    "total_queries": 30,
+    "hits": 27,
+    "misses": 3
+  },
+  "per_seed": {
+    "ai-agent-architecture": {
+      "count": 10,
+      "recall_at_5": 0.9,
+      "mrr": 0.658,
+      "term_hit_rate": 0.9
+    },
+    "claude-code-power-user": {
+      "count": 10,
+      "recall_at_5": 0.8,
+      "mrr": 0.617,
+      "term_hit_rate": 0.933
+    },
+    "security-audit-framework": {
+      "count": 10,
+      "recall_at_5": 1.0,
+      "mrr": 0.783,
+      "term_hit_rate": 0.933
+    }
+  },
+  "per_difficulty": {
+    "easy": {
+      "count": 7,
+      "recall_at_5": 1.0,
+      "mrr": 0.857
+    },
+    "hard": {
+      "count": 10,
+      "recall_at_5": 0.9,
+      "mrr": 0.733
+    },
+    "medium": {
+      "count": 13,
+      "recall_at_5": 0.846,
+      "mrr": 0.558
+    }
+  },
+  "queries": [
+    {
+      "id": 1,
+      "query": "how do I install Claude Code and get started on my first project",
+      "seed": "claude-code-power-user",
+      "difficulty": "easy",
+      "expect_note": "getting-started.md",
+      "recall_at_5": 1,
+      "rank": 1,
+      "mrr": 1.0,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "getting-started.md",
+        "research/setup/first-project-setup.md",
+        "research/setup/team-setup.md",
+        "mcp-servers.md",
+        "prompt-patterns.md"
+      ]
+    },
+    {
+      "id": 2,
+      "query": "what lifecycle events can I hook into for automating Claude Code behavior",
+      "seed": "claude-code-power-user",
+      "difficulty": "medium",
+      "expect_note": "hooks.md",
+      "recall_at_5": 1,
+      "rank": 3,
+      "mrr": 0.3333333333333333,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "research/advanced/automation-patterns.md",
+        "getting-started.md",
+        "hooks.md",
+        "research/setup/team-setup.md",
+        "research/hooks/same-hooks.md"
+      ]
+    },
+    {
+      "id": 3,
+      "query": "how to prevent Claude from force pushing to the main branch using a guard hook",
+      "seed": "claude-code-power-user",
+      "difficulty": "hard",
+      "expect_note": "research/hooks/pretooluse-patterns.md",
+      "recall_at_5": 1,
+      "rank": 1,
+      "mrr": 1.0,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "research/hooks/pretooluse-patterns.md",
+        "research/hooks/hook-debugging.md",
+        "research/workflows/git-workflow.md",
+        "research/workflows/code-review-workflow.md",
+        "agent-research/architecture/tree-of-thoughts.md"
+      ]
+    },
+    {
+      "id": 4,
+      "query": "what should I put in my CLAUDE.md file for project conventions and build commands",
+      "seed": "claude-code-power-user",
+      "difficulty": "easy",
+      "expect_note": "project-setup.md",
+      "recall_at_5": 1,
+      "rank": 2,
+      "mrr": 0.5,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "research/setup/claude-md-guide.md",
+        "research/setup/first-project-setup.md",
+        "research/setup/team-setup.md",
+        "agent-research/frameworks/crewai-patterns.md",
+        "agent-research/frameworks/build-vs-framework.md"
+      ]
+    },
+    {
+      "id": 5,
+      "query": "how to write better prompts for Claude Code to avoid wasting tokens",
+      "seed": "claude-code-power-user",
+      "difficulty": "medium",
+      "expect_note": "prompt-patterns.md",
+      "recall_at_5": 0,
+      "rank": 0,
+      "mrr": 0.0,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "research/prompts/common-mistakes.md",
+        "research/prompts/effective-prompts.md",
+        "getting-started.md",
+        "mcp-servers.md",
+        "research/prompts/batching-operations.md"
+      ]
+    },
+    {
+      "id": 6,
+      "query": "my MCP server won't connect, how do I debug it",
+      "seed": "claude-code-power-user",
+      "difficulty": "medium",
+      "expect_note": "troubleshooting.md",
+      "recall_at_5": 1,
+      "rank": 3,
+      "mrr": 0.3333333333333333,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "research/debugging/mcp-debugging.md",
+        "agent-research/tools/mcp-server-design.md",
+        "troubleshooting.md",
+        "research/prompts/common-mistakes.md",
+        "agent-research/tools/mcp-ecosystem.md"
+      ]
+    },
+    {
+      "id": 7,
+      "query": "how do subagents work and when should I use them for parallel research",
+      "seed": "claude-code-power-user",
+      "difficulty": "medium",
+      "expect_note": "research/advanced/subagents.md",
+      "recall_at_5": 1,
+      "rank": 1,
+      "mrr": 1.0,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "research/advanced/subagents.md",
+        "research/advanced/large-codebases.md",
+        "research/debugging/context-management.md",
+        "agent-research/architecture/single-vs-multi-agent.md",
+        "agent-research/architecture/tree-of-thoughts.md"
+      ]
+    },
+    {
+      "id": 8,
+      "query": "what is the difference between MCP tools and hooks for extending Claude Code",
+      "seed": "claude-code-power-user",
+      "difficulty": "hard",
+      "expect_note": "mcp-servers.md",
+      "recall_at_5": 1,
+      "rank": 1,
+      "mrr": 1.0,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "mcp-servers.md",
+        "research/mcp/database-servers.md",
+        "research/hooks/hook-lifecycle.md",
+        "research/setup/settings-hierarchy.md",
+        "research/hooks/hook-debugging.md"
+      ]
+    },
+    {
+      "id": 9,
+      "query": "how should I structure my day working with Claude Code for maximum efficiency",
+      "seed": "claude-code-power-user",
+      "difficulty": "medium",
+      "expect_note": "workflows.md",
+      "recall_at_5": 0,
+      "rank": 0,
+      "mrr": 0.0,
+      "term_hits": 2,
+      "term_total": 3,
+      "result_paths": [
+        "research/workflows/daily-workflow.md",
+        "research/prompts/batching-operations.md",
+        "research/prompts/model-differences.md",
+        "research/workflows/slash-commands.md",
+        "research/prompts/effective-prompts.md"
+      ]
+    },
+    {
+      "id": 10,
+      "query": "how to write a good CLAUDE.md that is scannable and stays under 200 lines",
+      "seed": "claude-code-power-user",
+      "difficulty": "hard",
+      "expect_note": "research/setup/claude-md-guide.md",
+      "recall_at_5": 1,
+      "rank": 1,
+      "mrr": 1.0,
+      "term_hits": 2,
+      "term_total": 3,
+      "result_paths": [
+        "research/setup/claude-md-guide.md",
+        "research/advanced/large-codebases.md",
+        "research/setup/team-setup.md",
+        "project-setup.md",
+        "research/prompts/effective-prompts.md"
+      ]
+    },
+    {
+      "id": 11,
+      "query": "what are the recommended security headers for my web API endpoints",
+      "seed": "security-audit-framework",
+      "difficulty": "easy",
+      "expect_note": "api-security.md",
+      "recall_at_5": 1,
+      "rank": 1,
+      "mrr": 1.0,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "api-security.md",
+        "security-research/api-security/security-headers.md",
+        "security-research/api-security/cors-configuration.md",
+        "security-research/api-security/websocket-security.md",
+        "agent-research/reliability/rate-limits-api-failures.md"
+      ]
+    },
+    {
+      "id": 12,
+      "query": "which password hashing algorithm should I use and why is Argon2id recommended",
+      "seed": "security-audit-framework",
+      "difficulty": "easy",
+      "expect_note": "authentication.md",
+      "recall_at_5": 1,
+      "rank": 2,
+      "mrr": 0.5,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "security-research/authentication/password-hashing.md",
+        "authentication.md",
+        "security-research/owasp/cryptographic-failures.md",
+        "agent-research/architecture/agent-harness-design.md",
+        "agent-research/architecture/context-engineering.md"
+      ]
+    },
+    {
+      "id": 13,
+      "query": "how do I safely implement JWT refresh token rotation to detect theft",
+      "seed": "security-audit-framework",
+      "difficulty": "hard",
+      "expect_note": "security-research/authentication/jwt-security.md",
+      "recall_at_5": 1,
+      "rank": 1,
+      "mrr": 1.0,
+      "term_hits": 2,
+      "term_total": 3,
+      "result_paths": [
+        "security-research/authentication/jwt-security.md",
+        "security-research/authentication/password-reset-flows.md",
+        "research/setup/team-setup.md",
+        "agent-research/architecture/agent-handoffs.md",
+        "agent-research/reliability/guardrail-implementation.md"
+      ]
+    },
+    {
+      "id": 14,
+      "query": "what changed in the OWASP top 10 for 2025 compared to 2021",
+      "seed": "security-audit-framework",
+      "difficulty": "medium",
+      "expect_note": "owasp-top-10.md",
+      "recall_at_5": 1,
+      "rank": 1,
+      "mrr": 1.0,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "owasp-top-10.md",
+        "security-research/owasp/supply-chain-failures.md",
+        "security-research/owasp/logging-monitoring-failures.md",
+        "security-research/dependencies/vulnerable-components.md",
+        "security-research/owasp/broken-access-control.md"
+      ]
+    },
+    {
+      "id": 15,
+      "query": "how do I protect against SQL injection in Node.js and Python applications",
+      "seed": "security-audit-framework",
+      "difficulty": "medium",
+      "expect_note": "security-research/owasp/injection.md",
+      "recall_at_5": 1,
+      "rank": 1,
+      "mrr": 1.0,
+      "term_hits": 2,
+      "term_total": 3,
+      "result_paths": [
+        "security-research/owasp/injection.md",
+        "security-research/api-security/cors-configuration.md",
+        "agent-research/reliability/prompt-injection-defense.md",
+        "project-setup.md",
+        "research/setup/first-project-setup.md"
+      ]
+    },
+    {
+      "id": 16,
+      "query": "what is dependency confusion and how do attackers exploit private package registries",
+      "seed": "security-audit-framework",
+      "difficulty": "hard",
+      "expect_note": "security-research/dependencies/supply-chain-attacks.md",
+      "recall_at_5": 1,
+      "rank": 1,
+      "mrr": 1.0,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "security-research/dependencies/supply-chain-attacks.md",
+        "dependencies.md",
+        "security-research/infrastructure/dns-security.md"
+      ]
+    },
+    {
+      "id": 17,
+      "query": "when should my startup pursue SOC 2 compliance and what are the five trust criteria",
+      "seed": "security-audit-framework",
+      "difficulty": "medium",
+      "expect_note": "compliance.md",
+      "recall_at_5": 1,
+      "rank": 2,
+      "mrr": 0.5,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "security-research/compliance/soc2-basics.md",
+        "compliance.md",
+        "security-research/authentication/mfa-patterns.md",
+        "security-research/api-security/websocket-security.md",
+        "security-research/compliance/security-policy-templates.md"
+      ]
+    },
+    {
+      "id": 18,
+      "query": "what are the best practices for managing secrets and not putting them in source code",
+      "seed": "security-audit-framework",
+      "difficulty": "easy",
+      "expect_note": "infrastructure.md",
+      "recall_at_5": 1,
+      "rank": 1,
+      "mrr": 1.0,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "infrastructure.md",
+        "security-research/infrastructure/secrets-management.md",
+        "security-research/dependencies/ci-cd-scanning.md",
+        "security-research/authentication/jwt-security.md",
+        "security-research/infrastructure/container-security.md"
+      ]
+    },
+    {
+      "id": 19,
+      "query": "how do I run dependency vulnerability scanning in my CI/CD pipeline with npm audit",
+      "seed": "security-audit-framework",
+      "difficulty": "medium",
+      "expect_note": "dependencies.md",
+      "recall_at_5": 1,
+      "rank": 2,
+      "mrr": 0.5,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "security-research/dependencies/npm-security.md",
+        "dependencies.md",
+        "security-research/dependencies/vulnerable-components.md",
+        "security-research/dependencies/ci-cd-scanning.md",
+        "security-research/infrastructure/cicd-security.md"
+      ]
+    },
+    {
+      "id": 20,
+      "query": "how do I configure CORS properly to prevent cross-origin attacks with credentials",
+      "seed": "security-audit-framework",
+      "difficulty": "hard",
+      "expect_note": "api-security.md",
+      "recall_at_5": 1,
+      "rank": 3,
+      "mrr": 0.3333333333333333,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "security-research/api-security/cors-configuration.md",
+        "security-research/authentication/passkeys-webauthn.md",
+        "api-security.md",
+        "security-research/authentication/constant-time-comparison.md",
+        "agent-research/reliability/agent-loops-termination.md"
+      ]
+    },
+    {
+      "id": 21,
+      "query": "what is the ReAct pattern and why is it the most common agent architecture",
+      "seed": "ai-agent-architecture",
+      "difficulty": "easy",
+      "expect_note": "architecture.md",
+      "recall_at_5": 1,
+      "rank": 1,
+      "mrr": 1.0,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "architecture.md",
+        "agent-research/architecture/react-pattern.md",
+        "agent-research/architecture/multi-agent-communication.md",
+        "agent-research/frameworks/crewai-patterns.md",
+        "agent-research/architecture/agent-harness-design.md"
+      ]
+    },
+    {
+      "id": 22,
+      "query": "when should I use a multi-agent system vs a single agent approach",
+      "seed": "ai-agent-architecture",
+      "difficulty": "medium",
+      "expect_note": "architecture.md",
+      "recall_at_5": 1,
+      "rank": 4,
+      "mrr": 0.25,
+      "term_hits": 2,
+      "term_total": 3,
+      "result_paths": [
+        "agent-research/architecture/single-vs-multi-agent.md",
+        "agent-research/frameworks/crewai-patterns.md",
+        "agent-research/deployment/observability-tools-comparison.md",
+        "architecture.md",
+        "agent-research/deployment/cost-optimization.md"
+      ]
+    },
+    {
+      "id": 23,
+      "query": "how do I build an MCP server in TypeScript with tool definitions and stdio transport",
+      "seed": "ai-agent-architecture",
+      "difficulty": "hard",
+      "expect_note": "agent-research/tools/mcp-server-design.md",
+      "recall_at_5": 1,
+      "rank": 2,
+      "mrr": 0.5,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "research/mcp/building-servers.md",
+        "agent-research/tools/mcp-server-design.md",
+        "mcp-servers.md",
+        "agent-research/tools/mcp-ecosystem.md",
+        "tools.md"
+      ]
+    },
+    {
+      "id": 24,
+      "query": "what are the different types of agent memory and how does episodic differ from semantic",
+      "seed": "ai-agent-architecture",
+      "difficulty": "medium",
+      "expect_note": "memory.md",
+      "recall_at_5": 1,
+      "rank": 1,
+      "mrr": 1.0,
+      "term_hits": 2,
+      "term_total": 3,
+      "result_paths": [
+        "memory.md",
+        "agent-research/memory/deposit-before-withdraw.md",
+        "agent-research/architecture/state-management.md",
+        "agent-research/memory/persistent-memory-patterns.md",
+        "agent-research/architecture/agent-harness-design.md"
+      ]
+    },
+    {
+      "id": 25,
+      "query": "how do I implement input output and action guardrails for a production agent",
+      "seed": "ai-agent-architecture",
+      "difficulty": "hard",
+      "expect_note": "agent-research/reliability/guardrail-implementation.md",
+      "recall_at_5": 0,
+      "rank": 0,
+      "mrr": 0.0,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "reliability.md",
+        "agent-research/frameworks/langgraph-patterns.md",
+        "deployment.md",
+        "agent-research/architecture/agent-handoffs.md",
+        "agent-research/deployment/monitoring-observability.md"
+      ]
+    },
+    {
+      "id": 26,
+      "query": "which agent framework should I choose between LangGraph CrewAI and Claude SDK",
+      "seed": "ai-agent-architecture",
+      "difficulty": "easy",
+      "expect_note": "frameworks.md",
+      "recall_at_5": 1,
+      "rank": 1,
+      "mrr": 1.0,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "frameworks.md",
+        "agent-research/frameworks/build-vs-framework.md",
+        "research/advanced/ide-integration.md",
+        "agent-research/frameworks/claude-sdk-patterns.md",
+        "agent-research/frameworks/framework-migration.md"
+      ]
+    },
+    {
+      "id": 27,
+      "query": "how to monitor agent costs in production and keep token usage under control",
+      "seed": "ai-agent-architecture",
+      "difficulty": "medium",
+      "expect_note": "deployment.md",
+      "recall_at_5": 1,
+      "rank": 1,
+      "mrr": 1.0,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "deployment.md",
+        "agent-research/deployment/monitoring-observability.md",
+        "agent-research/deployment/cost-optimization.md",
+        "agent-research/deployment/production-checklist.md",
+        "agent-research/reliability/error-handling-patterns.md"
+      ]
+    },
+    {
+      "id": 28,
+      "query": "how is RAG for agents different from chatbot RAG and what are the key retrieval patterns",
+      "seed": "ai-agent-architecture",
+      "difficulty": "hard",
+      "expect_note": "agent-research/memory/rag-for-agents.md",
+      "recall_at_5": 1,
+      "rank": 1,
+      "mrr": 1.0,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "agent-research/memory/rag-for-agents.md",
+        "research/prompts/effective-prompts.md",
+        "agent-research/memory/knowledge-base-design.md",
+        "agent-research/architecture/multi-agent-communication.md",
+        "agent-research/architecture/reflexion-pattern.md"
+      ]
+    },
+    {
+      "id": 29,
+      "query": "what reliability stack layers should I have and how does retry with fallback work for agents",
+      "seed": "ai-agent-architecture",
+      "difficulty": "medium",
+      "expect_note": "reliability.md",
+      "recall_at_5": 1,
+      "rank": 3,
+      "mrr": 0.3333333333333333,
+      "term_hits": 3,
+      "term_total": 3,
+      "result_paths": [
+        "agent-research/reliability/error-handling-patterns.md",
+        "agent-research/reliability/rate-limits-api-failures.md",
+        "reliability.md",
+        "agent-research/architecture/reflexion-pattern.md",
+        "agent-research/frameworks/langgraph-patterns.md"
+      ]
+    },
+    {
+      "id": 30,
+      "query": "why is the write side of agent memory harder than retrieval and what should agents save",
+      "seed": "ai-agent-architecture",
+      "difficulty": "hard",
+      "expect_note": "memory.md",
+      "recall_at_5": 1,
+      "rank": 2,
+      "mrr": 0.5,
+      "term_hits": 2,
+      "term_total": 3,
+      "result_paths": [
+        "agent-research/memory/deposit-before-withdraw.md",
+        "memory.md",
+        "agent-research/memory/knowledge-base-design.md",
+        "agent-research/memory/persistent-memory-patterns.md",
+        "agent-research/architecture/agent-harness-design.md"
+      ]
+    }
+  ],
+  "miss_analysis": [
+    {
+      "id": 5,
+      "query": "how to write better prompts for Claude Code to avoid wasting tokens",
+      "expect_note": "prompt-patterns.md",
+      "got_top3": [
+        "research/prompts/common-mistakes.md",
+        "research/prompts/effective-prompts.md",
+        "getting-started.md"
+      ]
+    },
+    {
+      "id": 9,
+      "query": "how should I structure my day working with Claude Code for maximum efficiency",
+      "expect_note": "workflows.md",
+      "got_top3": [
+        "research/workflows/daily-workflow.md",
+        "research/prompts/batching-operations.md",
+        "research/prompts/model-differences.md"
+      ]
+    },
+    {
+      "id": 25,
+      "query": "how do I implement input output and action guardrails for a production agent",
+      "expect_note": "agent-research/reliability/guardrail-implementation.md",
+      "got_top3": [
+        "reliability.md",
+        "agent-research/frameworks/langgraph-patterns.md",
+        "deployment.md"
+      ]
+    }
+  ]
+}
