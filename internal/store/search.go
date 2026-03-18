@@ -594,6 +594,28 @@ func (db *DB) HybridSearch(queryVec []float32, queryText string, opts SearchOpti
 			if seen[r.Path] {
 				continue
 			}
+
+			// Apply metadata filters to keyword supplement results
+			// so they match the same criteria as vector results.
+			if opts.TrustState != "" && !strings.EqualFold(r.TrustState, opts.TrustState) {
+				continue
+			}
+			if opts.ContentType != "" && !strings.EqualFold(r.ContentType, opts.ContentType) {
+				continue
+			}
+			if opts.Domain != "" && !strings.EqualFold(r.Domain, opts.Domain) {
+				continue
+			}
+			if opts.Agent != "" && !strings.EqualFold(r.Agent, opts.Agent) {
+				continue
+			}
+			if opts.Workstream != "" && !strings.EqualFold(r.Workstream, opts.Workstream) {
+				continue
+			}
+			if len(opts.Tags) > 0 && !hasTags(r.Tags, opts.Tags) {
+				continue
+			}
+
 			seen[r.Path] = true
 
 			titleLower := strings.ToLower(r.Title)
