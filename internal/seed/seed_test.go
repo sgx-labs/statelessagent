@@ -142,6 +142,56 @@ func TestParseManifest(t *testing.T) {
 		}
 	})
 
+	t.Run("valid v2 manifest", func(t *testing.T) {
+		data := `{
+			"schema_version": 2,
+			"install_engine": "https://github.com/sgx-labs/statelessagent",
+			"install_command": "curl -fsSL https://statelessagent.com/install.sh | bash",
+			"seed_install_pattern": "same seed install <name>",
+			"website": "https://statelessagent.com",
+			"seeds": [
+				{
+					"name": "test-seed",
+					"display_name": "Test Seed",
+					"description": "A test seed",
+					"audience": "developers",
+					"note_count": 10,
+					"size_kb": 50,
+					"tags": ["test"],
+					"keywords": ["testing", "seed"],
+					"install_command": "same seed install test-seed",
+					"min_same_version": "0.7.0",
+					"path": "test-seed",
+					"status": "wip",
+					"featured": true
+				}
+			]
+		}`
+		var m Manifest
+		if err := json.Unmarshal([]byte(data), &m); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := validateManifest(&m); err != nil {
+			t.Fatalf("validation error: %v", err)
+		}
+		if m.SchemaVersion != 2 {
+			t.Errorf("schema_version = %d, want 2", m.SchemaVersion)
+		}
+		if m.InstallEngine == "" {
+			t.Error("expected install_engine to be set")
+		}
+		if m.Website != "https://statelessagent.com" {
+			t.Errorf("website = %q, want %q", m.Website, "https://statelessagent.com")
+		}
+		s := m.Seeds[0]
+		if len(s.Keywords) != 2 {
+			t.Errorf("keywords count = %d, want 2", len(s.Keywords))
+		}
+		if s.Status != "wip" {
+			t.Errorf("status = %q, want %q", s.Status, "wip")
+		}
+	})
+
 	t.Run("wrong schema version", func(t *testing.T) {
 		data := `{"schema_version": 99, "seeds": []}`
 		var m Manifest

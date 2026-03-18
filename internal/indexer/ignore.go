@@ -4,6 +4,7 @@ package indexer
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -250,7 +251,13 @@ func WriteSameignore(vaultPath, content string) error {
 
 // AddPattern appends a pattern to the .sameignore file.
 // Creates the file if it doesn't exist.
+// Returns an error if the pattern contains newlines (prevents injection of
+// multiple patterns via a single call).
 func AddPattern(vaultPath, pattern string) error {
+	if strings.ContainsAny(pattern, "\n\r") {
+		return fmt.Errorf("pattern must not contain newlines")
+	}
+
 	path := filepath.Join(vaultPath, ".sameignore")
 
 	// Read existing content

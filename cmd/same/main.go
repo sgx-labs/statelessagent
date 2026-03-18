@@ -154,11 +154,13 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 		demoCmd(),
 		tutorialCmd(),
 		tipsCmd(),
+		guideCmd(),
 		seedCmd(),
 	)
 
 	addGrouped("search",
 		searchCmd(),
+		addCmd(),
 		askCmd(),
 		briefCmd(),
 		relatedCmd(),

@@ -62,6 +62,12 @@ type embResult struct {
 
 var errNoEmbeddingsForFile = errors.New("no embeddings generated for file")
 
+// errEmbeddingSkipped signals that embedding failed for all chunks (likely due
+// to size) but records were still built and should be stored via the lite path
+// (FTS5 only). The embResult.Records slice is populated; embResult.Embeddings
+// is nil.
+var errEmbeddingSkipped = errors.New("embedding skipped")
+
 // Reindex walks the vault, builds records, embeds them, and stores in the database.
 func Reindex(db *store.DB, force bool) (*Stats, error) {
 	return ReindexWithProgress(context.Background(), db, force, nil)
@@ -248,6 +254,48 @@ sendLoop:
 			continue
 		}
 		if result.Err != nil {
+			// Embedding skipped: all chunks failed to embed but records were
+			// built. Store them via the lite (FTS5-only) path so the note
+			// remains keyword-searchable.
+			if errors.Is(result.Err, errEmbeddingSkipped) && len(result.Records) > 0 {
+				fileName := filepath.Base(result.Path)
+				fmt.Fprintf(os.Stderr, "  \u26a0 Skipped embedding for %s (chunk too large for model context)\n", fileName)
+				fmt.Fprintf(os.Stderr, "    Note is still keyword-searchable.\n")
+
+				if delErr := db.DeleteByPath(result.Path); delErr != nil {
+					fmt.Fprintf(os.Stderr, "  [ERROR] delete %s: %v\n", result.Path, delErr)
+					stats.Errors++
+					continue
+				}
+				insertedIDs, insertErr := db.BulkInsertNotesLite(result.Records)
+				if insertErr != nil {
+					fmt.Fprintf(os.Stderr, "  [ERROR] storing %s (lite): %v\n", result.Path, insertErr)
+					stats.Errors++
+					continue
+				}
+				if rootID, ok := insertedIDs[result.Path]; ok {
+					agent := ""
+					if len(result.Records) > 0 {
+						agent = result.Records[0].Agent
+					}
+					pendingGraph = append(pendingGraph, graphWork{
+						rootID:  rootID,
+						path:    result.Path,
+						content: result.Content,
+						agent:   agent,
+					})
+				}
+				stats.NewlyIndexed++
+				processed := stats.NewlyIndexed + stats.SkippedUnchanged + stats.Errors
+				if progress != nil {
+					progress(processed, stats.TotalFiles, result.Path)
+				} else {
+					fmt.Fprintf(os.Stderr, "  [%d/%d] Indexed (keyword-only): %s (%d chunks)\n",
+						processed, stats.TotalFiles, result.Path, len(result.Records))
+				}
+				continue
+			}
+
 			fmt.Fprintf(os.Stderr, "  [ERROR] %s: %v\n", result.Path, embedding.HumanizeError(result.Err))
 			if errors.Is(result.Err, errNoEmbeddingsForFile) {
 				embeddingFileFailures++
@@ -459,8 +507,18 @@ func enrichStats(result map[string]interface{}) {
 // This avoids the overhead of a full vault reindex when only one file changed.
 func IndexSingleFile(database *store.DB, filePath, relPath, vaultPath string, embedClient embedding.Provider) error {
 	records, embeddings, content, err := buildRecords(filePath, relPath, vaultPath, embedClient)
+	liteOnly := false
 	if err != nil {
-		return fmt.Errorf("build records: %w", err)
+		if errors.Is(err, errEmbeddingSkipped) && len(records) > 0 {
+			// Embedding failed for all chunks but records were built.
+			// Fall back to FTS5-only storage so the note is keyword-searchable.
+			fileName := filepath.Base(relPath)
+			fmt.Fprintf(os.Stderr, "  \u26a0 Skipped embedding for %s (chunk too large for model context)\n", fileName)
+			fmt.Fprintf(os.Stderr, "    Note is still keyword-searchable.\n")
+			liteOnly = true
+		} else {
+			return fmt.Errorf("build records: %w", err)
+		}
 	}
 	if len(records) == 0 {
 		return nil
@@ -471,7 +529,12 @@ func IndexSingleFile(database *store.DB, filePath, relPath, vaultPath string, em
 		return fmt.Errorf("delete old chunks: %w", err)
 	}
 
-	insertedIDs, err := database.BulkInsertNotes(records, embeddings)
+	var insertedIDs map[string]int64
+	if liteOnly {
+		insertedIDs, err = database.BulkInsertNotesLite(records)
+	} else {
+		insertedIDs, err = database.BulkInsertNotes(records, embeddings)
+	}
 	if err != nil {
 		return fmt.Errorf("insert notes: %w", err)
 	}
@@ -678,8 +741,35 @@ func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient em
 		}
 	}
 
-	if len(chunks) > 0 && len(records) == 0 && embedFailures == len(chunks) {
-		return nil, nil, content, fmt.Errorf("%w: %s", errNoEmbeddingsForFile, relPath)
+	if len(chunks) > 0 && embedFailures == len(chunks) {
+		// All chunks failed embedding. Build records without embeddings so the
+		// caller can store them via the lite (FTS5-only) path. The note remains
+		// keyword-searchable even though semantic search won't work for it.
+		var liteRecords []store.NoteRecord
+		for i, chunk := range chunks {
+			text := chunk.Text
+			if len(text) > 10000 {
+				text = text[:10000]
+			}
+			liteRecords = append(liteRecords, store.NoteRecord{
+				Path:         relPath,
+				Title:        title,
+				Tags:         string(tagsJSON),
+				Domain:       meta.Domain,
+				Workstream:   meta.Workstream,
+				Agent:        strings.TrimSpace(meta.Agent),
+				ChunkID:      i,
+				ChunkHeading: chunk.Heading,
+				Text:         text,
+				Modified:     mtime,
+				ContentHash:  contentHash,
+				ContentType:  contentType,
+				ReviewBy:     reviewBy,
+				Confidence:   confidence,
+				AccessCount:  0,
+			})
+		}
+		return liteRecords, nil, content, fmt.Errorf("%w: %s", errEmbeddingSkipped, relPath)
 	}
 
 	return records, embeddings, content, nil
@@ -709,9 +799,28 @@ func walkVault(vaultPath string) []string {
 }
 
 func walkVaultWithIgnore(vaultPath string, ip *IgnorePatterns) []string {
+	vaultAbs, _ := filepath.Abs(vaultPath)
+	// Canonicalize the vault root so that macOS /var → /private/var
+	// (and similar symlinked roots) compare correctly with EvalSymlinks results.
+	realVault, evalVaultErr := filepath.EvalSymlinks(vaultAbs)
+	if evalVaultErr != nil {
+		realVault = vaultAbs
+	}
 	var files []string
 	if err := filepath.WalkDir(vaultPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			return nil
+		}
+
+		// SECURITY: skip symlinks to prevent reading files outside the vault
+		info, lstatErr := os.Lstat(path)
+		if lstatErr != nil {
+			return nil
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 
@@ -733,6 +842,13 @@ func walkVaultWithIgnore(vaultPath string, ip *IgnorePatterns) []string {
 			// Check .sameignore for file patterns
 			if ip != nil && ip.ShouldIgnore(relPath, false) {
 				return nil
+			}
+			// SECURITY: verify resolved path stays inside vault
+			realPath, evalErr := filepath.EvalSymlinks(path)
+			if evalErr == nil {
+				if !strings.HasPrefix(realPath, realVault+string(filepath.Separator)) && realPath != realVault {
+					return nil
+				}
 			}
 			files = append(files, path)
 		}
@@ -762,12 +878,28 @@ func recordDiscoveredSources(database *store.DB, notePath, vaultPath string, dis
 	if len(discovered) == 0 {
 		return
 	}
+	vaultAbs, _ := filepath.Abs(vaultPath)
+	realVault, err := filepath.EvalSymlinks(vaultAbs)
+	if err != nil {
+		realVault = vaultAbs
+	}
 	var sources []store.NoteSource
 	for _, d := range discovered {
 		hash := ""
 		if d.SourceType == "file" || d.SourceType == "note" {
+			// SECURITY: validate source path stays inside vault
+			clean := filepath.ToSlash(filepath.Clean(d.SourcePath))
+			if strings.HasPrefix(clean, "..") || filepath.IsAbs(clean) || strings.Contains(clean, "\x00") {
+				continue
+			}
 			fullPath := filepath.Join(vaultPath, d.SourcePath)
-			if content, err := os.ReadFile(fullPath); err == nil {
+			// Check resolved path doesn't escape vault via symlinks
+			realPath, evalErr := filepath.EvalSymlinks(fullPath)
+			if evalErr != nil {
+				// File doesn't exist or can't resolve — still record with empty hash
+			} else if !strings.HasPrefix(realPath, realVault+string(filepath.Separator)) && realPath != realVault {
+				continue
+			} else if content, err := os.ReadFile(fullPath); err == nil {
 				hash = sha256Hash(string(content))
 			}
 		}
@@ -1127,8 +1259,10 @@ func BackfillEmbeddings(ctx context.Context, db *store.DB, embedClient embedding
 
 		vec, err := embedClient.GetDocumentEmbedding(embedText)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "  [WARN] embed backfill %s (chunk %d): %v\n",
-				note.Path, note.ChunkID, embedding.HumanizeError(err))
+			fileName := filepath.Base(note.Path)
+			fmt.Fprintf(os.Stderr, "  \u26a0 Skipped embedding for %s (chunk %d): %v\n",
+				fileName, note.ChunkID, embedding.HumanizeError(err))
+			fmt.Fprintf(os.Stderr, "    Note is still keyword-searchable.\n")
 			result.Failed++
 			continue
 		}

@@ -2,6 +2,8 @@ package setup
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1205,5 +1207,173 @@ func TestNormalizeEmbedProvider(t *testing.T) {
 				t.Fatalf("normalizeEmbedProvider(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+// --- detectOllamaModels tests ---
+
+func TestDetectOllamaModels_NotRunning(t *testing.T) {
+	// Point to an unreachable address
+	det := detectOllamaModels("http://127.0.0.1:1")
+	if det.Running {
+		t.Error("expected Running=false for unreachable server")
+	}
+	if det.BestEmbedding != "" {
+		t.Errorf("expected empty BestEmbedding, got %q", det.BestEmbedding)
+	}
+}
+
+func TestDetectOllamaModels_WithServer(t *testing.T) {
+	// Start a test server that returns model data
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"models": []map[string]interface{}{
+				{"name": "nomic-embed-text:latest", "size": 274000000},
+				{"name": "bge-m3:latest", "size": 1200000000},
+				{"name": "qwen2.5:7b", "size": 4700000000},
+				{"name": "llama3.2:3b", "size": 2000000000},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	det := detectOllamaModels(server.URL)
+
+	if !det.Running {
+		t.Fatal("expected Running=true")
+	}
+
+	// Should pick bge-m3 as best (ranked higher than nomic-embed-text)
+	if det.BestEmbedding != "bge-m3" {
+		t.Errorf("BestEmbedding = %q, want %q", det.BestEmbedding, "bge-m3")
+	}
+	if det.EmbeddingSource != "auto-detected" {
+		t.Errorf("EmbeddingSource = %q, want %q", det.EmbeddingSource, "auto-detected")
+	}
+
+	// Should detect 2 embedding models
+	if len(det.EmbeddingModels) != 2 {
+		t.Errorf("expected 2 embedding models, got %d: %v", len(det.EmbeddingModels), det.EmbeddingModels)
+	}
+
+	// Should detect 2 chat models
+	if len(det.ChatModels) != 2 {
+		t.Errorf("expected 2 chat models, got %d", len(det.ChatModels))
+	}
+
+	// Should detect 7B+ chat model
+	if !det.ChatIs7BPlus {
+		t.Error("expected ChatIs7BPlus=true (qwen2.5:7b is > 3.5GB)")
+	}
+	if det.BestChat != "qwen2.5:7b" {
+		t.Errorf("BestChat = %q, want %q", det.BestChat, "qwen2.5:7b")
+	}
+}
+
+func TestDetectOllamaModels_OnlySmallModels(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"models": []map[string]interface{}{
+				{"name": "nomic-embed-text:latest", "size": 274000000},
+				{"name": "llama3.2:1b", "size": 1300000000},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	det := detectOllamaModels(server.URL)
+
+	if !det.Running {
+		t.Fatal("expected Running=true")
+	}
+	if det.BestEmbedding != "nomic-embed-text" {
+		t.Errorf("BestEmbedding = %q, want %q", det.BestEmbedding, "nomic-embed-text")
+	}
+	if det.ChatIs7BPlus {
+		t.Error("expected ChatIs7BPlus=false (only 1B model)")
+	}
+	if det.BestChat != "llama3.2:1b" {
+		t.Errorf("BestChat = %q, want %q", det.BestChat, "llama3.2:1b")
+	}
+}
+
+func TestDetectOllamaModels_EmbeddingRanking(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"models": []map[string]interface{}{
+				{"name": "nomic-embed-text:latest", "size": 274000000},
+				{"name": "snowflake-arctic-embed2:latest", "size": 500000000},
+				{"name": "qwen3-embedding:latest", "size": 800000000},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	det := detectOllamaModels(server.URL)
+
+	// qwen3-embedding should be ranked highest
+	if det.BestEmbedding != "qwen3-embedding" {
+		t.Errorf("BestEmbedding = %q, want %q", det.BestEmbedding, "qwen3-embedding")
+	}
+}
+
+func TestDetectOllamaModels_NoChatModels(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"models": []map[string]interface{}{
+				{"name": "nomic-embed-text:latest", "size": 274000000},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	det := detectOllamaModels(server.URL)
+
+	if det.BestChat != "" {
+		t.Errorf("BestChat = %q, want empty", det.BestChat)
+	}
+	if det.ChatIs7BPlus {
+		t.Error("expected ChatIs7BPlus=false with no chat models")
+	}
+}
+
+func TestDetectOllamaModels_NoModels(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"models": []map[string]interface{}{},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	det := detectOllamaModels(server.URL)
+
+	if !det.Running {
+		t.Fatal("expected Running=true (server is up, just no models)")
+	}
+	if det.BestEmbedding != "" {
+		t.Errorf("BestEmbedding = %q, want empty", det.BestEmbedding)
+	}
+	if len(det.ChatModels) != 0 {
+		t.Errorf("expected 0 chat models, got %d", len(det.ChatModels))
 	}
 }

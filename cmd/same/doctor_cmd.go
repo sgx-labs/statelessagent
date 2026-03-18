@@ -275,7 +275,7 @@ func runDoctor(jsonOut bool) error {
 			// Check if a capable model is available and hint at enabling
 			if client, err := llm.NewClient(); err == nil {
 				if model, modelErr := client.PickBestModel(); modelErr == nil && strings.TrimSpace(model) != "" {
-					return "off (run 'same graph enable' for richer connections)", nil
+					return "off (run 'same graph enable' for richer connections; best with 7B+ models)", nil
 				}
 			}
 			return "off (regex-only graph extraction)", nil

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	yaml "go.yaml.in/yaml/v3"
 
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/consolidate"
@@ -1593,25 +1594,33 @@ func handleSaveKaizen(ctx context.Context, req *mcp.CallToolRequest, input saveK
 		return errorResult("Error: could not create kaizen directory. Check vault write permissions."), nil, nil
 	}
 
-	// Build content
-	// SECURITY: strip newlines from frontmatter values to prevent YAML injection
-	safeTitle := strings.ReplaceAll(strings.ReplaceAll(description, "\n", " "), "\r", " ")
-	safeArea := strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(input.Area), "\n", " "), "\r", " ")
+	// Build content using YAML marshaler for injection safety
+	type kaizenFrontmatter struct {
+		Title       string   `yaml:"title"`
+		ContentType string   `yaml:"content_type"`
+		Status      string   `yaml:"status"`
+		Agent       string   `yaml:"agent,omitempty"`
+		Area        string   `yaml:"area,omitempty"`
+		Tags        []string `yaml:"tags"`
+	}
+	fm := kaizenFrontmatter{
+		Title:       description,
+		ContentType: "kaizen",
+		Status:      "open",
+		Agent:       agent,
+		Area:        strings.TrimSpace(input.Area),
+		Tags:        []string{"kaizen"},
+	}
+	fmBytes, fmErr := yaml.Marshal(fm)
+	if fmErr != nil {
+		return errorResult("Error: could not build kaizen note."), nil, nil
+	}
 
 	var content strings.Builder
 	mcpHeader := "<!-- Note saved via SAME MCP tool. Review before trusting. -->\n"
 	content.WriteString(mcpHeader)
 	content.WriteString("---\n")
-	content.WriteString(fmt.Sprintf("title: %s\n", safeTitle))
-	content.WriteString("content_type: kaizen\n")
-	content.WriteString("status: open\n")
-	if agent != "" {
-		content.WriteString(fmt.Sprintf("agent: %s\n", agent))
-	}
-	if safeArea != "" {
-		content.WriteString(fmt.Sprintf("area: %s\n", safeArea))
-	}
-	content.WriteString("tags: [kaizen]\n")
+	content.Write(fmBytes)
 	content.WriteString("---\n\n")
 	content.WriteString(description)
 	content.WriteString("\n")
@@ -1917,6 +1926,8 @@ func searchWithFallback(query string, opts store.SearchOptions) ([]store.SearchR
 		metaResults, metaErr := db.MetadataFilterSearch(store.SearchOptions{
 			TopK:        opts.TopK,
 			Domain:      opts.Domain,
+			Workstream:  opts.Workstream,
+			Agent:       opts.Agent,
 			TrustState:  opts.TrustState,
 			ContentType: opts.ContentType,
 			Tags:        opts.Tags,

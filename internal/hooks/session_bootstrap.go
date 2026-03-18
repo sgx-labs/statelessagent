@@ -122,10 +122,19 @@ func runSessionBootstrap(db *store.DB, input *HookInput) hookRunResult {
 		context = context[:bootstrapMaxChars]
 	}
 
+	// Agent guidance: brief instructions on using SAME's trust features.
+	// Injected once at session start — not on every prompt.
+	guidance := `<same-guidance>
+Notes tagged "trust: stale" may be outdated — caveat answers that rely on them.
+When you save a note about a changed decision, SAME auto-detects contradictions with existing notes.
+Use search_notes_filtered with trust_state parameter to find only validated or only stale context.
+Run mem_health for a vault quality overview.
+</same-guidance>`
+
 	out := &HookOutput{
 		SystemMessage: fmt.Sprintf(
-			"\n<session-bootstrap>\n%s\n</session-bootstrap>\n",
-			context,
+			"\n<session-bootstrap>\n%s\n%s\n</session-bootstrap>\n",
+			context, guidance,
 		),
 	}
 	return hookInjected(out, surfacedNotes, memory.EstimateTokens(context), nil, "")

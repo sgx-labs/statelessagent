@@ -10,6 +10,7 @@ import (
 	"unicode"
 
 	"github.com/spf13/cobra"
+	yaml "go.yaml.in/yaml/v3"
 
 	"github.com/sgx-labs/statelessagent/internal/cli"
 	"github.com/sgx-labs/statelessagent/internal/config"
@@ -223,19 +224,29 @@ func runKaizenAdd(description, agent, status string) error {
 		return fmt.Errorf("create kaizen directory: %w", err)
 	}
 
-	// Build frontmatter
-	// SECURITY: strip newlines from frontmatter values to prevent YAML injection
-	safeTitle := strings.ReplaceAll(strings.ReplaceAll(description, "\n", " "), "\r", " ")
+	// Build frontmatter using YAML marshaler for injection safety
+	type kaizenFrontmatter struct {
+		Title       string   `yaml:"title"`
+		ContentType string   `yaml:"content_type"`
+		Status      string   `yaml:"status"`
+		Agent       string   `yaml:"agent,omitempty"`
+		Tags        []string `yaml:"tags"`
+	}
+	fm := kaizenFrontmatter{
+		Title:       description,
+		ContentType: "kaizen",
+		Status:      status,
+		Agent:       agent,
+		Tags:        []string{"kaizen"},
+	}
+	fmBytes, fmErr := yaml.Marshal(fm)
+	if fmErr != nil {
+		return fmt.Errorf("marshal frontmatter: %w", fmErr)
+	}
 
 	var content strings.Builder
 	content.WriteString("---\n")
-	content.WriteString(fmt.Sprintf("title: %s\n", safeTitle))
-	content.WriteString("content_type: kaizen\n")
-	content.WriteString(fmt.Sprintf("status: %s\n", status))
-	if agent != "" {
-		content.WriteString(fmt.Sprintf("agent: %s\n", agent))
-	}
-	content.WriteString("tags: [kaizen]\n")
+	content.Write(fmBytes)
 	content.WriteString("---\n\n")
 	content.WriteString(description)
 	content.WriteString("\n")

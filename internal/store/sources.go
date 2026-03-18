@@ -185,6 +185,19 @@ func (db *DB) CheckSourceDivergence(vaultPath string) ([]DivergenceResult, error
 			continue
 		}
 		fullPath := filepath.Join(vaultPath, sourcePath)
+		// SECURITY: check for symlink escape before reading.
+		// Canonicalize both sides so macOS /var → /private/var comparisons work.
+		vaultAbs, _ := filepath.Abs(vaultPath)
+		realVault, rvErr := filepath.EvalSymlinks(vaultAbs)
+		if rvErr != nil {
+			realVault = vaultAbs
+		}
+		realPath, evalErr := filepath.EvalSymlinks(fullPath)
+		if evalErr == nil {
+			if !strings.HasPrefix(realPath, realVault+string(filepath.Separator)) && realPath != realVault {
+				continue
+			}
+		}
 		content, err := os.ReadFile(fullPath)
 		if err != nil {
 			// File no longer exists or is unreadable — that's divergence.
