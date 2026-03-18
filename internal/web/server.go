@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -42,8 +43,14 @@ func Serve(ctx context.Context, addr string, embedClient embedding.Provider, ver
 		vaultPath:   vaultPath,
 	}
 
+	staticSub, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		return fmt.Errorf("static fs: %w", err)
+	}
+	fileServer := http.FileServer(http.FS(staticSub))
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", s.handleIndex)
+	mux.Handle("/", s.staticHandler(fileServer))
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/notes/recent", s.handleRecentNotes)
 	mux.HandleFunc("/api/notes/", s.handleNoteByPath) // /api/notes/{path}
@@ -135,7 +142,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Content-Security-Policy",
-			"default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:")
+			"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -153,15 +160,24 @@ func methodGET(next http.Handler) http.Handler {
 
 // --- Handlers ---
 
-func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if _, err := w.Write(indexHTML); err != nil {
-		fmt.Fprintf(os.Stderr, "same web: write index: %v\n", err)
-	}
+// staticHandler serves embedded static assets. Only "/" maps to index.html;
+// other paths must match an actual embedded file or get a 404.
+func (s *server) staticHandler(fileServer http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Serve root as index.html
+		if r.URL.Path == "/" {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		// For non-root paths, check the file exists in the embedded FS
+		// to avoid serving index.html as a fallback for unknown paths.
+		name := strings.TrimPrefix(r.URL.Path, "/")
+		if _, err := fs.Stat(staticFS, "static/"+name); err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		fileServer.ServeHTTP(w, r)
+	})
 }
 
 func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {

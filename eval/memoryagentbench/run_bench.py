@@ -111,20 +111,8 @@ def create_vault(vault_dir: str, chunks: list[str]) -> bool:
         with open(filepath, "w") as f:
             f.write(chunk)
 
-    # Write a config.toml to ensure semantic search is used (not keyword-only).
-    # Without this, same init in a bare temp dir may default to keyword-only
-    # if it doesn't detect Ollama during the init flow.
-    same_dir = os.path.join(vault_dir, ".same")
-    os.makedirs(same_dir, exist_ok=True)
-    config_path = os.path.join(same_dir, "config.toml")
-    with open(config_path, "w") as f:
-        f.write(f'[vault]\n  path = "{vault_dir}"\n  handoff_dir = "sessions"\n  decision_log = "decisions.md"\n\n')
-        f.write('[embedding]\n  provider = "ollama"\n  model = "nomic-embed-text"\n\n')
-        f.write('[display]\n  mode = "compact"\n')
-
-    # same init --yes discovers files and indexes them in one pass.
-    # With ~34 chunks and local Ollama embeddings, this can take 60-180 seconds.
-    log(f"  Initializing + indexing vault at {vault_dir} ({len(chunks)} chunks)...")
+    # Step 1: Run same init --yes to set up the vault structure
+    log(f"  Initializing vault at {vault_dir} ({len(chunks)} chunks)...")
     t0 = time.time()
     result = subprocess.run(
         [SAME_BIN, "init", "--yes"],
@@ -134,28 +122,41 @@ def create_vault(vault_dir: str, chunks: list[str]) -> bool:
         timeout=REINDEX_TIMEOUT,
     )
     elapsed = time.time() - t0
-
-    # Check if embeddings were actually used
-    if "keyword-only" in result.stdout.lower() or "keyword-only" in result.stderr.lower():
-        log(f"  WARNING: Vault initialized in keyword-only mode. Embeddings may not be available.")
-        log(f"  Attempting explicit reindex with embeddings...")
-        reindex_result = subprocess.run(
-            [SAME_BIN, "reindex", "--force"],
-            cwd=vault_dir,
-            capture_output=True,
-            text=True,
-            timeout=REINDEX_TIMEOUT,
-        )
-        if "semantic" in reindex_result.stdout.lower():
-            log(f"  Reindex upgraded to semantic search.")
-        else:
-            log(f"  WARNING: Still not using semantic search. Results will be keyword-only.")
-
     if result.returncode != 0:
         log(f"  ERROR: same init failed ({elapsed:.1f}s): {result.stderr[:300]}")
         return False
 
-    log(f"  Vault ready in {elapsed:.1f}s")
+    # Step 2: Overwrite config.toml AFTER init to force semantic search.
+    # same init --yes generates its own config and may default to keyword-only
+    # if it doesn't detect Ollama. We overwrite to guarantee embeddings.
+    config_path = os.path.join(vault_dir, ".same", "config.toml")
+    with open(config_path, "w") as f:
+        f.write(f'[vault]\n  path = "{vault_dir}"\n  handoff_dir = "sessions"\n  decision_log = "decisions.md"\n\n')
+        f.write('[embedding]\n  provider = "ollama"\n  model = "nomic-embed-text"\n\n')
+        f.write('[display]\n  mode = "compact"\n')
+
+    # Step 3: Force reindex with the corrected config to ensure embeddings are used
+    log(f"  Reindexing with semantic search...")
+    t1 = time.time()
+    reindex_result = subprocess.run(
+        [SAME_BIN, "reindex", "--force"],
+        cwd=vault_dir,
+        capture_output=True,
+        text=True,
+        timeout=REINDEX_TIMEOUT,
+    )
+    reindex_elapsed = time.time() - t1
+
+    # Report search mode
+    combined_output = (reindex_result.stdout + reindex_result.stderr).lower()
+    if "semantic" in combined_output:
+        log(f"  Search mode: semantic (embeddings active)")
+    elif "keyword" in combined_output:
+        log(f"  WARNING: Search mode: keyword-only (embeddings NOT active)")
+    else:
+        log(f"  Search mode: unknown (check output)")
+
+    log(f"  Vault ready in {elapsed + reindex_elapsed:.1f}s (init: {elapsed:.1f}s, reindex: {reindex_elapsed:.1f}s)")
     return True
 
 

@@ -153,7 +153,11 @@ func TestWebNoteJSONAndRendererDefensesAgainstXSS(t *testing.T) {
 		t.Fatalf("expected JSON response to escape script tags, got %q", body)
 	}
 
-	page := string(indexHTML)
+	indexBytes, err2 := staticFS.ReadFile("static/index.html")
+	if err2 != nil {
+		t.Fatalf("read embedded index.html: %v", err2)
+	}
+	page := string(indexBytes)
 	mustContain := []string{
 		"function escapeHTML(str)",
 		"var escaped = escapeHTML(text);",

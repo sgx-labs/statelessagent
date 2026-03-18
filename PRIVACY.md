@@ -12,6 +12,7 @@ SAME (Stateless Agent Memory Engine) is designed to be local-first and privacy-r
 | Embeddings (vectors) | Stored locally in SQLite | Until you delete or reindex |
 | Provenance hashes | SHA256 of source files, stored locally in SQLite | Until you delete or reindex |
 | Trust state | Per-note metadata, stored locally in SQLite | Until you delete or reindex |
+| Contradiction detail | Per-note classification (factual/preference/context), stored locally in SQLite | Until you delete or reindex |
 | Search queries | Processed locally | Not stored |
 | Config settings | Stored in `.same/config.toml` | Until you delete |
 

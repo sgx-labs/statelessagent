@@ -347,14 +347,81 @@ func runDemo(clean, noSetup bool) error {
 
 	demoPause()
 
-	// ── Step 4: Ask (if chat model available) ───────────────────────────
+	// ── Step 4: Memory Integrity ─────────────────────────────────────────
+	cli.Section("Step 4 — Memory Integrity")
+	fmt.Printf("  Not all notes age well. SAME tracks trust state so stale\n")
+	fmt.Printf("  knowledge doesn't mislead your AI.\n\n")
+	demoPause()
+
+	// Mark 4 notes as validated, 1 as stale
+	validatedPaths := []string{
+		"decisions/2026-03-03-auth-strategy.md",
+		"sessions/2026-03-07-handoff.md",
+		"research/stripe-webhook-setup.md",
+		"sessions/2026-03-04-standup.md",
+	}
+	stalePath := "bugs/2026-03-05-token-refresh-loop.md"
+
+	_ = db.UpdateTrustState(validatedPaths, "validated")
+	_ = db.UpdateTrustState([]string{stalePath}, "stale")
+
+	// Show trust summary
+	trustSummary, trustErr := db.GetTrustStateSummary()
+	if trustErr == nil {
+		fmt.Printf("  %s$%s same health\n\n", cli.Dim, cli.Reset)
+		demoPause()
+		fmt.Printf("    %sTrust: %s%d validated%s · %s%d stale%s\n\n",
+			cli.Bold,
+			cli.Green, trustSummary.Validated, cli.Reset+cli.Bold,
+			cli.Yellow, trustSummary.Stale, cli.Reset)
+	}
+
+	// Re-search to show stale note ranked lower
+	integrityQuery := "token refresh bug"
+	fmt.Printf("  %s$%s same search \"%s\"\n\n", cli.Dim, cli.Reset, integrityQuery)
+	demoPause()
+
+	var intResults []store.SearchResult
+	if semanticAvailable {
+		embedClient, err := newEmbedProvider()
+		if err == nil {
+			qVec, err := embedClient.GetQueryEmbedding(integrityQuery)
+			if err == nil {
+				intResults, _ = db.VectorSearch(qVec, store.SearchOptions{TopK: 3})
+			}
+		}
+	}
+	if len(intResults) == 0 && db.FTSAvailable() {
+		intResults, _ = db.FTS5Search(integrityQuery, store.SearchOptions{TopK: 3})
+	}
+
+	if len(intResults) > 0 {
+		for i, r := range intResults {
+			trustLabel := ""
+			switch r.TrustState {
+			case "validated":
+				trustLabel = fmt.Sprintf(" %s[validated]%s", cli.Green, cli.Reset)
+			case "stale":
+				trustLabel = fmt.Sprintf(" %s[stale]%s", cli.Yellow, cli.Reset)
+			case "contradicted":
+				trustLabel = fmt.Sprintf(" %s[contradicted]%s", cli.Red, cli.Reset)
+			}
+			fmt.Printf("  %d. %s%s%s (score: %.2f)%s\n", i+1, cli.Bold, r.Title, cli.Reset, r.Score, trustLabel)
+		}
+		fmt.Printf("\n  %s✓%s Stale notes are flagged and rank lower — your AI sees what to trust.\n",
+			cli.Green, cli.Reset)
+	}
+
+	demoPause()
+
+	// ── Step 5: Ask (if chat model available) ───────────────────────────
 	askShown := false
 	chatClient, chatErr := llm.NewClient()
 	if chatErr == nil {
 		bestModel, _ := chatClient.PickBestModel()
 		if bestModel != "" {
 			askShown = true
-			cli.Section("Step 4 — Ask")
+			cli.Section("Step 5 — Ask")
 
 			askQuery := "what caused the token refresh bug and how did we fix it?"
 			fmt.Printf("  %s$%s same ask \"%s\"\n\n", cli.Dim, cli.Reset, askQuery)
@@ -438,7 +505,7 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 
 	// ── Closing ─────────────────────────────────────────────────────────
 	fmt.Printf("\n  %s━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━%s\n", cli.Cyan, cli.Reset)
-	fmt.Printf("\n  %sThat's SAME. Your AI remembers what you've built.%s\n\n", cli.Bold, cli.Reset)
+	fmt.Printf("\n  %sThat's SAME. Your AI remembers what you've built — and knows what to trust.%s\n\n", cli.Bold, cli.Reset)
 
 	if clean {
 		if err := os.RemoveAll(demoDir); err != nil {

@@ -89,7 +89,7 @@ func TestSecurityHeaders_Present(t *testing.T) {
 	}{
 		{"X-Frame-Options", "DENY"},
 		{"X-Content-Type-Options", "nosniff"},
-		{"Content-Security-Policy", "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:"},
+		{"Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.header, func(t *testing.T) {
