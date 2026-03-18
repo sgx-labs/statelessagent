@@ -14,6 +14,11 @@
 #
 set -euo pipefail
 
+# Warn if bash < 4 (we're compatible, but good to know)
+if [ "${BASH_VERSINFO[0]}" -lt 4 ] 2>/dev/null; then
+    echo "Note: Running on bash ${BASH_VERSION}. This script is bash 3.2+ compatible." >&2
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VAULT_DIR="$SCRIPT_DIR/seed_bench"
 EVAL_FILE="$SCRIPT_DIR/seed_bench_eval.json"

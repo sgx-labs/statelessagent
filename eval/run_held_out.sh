@@ -15,6 +15,11 @@
 
 set -euo pipefail
 
+# Warn if bash < 4 (we're compatible, but good to know)
+if [ "${BASH_VERSINFO[0]}" -lt 4 ] 2>/dev/null; then
+    echo "Note: Running on bash ${BASH_VERSION}. This script is bash 3.2+ compatible." >&2
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VAULT_DIR="$SCRIPT_DIR/test_vault"
 TEST_CASES="$SCRIPT_DIR/held_out_eval.json"
@@ -118,7 +123,10 @@ PASS=0
 FAIL=0
 TOTAL_RR=0
 
-declare -A CAT_TOTAL CAT_PASS CAT_FAIL CAT_RR
+# Temp file for per-test results (used for jq-based category aggregation at the end)
+# This avoids bash 4+ associative arrays, keeping macOS bash 3.2 compatibility.
+RESULTS_JSONL=$(mktemp)
+trap 'rm -f "$RESULTS_JSONL"' EXIT
 
 # Detailed results for JSON file (but NOT displayed)
 DETAILS="[]"
@@ -135,12 +143,6 @@ for i in $(seq 0 $((TOTAL - 1))); do
     TC_CATEGORY=$(echo "$TC" | jq -r '.category')
     TC_NEGATIVE=$(echo "$TC" | jq -r '.negative // false')
     TC_EXPECT_TERMS=$(echo "$TC" | jq -r '.expect_in_results[]? // empty')
-
-    # Initialize category counters
-    CAT_TOTAL[$TC_CATEGORY]=$(( ${CAT_TOTAL[$TC_CATEGORY]:-0} + 1 ))
-    CAT_PASS[$TC_CATEGORY]=${CAT_PASS[$TC_CATEGORY]:-0}
-    CAT_FAIL[$TC_CATEGORY]=${CAT_FAIL[$TC_CATEGORY]:-0}
-    CAT_RR[$TC_CATEGORY]=${CAT_RR[$TC_CATEGORY]:-0}
 
     # Run search
     SEARCH_OUTPUT=$("$SAME_BIN" search --vault "$VAULT_DIR" --json --top-k 5 "$TC_QUERY" 2>/dev/null || echo "[]")
@@ -172,11 +174,9 @@ for i in $(seq 0 $((TOTAL - 1))); do
 
         if [ "$FOUND_NEGATIVE" = true ]; then
             FAIL=$((FAIL + 1))
-            CAT_FAIL[$TC_CATEGORY]=$(( ${CAT_FAIL[$TC_CATEGORY]} + 1 ))
             STATUS="FAIL"
         else
             PASS=$((PASS + 1))
-            CAT_PASS[$TC_CATEGORY]=$(( ${CAT_PASS[$TC_CATEGORY]} + 1 ))
             STATUS="PASS"
         fi
 
@@ -189,6 +189,7 @@ for i in $(seq 0 $((TOTAL - 1))); do
             --arg note "negative test" \
             '{id: $id, query: $query, category: $category, status: $status, num_results: $num_results, note: $note, reciprocal_rank: 0}')
         DETAILS=$(echo "$DETAILS" | jq ". + [$DETAIL]")
+        echo "{\"category\":\"$TC_CATEGORY\",\"status\":\"$STATUS\",\"rr\":0}" >> "$RESULTS_JSONL"
         continue
     fi
 
@@ -237,16 +238,14 @@ for i in $(seq 0 $((TOTAL - 1))); do
 
     if [ "$PASSED" = true ]; then
         PASS=$((PASS + 1))
-        CAT_PASS[$TC_CATEGORY]=$(( ${CAT_PASS[$TC_CATEGORY]} + 1 ))
         STATUS="PASS"
     else
         FAIL=$((FAIL + 1))
-        CAT_FAIL[$TC_CATEGORY]=$(( ${CAT_FAIL[$TC_CATEGORY]} + 1 ))
         STATUS="FAIL"
     fi
 
     TOTAL_RR=$(echo "$TOTAL_RR + $RR" | bc)
-    CAT_RR[$TC_CATEGORY]=$(echo "${CAT_RR[$TC_CATEGORY]} + $RR" | bc)
+    echo "{\"category\":\"$TC_CATEGORY\",\"status\":\"$STATUS\",\"rr\":$RR}" >> "$RESULTS_JSONL"
 
     DETAIL=$(jq -n \
         --argjson id "$TC_ID" \
@@ -300,20 +299,28 @@ log ""
 log "${BOLD}  Per-Category Breakdown:${RESET}"
 log ""
 
-CAT_SUMMARY="{}"
-for cat in $(echo "${!CAT_TOTAL[@]}" | tr ' ' '\n' | sort); do
-    ct=${CAT_TOTAL[$cat]}
-    cp=${CAT_PASS[$cat]}
-    cf=${CAT_FAIL[$cat]}
-    cr=${CAT_RR[$cat]}
-    if [ "$ct" -gt 0 ]; then
-        cat_recall=$(echo "scale=4; $cp / $ct" | bc)
-        cat_recall_pct=$(echo "scale=1; $cat_recall * 100" | bc)
-        cat_mrr=$(echo "scale=4; $cr / $ct" | bc)
-    else
-        cat_recall_pct="0.0"
-        cat_mrr="0"
-    fi
+# Build category summary from JSONL results using jq (bash 3.2 compatible)
+CAT_SUMMARY=$(jq -s '
+    group_by(.category) | map({
+        key: .[0].category,
+        value: {
+            total: length,
+            pass: [.[] | select(.status == "PASS")] | length,
+            fail: [.[] | select(.status == "FAIL")] | length,
+            rr_sum: [.[].rr] | add
+        }
+    }) | map(.value.recall_pct = (if .value.total > 0 then (.value.pass / .value.total * 100 * 10 | round / 10) else 0 end))
+       | map(.value.mrr = (if .value.total > 0 then ((.value.rr_sum / .value.total * 10000 | round) / 10000) else 0 end))
+       | map(.value = (.value | del(.rr_sum)))
+       | from_entries
+' "$RESULTS_JSONL")
+
+# Display per-category breakdown
+for cat in $(echo "$CAT_SUMMARY" | jq -r 'keys[]' | sort); do
+    ct=$(echo "$CAT_SUMMARY" | jq -r --arg c "$cat" '.[$c].total')
+    cp=$(echo "$CAT_SUMMARY" | jq -r --arg c "$cat" '.[$c].pass')
+    cat_recall_pct=$(echo "$CAT_SUMMARY" | jq -r --arg c "$cat" '.[$c].recall_pct')
+    cat_mrr=$(echo "$CAT_SUMMARY" | jq -r --arg c "$cat" '.[$c].mrr')
 
     if [ "$(echo "$cat_recall_pct >= 80" | bc)" -eq 1 ]; then
         COLOR="$GREEN"
@@ -324,15 +331,6 @@ for cat in $(echo "${!CAT_TOTAL[@]}" | tr ' ' '\n' | sort); do
     fi
 
     log "  ${BOLD}${cat}${RESET}: ${COLOR}${cat_recall_pct}%${RESET} recall (${cp}/${ct}), MRR: ${cat_mrr}"
-
-    CAT_SUMMARY=$(echo "$CAT_SUMMARY" | jq \
-        --arg cat "$cat" \
-        --argjson total "$ct" \
-        --argjson pass "$cp" \
-        --argjson fail "$cf" \
-        --arg recall "$cat_recall_pct" \
-        --arg mrr "$cat_mrr" \
-        '. + {($cat): {total: $total, pass: $pass, fail: $fail, recall_pct: ($recall | tonumber), mrr: ($mrr | tonumber)}}')
 done
 
 log ""
