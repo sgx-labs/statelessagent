@@ -433,10 +433,10 @@ func TestMigrationV8ToV9(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Schema version should be 9
+	// Schema version should be 10 (through contradiction detail migration)
 	v := db.SchemaVersion()
-	if v != 9 {
-		t.Errorf("expected schema version 9, got %d", v)
+	if v != 10 {
+		t.Errorf("expected schema version 10, got %d", v)
 	}
 
 	// note_sources table should exist
@@ -475,7 +475,125 @@ func TestMigrationV8ToV9(t *testing.T) {
 		t.Fatalf("re-migrate should succeed: %v", err)
 	}
 	v = db.SchemaVersion()
-	if v != 9 {
-		t.Errorf("expected schema version 9 after re-migrate, got %d", v)
+	if v != 10 {
+		t.Errorf("expected schema version 10 after re-migrate, got %d", v)
+	}
+}
+
+func TestSetContradicted(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Insert test notes
+	for _, path := range []string{"notes/a.md", "notes/b.md", "notes/c.md"} {
+		_, err := db.conn.Exec(
+			`INSERT INTO vault_notes (path, title, chunk_id, chunk_heading, text, modified, content_hash)
+			 VALUES (?, ?, 0, '', 'test content', 1000, 'hash1')`,
+			path, path,
+		)
+		if err != nil {
+			t.Fatalf("insert test note %s: %v", path, err)
+		}
+	}
+
+	// Set contradictions of different types
+	if err := db.SetContradicted("notes/a.md", "factual"); err != nil {
+		t.Fatalf("SetContradicted factual: %v", err)
+	}
+	if err := db.SetContradicted("notes/b.md", "preference"); err != nil {
+		t.Fatalf("SetContradicted preference: %v", err)
+	}
+	if err := db.SetContradicted("notes/c.md", "context"); err != nil {
+		t.Fatalf("SetContradicted context: %v", err)
+	}
+
+	// Verify trust_state and contradiction_detail were set
+	var trustState, detail string
+	if err := db.conn.QueryRow(
+		"SELECT trust_state, contradiction_detail FROM vault_notes WHERE path = 'notes/a.md'",
+	).Scan(&trustState, &detail); err != nil {
+		t.Fatalf("query notes/a.md: %v", err)
+	}
+	if trustState != "contradicted" {
+		t.Errorf("expected trust_state 'contradicted', got %q", trustState)
+	}
+	if detail != "factual" {
+		t.Errorf("expected contradiction_detail 'factual', got %q", detail)
+	}
+
+	// Invalid type should fail
+	if err := db.SetContradicted("notes/a.md", "invalid"); err == nil {
+		t.Error("expected error for invalid contradiction type")
+	}
+}
+
+func TestGetContradictionSummary(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Insert notes with various contradiction types
+	notes := []struct {
+		path   string
+		trust  string
+		detail string
+	}{
+		{"notes/a.md", "contradicted", "factual"},
+		{"notes/b.md", "contradicted", "factual"},
+		{"notes/c.md", "contradicted", "preference"},
+		{"notes/d.md", "contradicted", "context"},
+		{"notes/e.md", "contradicted", ""},  // untyped
+		{"notes/f.md", "validated", ""},      // not contradicted
+		{"notes/g.md", "unknown", ""},        // not contradicted
+	}
+	for _, n := range notes {
+		_, err := db.conn.Exec(
+			`INSERT INTO vault_notes (path, title, chunk_id, chunk_heading, text, modified, content_hash, trust_state, contradiction_detail)
+			 VALUES (?, ?, 0, '', 'test', 1000, 'hash1', ?, ?)`,
+			n.path, n.path, n.trust, n.detail,
+		)
+		if err != nil {
+			t.Fatalf("insert %s: %v", n.path, err)
+		}
+	}
+
+	breakdown, err := db.GetContradictionSummary()
+	if err != nil {
+		t.Fatalf("GetContradictionSummary: %v", err)
+	}
+
+	if breakdown.Factual != 2 {
+		t.Errorf("expected 2 factual, got %d", breakdown.Factual)
+	}
+	if breakdown.Preference != 1 {
+		t.Errorf("expected 1 preference, got %d", breakdown.Preference)
+	}
+	if breakdown.Context != 1 {
+		t.Errorf("expected 1 context, got %d", breakdown.Context)
+	}
+	if breakdown.Untyped != 1 {
+		t.Errorf("expected 1 untyped, got %d", breakdown.Untyped)
+	}
+}
+
+func TestGetContradictionSummary_Empty(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	breakdown, err := db.GetContradictionSummary()
+	if err != nil {
+		t.Fatalf("GetContradictionSummary: %v", err)
+	}
+
+	if breakdown.Factual != 0 || breakdown.Preference != 0 || breakdown.Context != 0 || breakdown.Untyped != 0 {
+		t.Errorf("expected all zeros for empty vault, got %+v", breakdown)
 	}
 }

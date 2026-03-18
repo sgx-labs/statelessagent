@@ -33,6 +33,17 @@ type TrustSummary struct {
 	Stale        int
 	Contradicted int
 	Unknown      int
+	// ContradictionBreakdown holds counts by contradiction type.
+	// Only populated when GetContradictionSummary is called separately.
+	ContradictionBreakdown ContradictionBreakdown
+}
+
+// ContradictionBreakdown holds per-type counts for contradicted notes.
+type ContradictionBreakdown struct {
+	Factual    int
+	Preference int
+	Context    int
+	Untyped    int // contradicted notes with no contradiction_detail set
 }
 
 // RecordSource records that a note was derived from a source.
@@ -292,6 +303,67 @@ func (db *DB) GetNotesWithSources() ([]string, error) {
 		paths = append(paths, p)
 	}
 	return paths, rows.Err()
+}
+
+// SetContradicted marks a note as contradicted with a specific type.
+// The contradictionType should be "factual", "preference", or "context".
+// Both trust_state and contradiction_detail are updated atomically.
+func (db *DB) SetContradicted(path string, contradictionType string) error {
+	validTypes := map[string]bool{
+		"factual":    true,
+		"preference": true,
+		"context":    true,
+	}
+	if !validTypes[contradictionType] {
+		return fmt.Errorf("invalid contradiction type: %q", contradictionType)
+	}
+
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	_, err := db.conn.Exec(
+		`UPDATE vault_notes SET trust_state = 'contradicted', contradiction_detail = ? WHERE path = ?`,
+		contradictionType, path,
+	)
+	if err != nil {
+		return fmt.Errorf("set contradicted: %w", err)
+	}
+	return nil
+}
+
+// GetContradictionSummary returns a breakdown of contradicted notes by type.
+// Only counts chunk_id=0 rows to avoid double-counting chunked notes.
+func (db *DB) GetContradictionSummary() (*ContradictionBreakdown, error) {
+	rows, err := db.conn.Query(
+		`SELECT COALESCE(contradiction_detail, '') AS cd, COUNT(*)
+		 FROM vault_notes
+		 WHERE chunk_id = 0 AND trust_state = 'contradicted'
+		 GROUP BY cd`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get contradiction summary: %w", err)
+	}
+	defer rows.Close()
+
+	breakdown := &ContradictionBreakdown{}
+	for rows.Next() {
+		var detail string
+		var count int
+		if err := rows.Scan(&detail, &count); err != nil {
+			return nil, fmt.Errorf("scan contradiction detail: %w", err)
+		}
+		switch detail {
+		case "factual":
+			breakdown.Factual = count
+		case "preference":
+			breakdown.Preference = count
+		case "context":
+			breakdown.Context = count
+		default:
+			breakdown.Untyped += count
+		}
+	}
+	return breakdown, rows.Err()
 }
 
 // fileSHA256 computes the hex-encoded SHA256 hash of file content.

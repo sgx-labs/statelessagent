@@ -311,8 +311,35 @@ func runHealth() error {
 		unknownLabel += " (no provenance recorded)"
 	}
 
+	// Build contradicted label with breakdown if available
+	contradictedLabel := fmt.Sprintf("%d notes", trustSummary.Contradicted)
+	if trustSummary.Contradicted > 0 {
+		cBreakdown, _ := db.GetContradictionSummary()
+		if cBreakdown != nil {
+			var parts []string
+			if cBreakdown.Factual > 0 {
+				parts = append(parts, fmt.Sprintf("%d factual", cBreakdown.Factual))
+			}
+			if cBreakdown.Preference > 0 {
+				parts = append(parts, fmt.Sprintf("%d preference", cBreakdown.Preference))
+			}
+			if cBreakdown.Context > 0 {
+				parts = append(parts, fmt.Sprintf("%d context", cBreakdown.Context))
+			}
+			if cBreakdown.Untyped > 0 {
+				parts = append(parts, fmt.Sprintf("%d untyped", cBreakdown.Untyped))
+			}
+			if len(parts) > 0 {
+				contradictedLabel += " (" + strings.Join(parts, ", ") + ")"
+			}
+		}
+	}
+
 	fmt.Printf("  %-14s %s%s%s\n", "Validated:", cli.Green, validatedLabel, cli.Reset)
 	fmt.Printf("  %-14s %s%s%s\n", "Stale:", cli.Yellow, staleLabel, cli.Reset)
+	if trustSummary.Contradicted > 0 {
+		fmt.Printf("  %-14s %s%s%s\n", "Contradicted:", cli.Yellow, contradictedLabel, cli.Reset)
+	}
 	fmt.Printf("  %-14s %s%s%s\n", "Unknown:", cli.Dim, unknownLabel, cli.Reset)
 
 	// Show up to 5 stale notes with details

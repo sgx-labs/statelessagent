@@ -658,7 +658,14 @@ func handleSaveNote(ctx context.Context, req *mcp.CallToolRequest, input saveNot
 	// Don't fail the save if source recording fails — log a warning and continue.
 	recordProvenanceSources(relPath, input.Sources)
 
+	// Contradiction detection: find similar existing notes and check for contradictions.
+	// This is best-effort — if embedding provider is unavailable, skip silently.
+	contradictions := detectAndRecordContradictions(relPath, input.Content)
+
 	message := fmt.Sprintf("Saved: %s", input.Path)
+	if len(contradictions) > 0 {
+		message += fmt.Sprintf(" (%d contradiction(s) detected — older notes flagged)", len(contradictions))
+	}
 	if agent != "" {
 		if readClaims, claimErr := db.GetActiveReadClaimsForPath(relPath, agent); claimErr == nil && len(readClaims) > 0 {
 			seen := make(map[string]bool, len(readClaims))
@@ -772,6 +779,66 @@ func getRecentInjectedNotePaths(seconds int) ([]string, error) {
 		}
 	}
 	return paths, rows.Err()
+}
+
+// detectAndRecordContradictions searches for notes similar to the newly saved
+// content and runs contradiction detection. If contradictions are found, the
+// OLD notes are marked as contradicted with the appropriate type. Returns the
+// list of detected contradictions (may be empty). This is best-effort — errors
+// are logged to stderr, not propagated.
+func detectAndRecordContradictions(notePath string, content string) []memory.ContradictionResult {
+	if embedClient == nil || db == nil {
+		return nil
+	}
+
+	// Get an embedding of the new content for similarity search
+	vec, err := embedClient.GetDocumentEmbedding(content)
+	if err != nil || len(vec) == 0 {
+		return nil
+	}
+
+	// Search for similar notes (fetch extra to find good candidates)
+	results, err := db.VectorSearchRaw(vec, 20)
+	if err != nil || len(results) == 0 {
+		return nil
+	}
+
+	// Convert to contradiction candidates, computing a similarity score
+	// from the distance. VectorSearchRaw returns distance (lower = more similar),
+	// so we convert to similarity (higher = more similar).
+	const distCeiling = 20.0
+	var candidates []memory.ContradictionCandidate
+	for _, r := range results {
+		if r.Path == notePath {
+			continue // skip the note we just saved
+		}
+		similarity := 1.0 - (r.Distance / distCeiling)
+		if similarity < 0 {
+			similarity = 0
+		}
+		candidates = append(candidates, memory.ContradictionCandidate{
+			Path:   r.Path,
+			Text:   r.Text,
+			Score:  similarity,
+			Title:  r.Title,
+			Tags:   r.Tags,
+			Domain: r.Domain,
+		})
+	}
+
+	contradictions := memory.DetectContradictions(content, notePath, candidates)
+	if len(contradictions) == 0 {
+		return nil
+	}
+
+	// Record contradictions: mark old notes as contradicted with type
+	for _, c := range contradictions {
+		if err := db.SetContradicted(c.OldNotePath, string(c.Type)); err != nil {
+			fmt.Fprintf(os.Stderr, "same: warning: failed to set contradiction for %s: %v\n", c.OldNotePath, err)
+		}
+	}
+
+	return contradictions
 }
 
 func handleSaveDecision(ctx context.Context, req *mcp.CallToolRequest, input saveDecisionInput) (*mcp.CallToolResult, any, error) {

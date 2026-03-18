@@ -21,7 +21,7 @@ type DB struct {
 	ftsAvailable bool       // true if FTS5 module is available
 }
 
-const maxSchemaVersion = 9
+const maxSchemaVersion = 10
 
 // Open opens or creates the database at the configured path.
 func Open() (*DB, error) {
@@ -279,7 +279,8 @@ func (db *DB) migrate() error {
 		{6, db.migrateV6}, // knowledge graph tables
 		{7, db.migrateV7}, // hook activity logging metadata
 		{8, db.migrateV8}, // suppressed column for mem_forget
-		{9, db.migrateV9}, // provenance tracking (note_sources + trust_state)
+		{9, db.migrateV9},  // provenance tracking (note_sources + trust_state)
+		{10, db.migrateV10}, // contradiction detail tracking
 	}
 	for _, m := range versionedMigrations {
 		if currentVersion < m.version {
@@ -612,6 +613,19 @@ func (db *DB) migrateV9() error {
 	}
 	if !db.hasColumn("vault_notes", "trust_state") {
 		if _, err := db.conn.Exec(`ALTER TABLE vault_notes ADD COLUMN trust_state TEXT DEFAULT 'unknown'`); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// migrateV10 adds the contradiction_detail column to vault_notes for typed
+// contradiction tracking. Values are: "factual", "preference", "context", or
+// empty (no contradiction detail). This column is only meaningful when
+// trust_state = "contradicted".
+func (db *DB) migrateV10() error {
+	if !db.hasColumn("vault_notes", "contradiction_detail") {
+		if _, err := db.conn.Exec(`ALTER TABLE vault_notes ADD COLUMN contradiction_detail TEXT DEFAULT ''`); err != nil {
 			return err
 		}
 	}

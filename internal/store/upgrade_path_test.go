@@ -20,8 +20,8 @@ func TestOpenPath_MigratesLegacyV5ToV6(t *testing.T) {
 	}
 	defer db.Close()
 
-	if got := db.SchemaVersion(); got != 9 {
-		t.Fatalf("schema version = %d, want 9", got)
+	if got := db.SchemaVersion(); got != 10 {
+		t.Fatalf("schema version = %d, want 10", got)
 	}
 
 	var noteNodeCount int
@@ -155,8 +155,8 @@ func TestOpenPath_MigratesV6WithSessionLog(t *testing.T) {
 	}
 	defer db.Close()
 
-	if got := db.SchemaVersion(); got != 9 {
-		t.Fatalf("schema version = %d, want 9", got)
+	if got := db.SchemaVersion(); got != 10 {
+		t.Fatalf("schema version = %d, want 10", got)
 	}
 
 	// Verify entry_kind column exists and the index works.
