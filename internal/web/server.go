@@ -58,6 +58,7 @@ func Serve(ctx context.Context, addr string, embedClient embedding.Provider, ver
 	mux.HandleFunc("/api/search", s.handleSearch)
 	mux.HandleFunc("/api/pinned", s.handlePinned)
 	mux.HandleFunc("/api/related/", s.handleRelated) // /api/related/{path}
+	mux.HandleFunc("/api/trust/summary", s.handleTrustSummary)
 	mux.HandleFunc("/api/graph/stats", s.handleGraphStats)
 	mux.HandleFunc("/api/graph/connections/", s.handleGraphConnections) // /api/graph/connections/{path}
 
@@ -451,6 +452,29 @@ func (s *server) handleRelated(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, filtered)
 }
 
+func (s *server) handleTrustSummary(w http.ResponseWriter, r *http.Request) {
+	summary, err := s.db.GetTrustStateSummary()
+	if err != nil {
+		writeJSON(w, map[string]string{"error": err.Error()})
+		return
+	}
+
+	contradiction, _ := s.db.GetContradictionSummary()
+
+	writeJSON(w, map[string]any{
+		"validated":    summary.Validated,
+		"stale":        summary.Stale,
+		"contradicted": summary.Contradicted,
+		"unknown":      summary.Unknown,
+		"total":        summary.Validated + summary.Stale + summary.Contradicted + summary.Unknown,
+		"contradiction_breakdown": map[string]int{
+			"factual":    contradiction.Factual,
+			"preference": contradiction.Preference,
+			"context":    contradiction.Context,
+		},
+	})
+}
+
 func (s *server) handleGraphStats(w http.ResponseWriter, r *http.Request) {
 	gdb := graph.NewDB(s.db.Conn())
 	stats, err := gdb.GetStats()
@@ -709,7 +733,10 @@ func filterPrivateNotes(notes []store.NoteRecord) []noteJSON {
 			Tags:        n.Tags,
 			Domain:      n.Domain,
 			Workstream:  n.Workstream,
+			Agent:       n.Agent,
 			ContentType: n.ContentType,
+			TrustState:  n.TrustState,
+			Confidence:  n.Confidence,
 			Modified:    n.Modified,
 			Text:        snippet,
 		})
@@ -723,7 +750,10 @@ type noteJSON struct {
 	Tags        string  `json:"tags,omitempty"`
 	Domain      string  `json:"domain,omitempty"`
 	Workstream  string  `json:"workstream,omitempty"`
+	Agent       string  `json:"agent,omitempty"`
 	ContentType string  `json:"content_type,omitempty"`
+	TrustState  string  `json:"trust_state,omitempty"`
+	Confidence  float64 `json:"confidence,omitempty"`
 	Modified    float64 `json:"modified"`
 	Text        string  `json:"text,omitempty"`
 }
