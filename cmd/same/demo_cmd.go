@@ -550,6 +550,12 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 			if err == nil {
 				targetDir = abs
 			}
+			// Create the directory if it doesn't exist
+			if err := os.MkdirAll(targetDir, 0o755); err != nil {
+				fmt.Printf("\n  %sCouldn't create %s: %v%s\n", cli.Red, targetDir, err, cli.Reset)
+				fmt.Printf("  Run %ssame init%s from your project directory.\n\n", cli.Cyan, cli.Reset)
+				return nil
+			}
 		}
 
 		// Warn if target is home directory
