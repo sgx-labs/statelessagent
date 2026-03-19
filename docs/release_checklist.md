@@ -87,9 +87,47 @@ cd npm && npm publish
 
 Verify: `npm view @sgx-labs/same version` should show the new version.
 
-## 11. Post-Release
+## 11. Website Update (statelessagent.com)
+
+- [ ] Version bumps across all pages (index, docs, briefs, sgx-labs, llms.txt, llms-full.txt, .well-known/mcp.json)
+- [ ] `sitemap.xml` — update `lastmod` dates
+- [ ] `changelog/index.html` — add release card, move "Latest" tag
+- [ ] New features documented on docs page
+- [ ] Push to main (Vercel auto-deploys)
+- [ ] Verify live site shows new version
+
+## 12. Distribution — Update ALL Directory Listings
+
+Every release. No exceptions. Stale listings lose us to competitors.
+
+### Official registries
+- [ ] **Official MCP Registry** — `mcp-publisher publish` (source of truth for other directories)
+- [ ] **npm** — `cd npm && npm publish` then verify `npm view @sgx-labs/same version`
+
+### Directory listings (update version, description, tool count)
+- [ ] **Glama.ai** — https://glama.ai/mcp/servers/@sgx-labs/statelessagent
+- [ ] **mcp.so** — check listing, update if manual
+- [ ] **PulseMCP** — https://pulsemcp.com (check/update)
+- [ ] **Smithery** — https://smithery.ai (check/update)
+- [ ] **mcpservers.org** — check listing
+- [ ] **LobeHub MCP** — check listing
+- [ ] **awesome-mcp-servers** (punkpeye) — PR if description changed
+- [ ] **cursor.directory** — check listing
+- [ ] **OpenTools** — check listing
+- [ ] **awesome-ai-memory** — check listing
+
+### Verify after updating
+- [ ] `glama.json` in repo matches the current version and tool count
+- [ ] `server.json` in repo matches the current version
+- [ ] Google "SAME MCP memory" — check what shows up
+
+Quick check: `grep -rn "version" server.json glama.json npm/package.json | grep -v node_modules`
+
+## 13. Post-Release Verification
 
 - [ ] Verify `npx -y @sgx-labs/same version` shows new version
 - [ ] Verify `curl -fsSL https://statelessagent.com/install.sh | bash` works
+- [ ] Verify `same demo` works end-to-end on a fresh machine
 - [ ] Announce on Discord
 - [ ] Check GitHub release page renders correctly
+- [ ] Run `same seed list --refresh` to verify seed manifest works
