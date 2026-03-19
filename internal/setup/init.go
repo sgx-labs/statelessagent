@@ -357,12 +357,39 @@ func RunInit(opts InitOptions) error {
 					baseURL = ec.BaseURL
 				}
 				if baseURL == "" {
-					fmt.Printf("\n  Enter the base URL for your OpenAI-compatible endpoint:\n")
-					fmt.Printf("  %sExamples: http://localhost:8080 (llama.cpp), http://localhost:1234 (LM Studio)%s\n", cli.Dim, cli.Reset)
-					fmt.Printf("  %s          http://localhost:11434/v1 (Ollama), https://openrouter.ai/api/v1%s\n", cli.Dim, cli.Reset)
-					fmt.Printf("  URL: ")
+					type endpoint struct {
+						url   string
+						label string
+					}
+					endpoints := []endpoint{
+						{"http://localhost:1234", "LM Studio"},
+						{"http://localhost:8080", "llama.cpp / LocalAI"},
+						{"http://localhost:11434/v1", "Ollama (OpenAI-compatible mode)"},
+						{"https://openrouter.ai/api/v1", "OpenRouter (cloud)"},
+					}
+
+					fmt.Printf("\n  %sPick your endpoint:%s\n\n", cli.Bold, cli.Reset)
+					for i, ep := range endpoints {
+						fmt.Printf("    %s%d%s) %-36s %s%s%s\n",
+							cli.Cyan, i+1, cli.Reset, ep.url, cli.Dim, ep.label, cli.Reset)
+					}
+					fmt.Printf("    %s%d%s) Custom URL\n", cli.Cyan, len(endpoints)+1, cli.Reset)
+					fmt.Printf("\n  Choice: ")
 					urlInput, _ := reader.ReadString('\n')
-					baseURL = strings.TrimSpace(urlInput)
+					pick := strings.TrimSpace(urlInput)
+
+					var n int
+					if _, err := fmt.Sscanf(pick, "%d", &n); err == nil && n >= 1 && n <= len(endpoints) {
+						baseURL = endpoints[n-1].url
+					} else if n == len(endpoints)+1 {
+						fmt.Printf("  URL: ")
+						customInput, _ := reader.ReadString('\n')
+						baseURL = strings.TrimSpace(customInput)
+					} else if pick != "" {
+						// Treat raw input as a URL
+						baseURL = pick
+					}
+
 					if baseURL == "" {
 						return fmt.Errorf("base URL required — set SAME_EMBED_BASE_URL and run 'same init' again")
 					}
