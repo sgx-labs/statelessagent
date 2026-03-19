@@ -346,7 +346,8 @@ func RunInit(opts InitOptions) error {
 					}
 					_ = os.Setenv("OPENAI_API_KEY", apiKey)
 				}
-				fmt.Printf("\n  %s✓%s Using OpenAI API\n", cli.Green, cli.Reset)
+				fmt.Printf("\n  %s✓%s Using OpenAI API (model: text-embedding-3-small)\n", cli.Green, cli.Reset)
+				_ = os.Setenv("SAME_EMBED_MODEL", "text-embedding-3-small")
 			case "openai-compatible":
 				embedProvider = chosen
 				_ = os.Setenv("SAME_EMBED_PROVIDER", chosen)

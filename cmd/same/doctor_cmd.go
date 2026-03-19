@@ -754,7 +754,7 @@ func runDoctor(jsonOut bool) error {
 		lines = append(lines, "SAME is running in keyword-only mode. Configure SAME_EMBED_PROVIDER and run 'same reindex' for semantic search.")
 	}
 	if failed > 0 {
-		lines = append(lines, "Still stuck? Report a bug: https://github.com/sgx-labs/statelessagent/issues")
+		lines = append(lines, "Report bugs: gh/sgx-labs/statelessagent")
 	}
 	cli.Box(lines)
 
