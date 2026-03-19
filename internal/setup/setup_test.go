@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -155,6 +156,68 @@ func TestAcquireInitLock_RemovesStaleLockAndAcquires(t *testing.T) {
 	unlock()
 	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
 		t.Fatalf("expected lockfile removed by cleanup, got: %v", err)
+	}
+}
+
+func TestAcquireInitLock_RemovesDeadPIDLockAndAcquires(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	lockPath := filepath.Join(home, ".config", "same", "init.lock")
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		t.Fatalf("create init lock dir: %v", err)
+	}
+	if err := os.WriteFile(lockPath, []byte("424242\n"), 0o600); err != nil {
+		t.Fatalf("create dead pid lockfile: %v", err)
+	}
+
+	origExists := initLockProcessExists
+	initLockProcessExists = func(pid int) bool { return false }
+	t.Cleanup(func() { initLockProcessExists = origExists })
+
+	unlock, err := acquireInitLock()
+	if err != nil {
+		t.Fatalf("expected dead PID lock recovery, got err: %v", err)
+	}
+	if unlock == nil {
+		t.Fatal("expected cleanup callback")
+	}
+
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatalf("read refreshed lockfile: %v", err)
+	}
+	if strings.TrimSpace(string(data)) != strconv.Itoa(os.Getpid()) {
+		t.Fatalf("lockfile pid = %q, want %d", strings.TrimSpace(string(data)), os.Getpid())
+	}
+
+	unlock()
+}
+
+func TestAcquireInitLock_RejectsLivePIDLock(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	lockPath := filepath.Join(home, ".config", "same", "init.lock")
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		t.Fatalf("create init lock dir: %v", err)
+	}
+	if err := os.WriteFile(lockPath, []byte("777\n"), 0o600); err != nil {
+		t.Fatalf("create live pid lockfile: %v", err)
+	}
+
+	origExists := initLockProcessExists
+	initLockProcessExists = func(pid int) bool { return pid == 777 }
+	t.Cleanup(func() { initLockProcessExists = origExists })
+
+	_, err := acquireInitLock()
+	if err == nil {
+		t.Fatal("expected live PID lockfile to block init")
+	}
+	if !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

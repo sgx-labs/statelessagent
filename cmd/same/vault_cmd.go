@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"syscall"
 
@@ -146,6 +147,62 @@ func vaultCmd() *cobra.Command {
 			if reg.Default == "" && len(reg.Vaults) > 0 {
 				fmt.Printf("  %sNo default vault. Use 'same vault default <name>' to set one.%s\n", cli.Dim, cli.Reset)
 			}
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "prune",
+		Short: "Remove registered vaults whose paths no longer exist",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			reg := config.LoadRegistry()
+			if len(reg.Vaults) == 0 {
+				fmt.Printf("\n  No vaults registered.\n\n")
+				return nil
+			}
+
+			names := make([]string, 0, len(reg.Vaults))
+			for name := range reg.Vaults {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+
+			removedPaths := make(map[string]string)
+			for _, name := range names {
+				path := reg.Vaults[name]
+				if _, err := os.Stat(path); err != nil {
+					if !os.IsNotExist(err) {
+						return fmt.Errorf("check vault %q (%s): %w", name, cli.ShortenHome(path), err)
+					}
+					removedPaths[name] = path
+					delete(reg.Vaults, name)
+					if reg.Default == name {
+						reg.Default = ""
+					}
+				}
+			}
+
+			if len(removedPaths) == 0 {
+				fmt.Printf("\n  No missing vaults to prune.\n\n")
+				return nil
+			}
+
+			if err := reg.Save(); err != nil {
+				return fmt.Errorf("save registry: %w", err)
+			}
+
+			fmt.Printf("\n  %sPruned Vaults%s\n\n", cli.Bold, cli.Reset)
+			for _, name := range names {
+				path, ok := removedPaths[name]
+				if !ok {
+					continue
+				}
+				fmt.Printf("  %s✓%s Removed vault %q (%s)\n", cli.Green, cli.Reset, name, cli.ShortenHome(path))
+			}
+			if reg.Default == "" && len(reg.Vaults) > 0 {
+				fmt.Printf("\n  %sNo default vault. Use 'same vault default <name>' to set one.%s\n", cli.Dim, cli.Reset)
+			}
+			fmt.Println()
 			return nil
 		},
 	})

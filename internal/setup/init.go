@@ -159,6 +159,46 @@ func checkDependencies(embedProvider string) {
 // acquireInitLock creates a lockfile to prevent concurrent init runs.
 // Returns a cleanup function that removes the lockfile, or an error if
 // another init is already running.
+var initLockProcessExists = processExists
+
+func processExists(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	err = proc.Signal(syscall.Signal(0))
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, os.ErrProcessDone) {
+		return false
+	}
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return errno == syscall.EPERM
+	}
+	return false
+}
+
+func readInitLockPID(lockPath string) (int, error) {
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		return 0, err
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) == 0 {
+		return 0, fmt.Errorf("empty lockfile")
+	}
+	pid, err := strconv.Atoi(fields[0])
+	if err != nil || pid <= 0 {
+		return 0, fmt.Errorf("invalid pid %q", fields[0])
+	}
+	return pid, nil
+}
+
 func acquireInitLock() (func(), error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -177,20 +217,24 @@ func acquireInitLock() (func(), error) {
 	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		if os.IsExist(err) {
-			// Check if the lockfile is stale (older than 30 minutes)
-			if info, statErr := os.Stat(lockPath); statErr == nil {
-				if time.Since(info.ModTime()) > 30*time.Minute {
-					// Stale lock — remove and retry
-					if rmErr := os.Remove(lockPath); rmErr != nil {
-						return nil, fmt.Errorf("failed to remove stale init lockfile %s: %w", lockPath, rmErr)
-					}
-					f, err = os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-					if err != nil {
-						return nil, fmt.Errorf("another 'same init' is already running (lockfile: %s)", lockPath)
-					}
-				} else {
+			stale := false
+			if pid, pidErr := readInitLockPID(lockPath); pidErr == nil {
+				stale = !initLockProcessExists(pid)
+			} else if info, statErr := os.Stat(lockPath); statErr == nil {
+				// Backward compatibility for older lockfiles that did not contain a PID.
+				stale = time.Since(info.ModTime()) > 30*time.Minute
+			}
+
+			if stale {
+				if rmErr := os.Remove(lockPath); rmErr != nil {
+					return nil, fmt.Errorf("failed to remove stale init lockfile %s: %w", lockPath, rmErr)
+				}
+				f, err = os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+				if err != nil {
 					return nil, fmt.Errorf("another 'same init' is already running (lockfile: %s)", lockPath)
 				}
+			} else {
+				return nil, fmt.Errorf("another 'same init' is already running (lockfile: %s)", lockPath)
 			}
 		}
 		if f == nil {
@@ -1326,13 +1370,13 @@ func autoConfigureEmbedding(det *ollamaDetection) {
 
 // ollamaDetection holds the results of model detection during init.
 type ollamaDetection struct {
-	Running          bool
-	EmbeddingModels  []string // available embedding models (by preference order)
-	ChatModels       []ollamaChatModel
-	BestEmbedding    string // best available embedding model
-	BestChat         string // best available chat model (empty if none)
-	ChatIs7BPlus     bool   // whether the best chat model is >= 7B
-	EmbeddingSource  string // "auto-detected", "default", "pulled"
+	Running         bool
+	EmbeddingModels []string // available embedding models (by preference order)
+	ChatModels      []ollamaChatModel
+	BestEmbedding   string // best available embedding model
+	BestChat        string // best available chat model (empty if none)
+	ChatIs7BPlus    bool   // whether the best chat model is >= 7B
+	EmbeddingSource string // "auto-detected", "default", "pulled"
 }
 
 type ollamaChatModel struct {
