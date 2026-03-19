@@ -125,34 +125,47 @@ func FilterByConfig(patterns []Pattern, enabled map[string]bool) []Pattern {
 	return out
 }
 
-// exclusionIndicators are substrings that mark a line as test/example content.
-var exclusionIndicators = []string{
-	"example", "test", "placeholder", "fake", "dummy", "mock",
-	"@example.com", "noreply@", "no-reply@",
-	"xxx-xx-xxxx", "000-00-0000",
+// falsePositivePatterns are exact match patterns that are known false positives.
+// Unlike the previous broad substring exclusions, these only suppress the specific
+// match itself rather than the entire line, so real secrets on the same line are
+// still detected.
+var falsePositivePatterns = []string{
+	"@example.com",
+	"@example.org",
+	"@example.net",
+	"noreply@",
+	"no-reply@",
+	"xxx-xx-xxxx",
+	"000-00-0000",
+	"test@test.com",
 }
 
-// isExcluded checks whether a line should be skipped from PII scanning.
-func isExcluded(line string, filePath string) bool {
-	lower := strings.ToLower(line)
-	for _, ind := range exclusionIndicators {
-		if strings.Contains(lower, ind) {
+// isFalsePositiveMatch checks whether a specific PII match is a known false positive.
+// SECURITY: This checks the match itself, NOT the whole line. A real token on a line
+// containing "test" will still be flagged — only the specific match is evaluated.
+func isFalsePositiveMatch(match string) bool {
+	lower := strings.ToLower(match)
+	for _, fp := range falsePositivePatterns {
+		if strings.Contains(lower, fp) {
 			return true
 		}
 	}
+	return false
+}
 
-	// Skip lines that are regex pattern definitions (contain raw string backtick or regexp.)
-	if strings.Contains(line, "regexp.") || strings.Contains(line, "`") {
-		return true
-	}
-
-	// Skip test files
+// isExcludedFile checks whether a file should be skipped from PII scanning entirely.
+func isExcludedFile(filePath string) bool {
 	lowerPath := strings.ToLower(filePath)
 	if strings.HasSuffix(lowerPath, "_test.go") || strings.Contains(lowerPath, "/test/") || strings.Contains(lowerPath, "/tests/") {
 		return true
 	}
-
 	return false
+}
+
+// isRegexDefinitionLine checks whether a line is a regex pattern definition,
+// which commonly contains PII-like strings as part of the pattern itself.
+func isRegexDefinitionLine(line string) bool {
+	return strings.Contains(line, "regexp.") || strings.Contains(line, "regexp.MustCompile")
 }
 
 // ScanLineResult holds a single match within a line.
@@ -163,9 +176,15 @@ type ScanLineResult struct {
 }
 
 // scanLine checks a single line against all PII patterns.
-// Returns nil if the line is excluded or has no matches.
+// Returns nil if the file is excluded or has no matches after false-positive filtering.
 func scanLine(line string, filePath string, patterns []Pattern) []ScanLineResult {
-	if isExcluded(line, filePath) {
+	// Skip entire test files
+	if isExcludedFile(filePath) {
+		return nil
+	}
+
+	// Skip regex definition lines (contain pattern strings, not real PII)
+	if isRegexDefinitionLine(line) {
 		return nil
 	}
 
@@ -173,6 +192,11 @@ func scanLine(line string, filePath string, patterns []Pattern) []ScanLineResult
 	for _, p := range patterns {
 		matches := p.Regex.FindAllString(line, -1)
 		for _, m := range matches {
+			// SECURITY: only suppress the specific match if it's a known false positive,
+			// NOT the entire line
+			if isFalsePositiveMatch(m) {
+				continue
+			}
 			results = append(results, ScanLineResult{
 				Pattern:  p,
 				Match:    m,

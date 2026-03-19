@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -50,6 +51,34 @@ func pluginCmd() *cobra.Command {
 				fmt.Printf("  %-20s  event=%-20s  %s  %s %s\n",
 					p.Name, p.Event, status, p.Command, strings.Join(p.Args, " "))
 			}
+			return nil
+		},
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "trust",
+		Short: "Trust the plugin manifest for the current vault",
+		Long: `Review and trust the .same/plugins.json in the current vault.
+Plugins will not execute until explicitly trusted. If the file is modified
+after trust is granted, trust is revoked and must be re-granted.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			vp := config.VaultPath()
+			if vp == "" {
+				return fmt.Errorf("no vault found — run 'same init' first")
+			}
+			pluginPath := filepath.Join(vp, ".same", "plugins.json")
+			data, err := os.ReadFile(pluginPath)
+			if err != nil {
+				return fmt.Errorf("no plugins.json found at %s", pluginPath)
+			}
+			fmt.Printf("Plugin manifest: %s\n\n", pluginPath)
+			fmt.Println(string(data))
+			fmt.Println()
+			fmt.Println("Trusting this plugin manifest for the current vault.")
+			if err := hooks.TrustVaultPlugins(); err != nil {
+				return fmt.Errorf("failed to save trust: %w", err)
+			}
+			fmt.Println("Done. Plugins will now load for this vault.")
 			return nil
 		},
 	})

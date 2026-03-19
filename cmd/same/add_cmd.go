@@ -139,13 +139,15 @@ func runAdd(text, notePath string, tags []string, contentType, domain string) er
 		return fmt.Errorf("path resolves outside the vault boundary: %s", notePath)
 	}
 
-	// SECURITY: block writes to internal/hidden paths (same policy as MCP safeVaultPath)
-	lower := strings.ToLower(notePath)
-	if strings.HasPrefix(lower, ".same/") || strings.HasPrefix(lower, ".same\\") ||
-		strings.HasPrefix(lower, ".git/") || strings.HasPrefix(lower, ".git\\") ||
-		strings.HasPrefix(lower, "_private/") || strings.HasPrefix(lower, "_private\\") ||
-		strings.HasPrefix(lower, ".") {
-		return fmt.Errorf("cannot write to internal path: %s", notePath)
+	// SECURITY: block writes to internal/hidden paths (same policy as MCP safeVaultPath).
+	// Clean the path FIRST to prevent bypass via normalization (e.g., "notes/../.same/test.md").
+	cleaned := filepath.Clean(notePath)
+	segments := strings.Split(cleaned, string(filepath.Separator))
+	for _, seg := range segments {
+		lowerSeg := strings.ToLower(seg)
+		if strings.HasPrefix(lowerSeg, ".") || lowerSeg == "_private" {
+			return fmt.Errorf("cannot write to internal path: %s", notePath)
+		}
 	}
 
 	// Build the markdown content with frontmatter (uses YAML marshaler for safety)
