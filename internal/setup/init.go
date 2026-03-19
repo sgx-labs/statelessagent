@@ -630,19 +630,9 @@ func offerSeedInstall(opts InitOptions) bool {
 		return false
 	}
 
-	// Show numbered list with aligned columns
+	// Show numbered list grouped by category
 	fmt.Println()
-	fmt.Printf("  %sAvailable seeds:%s                                              %sNotes%s\n",
-		cli.Bold, cli.Reset, cli.Dim, cli.Reset)
-	fmt.Println()
-	for i, s := range manifest.Seeds {
-		marker := " "
-		if s.Featured {
-			marker = "*"
-		}
-		fmt.Printf("    %s%2d%s)%s %-30s %3d   %s%s%s\n",
-			cli.Cyan, i+1, cli.Reset, marker, s.Name, s.NoteCount, cli.Dim, s.Description, cli.Reset)
-	}
+	printSeedsByCategory(manifest.Seeds)
 	fmt.Println()
 
 	fmt.Printf("  Pick numbers to install (e.g. 1,3,8), or Enter to skip: ")
@@ -740,6 +730,70 @@ func offerSeedInstall(opts InitOptions) bool {
 }
 
 // showSeedIntro displays the seed vaults section during init.
+// seedCategoryOf maps seed names to display categories.
+var seedCategoryOf = map[string]string{
+	"claude-code-power-user":          "Developer Tools",
+	"ai-agent-architecture":           "Developer Tools",
+	"security-audit-framework":        "Developer Tools",
+	"devops-runbooks":                 "Developer Tools",
+	"api-design-patterns":             "Developer Tools",
+	"typescript-fullstack-patterns":   "Developer Tools",
+	"devcontainer-quickstart":         "Developer Tools",
+	"indie-hacker-playbook":           "Career & Business",
+	"open-source-launch-kit":          "Career & Business",
+	"freelancer-business-kit":         "Career & Business",
+	"resume-interview-prep":           "Career & Business",
+	"engineering-management-playbook": "Career & Business",
+	"personal-productivity-os":        "Personal & Life",
+	"home-chef-essentials":            "Personal & Life",
+	"fitness-and-wellness":            "Personal & Life",
+	"same-getting-started":            "Getting Started",
+	"technical-writing-toolkit":       "Getting Started",
+}
+
+// seedCategoryOrder controls the display order of categories.
+var seedCategoryOrder = []string{"Developer Tools", "Career & Business", "Personal & Life", "Getting Started"}
+
+// printSeedsByCategory displays featured/essential seeds first, then a hint to browse the rest.
+func printSeedsByCategory(seeds []seed.Seed) {
+	// Always show these seeds regardless of featured flag
+	alwaysShow := map[string]bool{"same-getting-started": true}
+
+	var pinned []int
+	var featured []int
+	var rest int
+	for i, s := range seeds {
+		if alwaysShow[s.Name] {
+			pinned = append(pinned, i)
+		} else if s.Featured {
+			featured = append(featured, i)
+		} else {
+			rest++
+		}
+	}
+	highlighted := append(pinned, featured...)
+
+	if len(highlighted) > 0 {
+		fmt.Printf("  %sRecommended%s\n", cli.Bold, cli.Reset)
+		for _, i := range highlighted {
+			s := seeds[i]
+			marker := "★"
+			if !s.Featured {
+				marker = "›"
+			}
+			fmt.Printf("    %s%2d%s)%s %-30s %3d notes   %s%s%s\n",
+				cli.Cyan, i+1, cli.Reset, marker, s.Name, s.NoteCount, cli.Dim, s.Description, cli.Reset)
+		}
+		fmt.Println()
+	}
+
+	if rest > 0 {
+		fmt.Printf("  %s+%d more seeds (career, personal, devops, security) — run 'same seed list' to browse all%s\n",
+			cli.Dim, rest, cli.Reset)
+		fmt.Println()
+	}
+}
+
 // Shows available seeds and lets users pick one to install, or skip.
 // In non-interactive mode (--yes), shows the list without prompting.
 func showSeedIntro(opts InitOptions) {
@@ -757,18 +811,8 @@ func showSeedIntro(opts InitOptions) {
 		return
 	}
 
-	// Show numbered list
-	fmt.Printf("  %sAvailable seeds:%s                                              %sNotes%s\n",
-		cli.Bold, cli.Reset, cli.Dim, cli.Reset)
-	fmt.Println()
-	for i, s := range manifest.Seeds {
-		marker := " "
-		if s.Featured {
-			marker = "★"
-		}
-		fmt.Printf("    %s%2d%s)%s %-30s %3d   %s%s%s\n",
-			cli.Cyan, i+1, cli.Reset, marker, s.Name, s.NoteCount, cli.Dim, s.Description, cli.Reset)
-	}
+	// Show numbered list grouped by category
+	printSeedsByCategory(manifest.Seeds)
 	fmt.Println()
 
 	if opts.Yes {
