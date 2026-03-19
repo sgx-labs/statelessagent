@@ -1283,7 +1283,7 @@ func handleMemConsolidate(ctx context.Context, req *mcp.CallToolRequest, input m
 		}
 	}
 
-	return textResult(b.String()), nil, nil
+	return textResult(neutralizeTags(b.String())), nil, nil
 }
 
 // briefNote holds a note record gathered for MCP briefing context.

@@ -2273,12 +2273,12 @@
     if (!types.decision) {
       insights.push(buildInsight('tip',
         '<strong>No decisions captured yet.</strong> Decisions are logged automatically from your AI conversations via hooks, or you can add them manually.',
-        'same save-decision "Use JWT for auth"'));
+        'Decisions are saved automatically via MCP tools during AI conversations.'));
     }
     if (!types.handoff) {
       insights.push(buildInsight('tip',
         '<strong>No session handoffs.</strong> Handoffs capture what was done, what\'s pending, and blockers — so your next session picks up where you left off.',
-        'same create-handoff'));
+        'Handoffs are created automatically via MCP tools during AI conversations.'));
     }
 
     // Vault size tips

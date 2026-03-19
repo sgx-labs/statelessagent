@@ -151,7 +151,7 @@ func LoadPlugins() []PluginConfig {
 	// SECURITY: check trust before loading
 	if !isPluginsTrusted(vp, path) {
 		fmt.Fprintf(os.Stderr, "\n  \u26a0 Untrusted plugin manifest found: .same/plugins.json\n")
-		fmt.Fprintf(os.Stderr, "    Run 'same plugins trust' to review and enable plugins for this vault.\n")
+		fmt.Fprintf(os.Stderr, "    Run 'same plugin trust' to review and enable plugins for this vault.\n")
 		fmt.Fprintf(os.Stderr, "    Skipping plugin loading for safety.\n\n")
 		return nil
 	}
