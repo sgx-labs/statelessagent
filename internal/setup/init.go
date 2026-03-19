@@ -369,6 +369,21 @@ func RunInit(opts InitOptions) error {
 					_ = os.Setenv("SAME_EMBED_BASE_URL", baseURL)
 				}
 				fmt.Printf("\n  %s✓%s Using OpenAI-compatible endpoint: %s\n", cli.Green, cli.Reset, baseURL)
+
+				// Prompt for API key if this looks like a remote endpoint
+				apiKey := os.Getenv("SAME_EMBED_API_KEY")
+				if apiKey == "" {
+					apiKey = os.Getenv("OPENAI_API_KEY")
+				}
+				if apiKey == "" && !strings.Contains(baseURL, "localhost") && !strings.Contains(baseURL, "127.0.0.1") {
+					fmt.Printf("\n  Enter API key for this endpoint %s(or Enter to skip if not required)%s\n", cli.Dim, cli.Reset)
+					fmt.Printf("  API key: ")
+					keyInput, _ := reader.ReadString('\n')
+					apiKey = strings.TrimSpace(keyInput)
+					if apiKey != "" {
+						_ = os.Setenv("OPENAI_API_KEY", apiKey)
+					}
+				}
 			case "none":
 				embedProvider = "none"
 				_ = os.Setenv("SAME_EMBED_PROVIDER", "none")
