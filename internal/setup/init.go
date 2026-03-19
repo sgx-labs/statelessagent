@@ -314,6 +314,7 @@ func RunInit(opts InitOptions) error {
 			initDetection = det
 		} else {
 			// Interactive: probe Ollama, then let user choose provider
+			reader := bufio.NewReader(os.Stdin)
 			ollamaDetected := probeOllama()
 			chosen := offerProviderChoice(ollamaDetected)
 
@@ -336,10 +337,14 @@ func RunInit(opts InitOptions) error {
 					apiKey = os.Getenv("OPENAI_API_KEY")
 				}
 				if apiKey == "" {
-					fmt.Printf("\n  %s!%s OpenAI requires an API key.\n", cli.Yellow, cli.Reset)
-					fmt.Printf("  %sSet OPENAI_API_KEY or SAME_EMBED_API_KEY in your environment,%s\n", cli.Dim, cli.Reset)
-					fmt.Printf("  %sor add api_key under [embedding] in ~/.config/same/config.toml%s\n\n", cli.Dim, cli.Reset)
-					return fmt.Errorf("OpenAI API key not found — set it and run 'same init' again")
+					fmt.Printf("\n  Enter your OpenAI API key %s(or set OPENAI_API_KEY env var)%s\n", cli.Dim, cli.Reset)
+					fmt.Printf("  API key: ")
+					keyInput, _ := reader.ReadString('\n')
+					apiKey = strings.TrimSpace(keyInput)
+					if apiKey == "" {
+						return fmt.Errorf("OpenAI API key required — set OPENAI_API_KEY and run 'same init' again")
+					}
+					_ = os.Setenv("OPENAI_API_KEY", apiKey)
 				}
 				fmt.Printf("\n  %s✓%s Using OpenAI API\n", cli.Green, cli.Reset)
 			case "openai-compatible":
@@ -351,14 +356,16 @@ func RunInit(opts InitOptions) error {
 					baseURL = ec.BaseURL
 				}
 				if baseURL == "" {
-					fmt.Printf("\n  %s!%s OpenAI-compatible requires a base URL.\n", cli.Yellow, cli.Reset)
-					fmt.Printf("  %sSet SAME_EMBED_BASE_URL in your environment,%s\n", cli.Dim, cli.Reset)
-					fmt.Printf("  %sor add base_url under [embedding] in ~/.config/same/config.toml%s\n\n", cli.Dim, cli.Reset)
-					fmt.Printf("  %sExamples:%s\n", cli.Dim, cli.Reset)
-					fmt.Printf("  %s  llama.cpp:  http://localhost:8080%s\n", cli.Dim, cli.Reset)
-					fmt.Printf("  %s  LM Studio:  http://localhost:1234%s\n", cli.Dim, cli.Reset)
-					fmt.Printf("  %s  OpenRouter: https://openrouter.ai/api/v1%s\n\n", cli.Dim, cli.Reset)
-					return fmt.Errorf("base URL not configured — set it and run 'same init' again")
+					fmt.Printf("\n  Enter the base URL for your OpenAI-compatible endpoint:\n")
+					fmt.Printf("  %sExamples: http://localhost:8080 (llama.cpp), http://localhost:1234 (LM Studio)%s\n", cli.Dim, cli.Reset)
+					fmt.Printf("  %s          http://localhost:11434/v1 (Ollama), https://openrouter.ai/api/v1%s\n", cli.Dim, cli.Reset)
+					fmt.Printf("  URL: ")
+					urlInput, _ := reader.ReadString('\n')
+					baseURL = strings.TrimSpace(urlInput)
+					if baseURL == "" {
+						return fmt.Errorf("base URL required — set SAME_EMBED_BASE_URL and run 'same init' again")
+					}
+					_ = os.Setenv("SAME_EMBED_BASE_URL", baseURL)
 				}
 				fmt.Printf("\n  %s✓%s Using OpenAI-compatible endpoint: %s\n", cli.Green, cli.Reset, baseURL)
 			case "none":
@@ -1035,7 +1042,7 @@ func offerProviderChoice(ollamaDetected bool) string {
 	}{
 		{"ollama", ollamaLabel},
 		{"openai", "OpenAI API (requires OPENAI_API_KEY)"},
-		{"openai-compatible", "OpenAI-compatible (llama.cpp, VLLM, LM Studio, OpenRouter)"},
+		{"openai-compatible", "Other local/remote (LM Studio, llama.cpp, vLLM, Jan, OpenRouter — any OpenAI-compatible API)"},
 		{"none", "None (keyword-only — no semantic search, exact matches only)"},
 	}
 
