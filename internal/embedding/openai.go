@@ -159,8 +159,15 @@ func (p *OpenAIProvider) doEmbedRequest(body []byte) ([][]float32, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		msg := string(respBody)
+		// If the response looks like HTML (not JSON), truncate to something useful
+		if strings.Contains(msg, "<!DOCTYPE") || strings.Contains(msg, "<html") {
+			msg = fmt.Sprintf("endpoint returned HTML (not JSON) — check the URL and model name")
+		} else if len(msg) > 200 {
+			msg = msg[:200] + "..."
+		}
 		// SECURITY: sanitize response to prevent API key leakage (E7)
-		sanitized := sanitizeError(string(respBody), p.apiKey)
+		sanitized := sanitizeError(msg, p.apiKey)
 		return nil, &openaiHTTPError{StatusCode: resp.StatusCode, Message: sanitized}
 	}
 

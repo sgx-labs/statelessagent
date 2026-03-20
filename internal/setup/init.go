@@ -159,6 +159,46 @@ func checkDependencies(embedProvider string) {
 // acquireInitLock creates a lockfile to prevent concurrent init runs.
 // Returns a cleanup function that removes the lockfile, or an error if
 // another init is already running.
+var initLockProcessExists = processExists
+
+func processExists(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	err = proc.Signal(syscall.Signal(0))
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, os.ErrProcessDone) {
+		return false
+	}
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return errno == syscall.EPERM
+	}
+	return false
+}
+
+func readInitLockPID(lockPath string) (int, error) {
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		return 0, err
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) == 0 {
+		return 0, fmt.Errorf("empty lockfile")
+	}
+	pid, err := strconv.Atoi(fields[0])
+	if err != nil || pid <= 0 {
+		return 0, fmt.Errorf("invalid pid %q", fields[0])
+	}
+	return pid, nil
+}
+
 func acquireInitLock() (func(), error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -177,20 +217,24 @@ func acquireInitLock() (func(), error) {
 	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		if os.IsExist(err) {
-			// Check if the lockfile is stale (older than 30 minutes)
-			if info, statErr := os.Stat(lockPath); statErr == nil {
-				if time.Since(info.ModTime()) > 30*time.Minute {
-					// Stale lock — remove and retry
-					if rmErr := os.Remove(lockPath); rmErr != nil {
-						return nil, fmt.Errorf("failed to remove stale init lockfile %s: %w", lockPath, rmErr)
-					}
-					f, err = os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-					if err != nil {
-						return nil, fmt.Errorf("another 'same init' is already running (lockfile: %s)", lockPath)
-					}
-				} else {
+			stale := false
+			if pid, pidErr := readInitLockPID(lockPath); pidErr == nil {
+				stale = !initLockProcessExists(pid)
+			} else if info, statErr := os.Stat(lockPath); statErr == nil {
+				// Backward compatibility for older lockfiles that did not contain a PID.
+				stale = time.Since(info.ModTime()) > 30*time.Minute
+			}
+
+			if stale {
+				if rmErr := os.Remove(lockPath); rmErr != nil {
+					return nil, fmt.Errorf("failed to remove stale init lockfile %s: %w", lockPath, rmErr)
+				}
+				f, err = os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+				if err != nil {
 					return nil, fmt.Errorf("another 'same init' is already running (lockfile: %s)", lockPath)
 				}
+			} else {
+				return nil, fmt.Errorf("another 'same init' is already running (lockfile: %s)", lockPath)
 			}
 		}
 		if f == nil {
@@ -277,6 +321,7 @@ func RunInit(opts InitOptions) error {
 	showProjectContext(projectCtx)
 
 	providerReady := true
+	var initDetection *ollamaDetection // set during Ollama path for smart config
 
 	switch embedProvider {
 	case "none":
@@ -299,23 +344,34 @@ func RunInit(opts InitOptions) error {
 	default:
 		cli.Section("Embeddings")
 		if opts.Yes {
-			// Non-interactive: try Ollama, warn if falling back to keyword-only
-			if err := checkOllama(); err != nil {
+			// Non-interactive: try Ollama with smart detection
+			det, err := checkOllamaWithDetection()
+			if err != nil {
 				providerReady = false
 				fmt.Printf("  %s⚠%s Ollama not detected. Using keyword-only mode (exact matches only).\n", cli.Yellow, cli.Reset)
 				fmt.Printf("  %s  For semantic search, install Ollama: https://ollama.com%s\n", cli.Dim, cli.Reset)
 				fmt.Printf("  %s  Then run: same reindex%s\n", cli.Dim, cli.Reset)
+			} else {
+				// Auto-configure best embedding model
+				autoConfigureEmbedding(det)
 			}
+			initDetection = det
 		} else {
 			// Interactive: probe Ollama, then let user choose provider
+			reader := bufio.NewReader(os.Stdin)
 			ollamaDetected := probeOllama()
 			chosen := offerProviderChoice(ollamaDetected)
 
 			switch chosen {
 			case "ollama":
-				if err := checkOllama(); err != nil {
+				det, err := checkOllamaWithDetection()
+				if err != nil {
 					providerReady = false
+				} else {
+					// Auto-configure best embedding model
+					autoConfigureEmbedding(det)
 				}
+				initDetection = det
 			case "openai":
 				embedProvider = chosen
 				_ = os.Setenv("SAME_EMBED_PROVIDER", chosen)
@@ -325,12 +381,17 @@ func RunInit(opts InitOptions) error {
 					apiKey = os.Getenv("OPENAI_API_KEY")
 				}
 				if apiKey == "" {
-					fmt.Printf("\n  %s!%s OpenAI requires an API key.\n", cli.Yellow, cli.Reset)
-					fmt.Printf("  %sSet OPENAI_API_KEY or SAME_EMBED_API_KEY in your environment,%s\n", cli.Dim, cli.Reset)
-					fmt.Printf("  %sor add api_key under [embedding] in ~/.config/same/config.toml%s\n\n", cli.Dim, cli.Reset)
-					return fmt.Errorf("OpenAI API key not found — set it and run 'same init' again")
+					fmt.Printf("\n  Enter your OpenAI API key %s(or set OPENAI_API_KEY env var)%s\n", cli.Dim, cli.Reset)
+					fmt.Printf("  API key: ")
+					keyInput, _ := reader.ReadString('\n')
+					apiKey = strings.TrimSpace(keyInput)
+					if apiKey == "" {
+						return fmt.Errorf("OpenAI API key required — set OPENAI_API_KEY and run 'same init' again")
+					}
+					_ = os.Setenv("OPENAI_API_KEY", apiKey)
 				}
-				fmt.Printf("\n  %s✓%s Using OpenAI API\n", cli.Green, cli.Reset)
+				fmt.Printf("\n  %s✓%s Using OpenAI API (model: text-embedding-3-small)\n", cli.Green, cli.Reset)
+				_ = os.Setenv("SAME_EMBED_MODEL", "text-embedding-3-small")
 			case "openai-compatible":
 				embedProvider = chosen
 				_ = os.Setenv("SAME_EMBED_PROVIDER", chosen)
@@ -340,16 +401,60 @@ func RunInit(opts InitOptions) error {
 					baseURL = ec.BaseURL
 				}
 				if baseURL == "" {
-					fmt.Printf("\n  %s!%s OpenAI-compatible requires a base URL.\n", cli.Yellow, cli.Reset)
-					fmt.Printf("  %sSet SAME_EMBED_BASE_URL in your environment,%s\n", cli.Dim, cli.Reset)
-					fmt.Printf("  %sor add base_url under [embedding] in ~/.config/same/config.toml%s\n\n", cli.Dim, cli.Reset)
-					fmt.Printf("  %sExamples:%s\n", cli.Dim, cli.Reset)
-					fmt.Printf("  %s  llama.cpp:  http://localhost:8080%s\n", cli.Dim, cli.Reset)
-					fmt.Printf("  %s  LM Studio:  http://localhost:1234%s\n", cli.Dim, cli.Reset)
-					fmt.Printf("  %s  OpenRouter: https://openrouter.ai/api/v1%s\n\n", cli.Dim, cli.Reset)
-					return fmt.Errorf("base URL not configured — set it and run 'same init' again")
+					type endpoint struct {
+						url   string
+						label string
+					}
+					endpoints := []endpoint{
+						{"http://localhost:1234", "LM Studio"},
+						{"http://localhost:8080", "llama.cpp / LocalAI"},
+						{"http://localhost:11434/v1", "Ollama (OpenAI-compatible mode)"},
+						{"https://openrouter.ai/api/v1", "OpenRouter (cloud)"},
+					}
+
+					fmt.Printf("\n  %sPick your endpoint:%s\n\n", cli.Bold, cli.Reset)
+					for i, ep := range endpoints {
+						fmt.Printf("    %s%d%s) %-36s %s%s%s\n",
+							cli.Cyan, i+1, cli.Reset, ep.url, cli.Dim, ep.label, cli.Reset)
+					}
+					fmt.Printf("    %s%d%s) Custom URL\n", cli.Cyan, len(endpoints)+1, cli.Reset)
+					fmt.Printf("\n  Choice: ")
+					urlInput, _ := reader.ReadString('\n')
+					pick := strings.TrimSpace(urlInput)
+
+					var n int
+					if _, err := fmt.Sscanf(pick, "%d", &n); err == nil && n >= 1 && n <= len(endpoints) {
+						baseURL = endpoints[n-1].url
+					} else if n == len(endpoints)+1 {
+						fmt.Printf("  URL: ")
+						customInput, _ := reader.ReadString('\n')
+						baseURL = strings.TrimSpace(customInput)
+					} else if pick != "" {
+						// Treat raw input as a URL
+						baseURL = pick
+					}
+
+					if baseURL == "" {
+						return fmt.Errorf("base URL required — set SAME_EMBED_BASE_URL and run 'same init' again")
+					}
+					_ = os.Setenv("SAME_EMBED_BASE_URL", baseURL)
 				}
 				fmt.Printf("\n  %s✓%s Using OpenAI-compatible endpoint: %s\n", cli.Green, cli.Reset, baseURL)
+
+				// Prompt for API key if this looks like a remote endpoint
+				apiKey := os.Getenv("SAME_EMBED_API_KEY")
+				if apiKey == "" {
+					apiKey = os.Getenv("OPENAI_API_KEY")
+				}
+				if apiKey == "" && !strings.Contains(baseURL, "localhost") && !strings.Contains(baseURL, "127.0.0.1") {
+					fmt.Printf("\n  Enter API key for this endpoint %s(or Enter to skip if not required)%s\n", cli.Dim, cli.Reset)
+					fmt.Printf("  API key: ")
+					keyInput, _ := reader.ReadString('\n')
+					apiKey = strings.TrimSpace(keyInput)
+					if apiKey != "" {
+						_ = os.Setenv("OPENAI_API_KEY", apiKey)
+					}
+				}
 			case "none":
 				embedProvider = "none"
 				_ = os.Setenv("SAME_EMBED_PROVIDER", "none")
@@ -361,8 +466,8 @@ func RunInit(opts InitOptions) error {
 		}
 	}
 
-	// Offer model selection (interactive only)
-	if !opts.Yes && embedProvider != "none" && providerReady {
+	// Offer model selection (interactive only, skip if smart detection already picked)
+	if !opts.Yes && embedProvider != "none" && providerReady && initDetection == nil {
 		offerModelChoice(embedProvider)
 	}
 
@@ -402,7 +507,7 @@ func RunInit(opts InitOptions) error {
 	}
 
 	// Offer graph LLM extraction (after config exists, before integrations)
-	graphLLMEnabled := offerGraphLLM(vaultPath, embedProvider, providerReady, opts.Yes)
+	graphLLMEnabled := offerGraphLLMWithDetection(vaultPath, embedProvider, providerReady, opts.Yes, initDetection)
 	_ = graphLLMEnabled // used in post-init summary
 
 	// Handle .gitignore
@@ -438,6 +543,11 @@ func RunInit(opts InitOptions) error {
 		boxLines = append(boxLines, fmt.Sprintf("Database: %.1f MB", dbSizeMB))
 	}
 	cli.Box(boxLines)
+
+	// Configuration summary — show what was auto-detected
+	if initDetection != nil && initDetection.Running {
+		showConfigurationSummary(initDetection, embedProvider, useEmbeddings)
+	}
 
 	// Compact summary — collapsed Scope + Modes + Privacy into a few lines
 	searchMode := "keyword-only"
@@ -525,20 +635,27 @@ func RunInit(opts InitOptions) error {
 	// Model awareness — only show for smaller/local models
 	showModelAwareness(embedProvider)
 
-	// Quick start — clear next steps
-	cli.Section("Quick start")
-	fmt.Printf("    %ssame search \"your query\"%s     Search your notes\n",
+	// Getting started — what you can do now
+	cli.Section("Getting Started")
+	fmt.Printf("    %ssame search \"query\"%s           Search your notes semantically\n",
 		cli.Cyan, cli.Reset)
-	fmt.Printf("    %ssame seed list%s               Browse knowledge packs\n",
+	fmt.Printf("    %ssame stale%s                    Check for outdated notes\n",
 		cli.Cyan, cli.Reset)
-	fmt.Printf("    %ssame web%s                     Open the dashboard\n",
+	fmt.Printf("    %ssame health%s                   Vault health + trust overview\n",
+		cli.Cyan, cli.Reset)
+	fmt.Printf("    %ssame brief%s                    AI-generated orientation briefing\n",
+		cli.Cyan, cli.Reset)
+	fmt.Printf("    %ssame web --open%s               Visual dashboard with knowledge graph\n",
+		cli.Cyan, cli.Reset)
+	fmt.Printf("    %ssame ignore%s                   Manage file exclusions\n",
 		cli.Cyan, cli.Reset)
 	if !graphLLMEnabled && config.GraphLLMMode() == "off" {
-		fmt.Printf("    %ssame graph enable%s            Richer knowledge graph extraction\n",
-			cli.Cyan, cli.Reset)
+		fmt.Printf("    %ssame graph enable%s             Richer graph extraction %s(best with 7B+ models)%s\n",
+			cli.Cyan, cli.Reset, cli.Dim, cli.Reset)
 	}
 	fmt.Println()
-	fmt.Printf("  Your AI will automatically use SAME via MCP.\n")
+	fmt.Printf("  Your AI agent has 17 MCP tools available automatically.\n")
+	fmt.Printf("  Run %ssame demo%s to see everything in action.\n", cli.Cyan, cli.Reset)
 	fmt.Printf("\n  %sTip:%s Restart your editor (Claude Code, Cursor, etc.) to pick up the new MCP configuration.\n",
 		cli.Bold, cli.Reset)
 	fmt.Println()
@@ -600,19 +717,9 @@ func offerSeedInstall(opts InitOptions) bool {
 		return false
 	}
 
-	// Show numbered list with aligned columns
+	// Show numbered list grouped by category
 	fmt.Println()
-	fmt.Printf("  %sAvailable seeds:%s                                              %sNotes%s\n",
-		cli.Bold, cli.Reset, cli.Dim, cli.Reset)
-	fmt.Println()
-	for i, s := range manifest.Seeds {
-		marker := " "
-		if s.Featured {
-			marker = "*"
-		}
-		fmt.Printf("    %s%2d%s)%s %-30s %3d   %s%s%s\n",
-			cli.Cyan, i+1, cli.Reset, marker, s.Name, s.NoteCount, cli.Dim, s.Description, cli.Reset)
-	}
+	printSeedsByCategory(manifest.Seeds)
 	fmt.Println()
 
 	fmt.Printf("  Pick numbers to install (e.g. 1,3,8), or Enter to skip: ")
@@ -710,6 +817,70 @@ func offerSeedInstall(opts InitOptions) bool {
 }
 
 // showSeedIntro displays the seed vaults section during init.
+// seedCategoryOf maps seed names to display categories.
+var seedCategoryOf = map[string]string{
+	"claude-code-power-user":          "Developer Tools",
+	"ai-agent-architecture":           "Developer Tools",
+	"security-audit-framework":        "Developer Tools",
+	"devops-runbooks":                 "Developer Tools",
+	"api-design-patterns":             "Developer Tools",
+	"typescript-fullstack-patterns":   "Developer Tools",
+	"devcontainer-quickstart":         "Developer Tools",
+	"indie-hacker-playbook":           "Career & Business",
+	"open-source-launch-kit":          "Career & Business",
+	"freelancer-business-kit":         "Career & Business",
+	"resume-interview-prep":           "Career & Business",
+	"engineering-management-playbook": "Career & Business",
+	"personal-productivity-os":        "Personal & Life",
+	"home-chef-essentials":            "Personal & Life",
+	"fitness-and-wellness":            "Personal & Life",
+	"same-getting-started":            "Getting Started",
+	"technical-writing-toolkit":       "Getting Started",
+}
+
+// seedCategoryOrder controls the display order of categories.
+var seedCategoryOrder = []string{"Developer Tools", "Career & Business", "Personal & Life", "Getting Started"}
+
+// printSeedsByCategory displays featured/essential seeds first, then a hint to browse the rest.
+func printSeedsByCategory(seeds []seed.Seed) {
+	// Always show these seeds regardless of featured flag
+	alwaysShow := map[string]bool{"same-getting-started": true}
+
+	var pinned []int
+	var featured []int
+	var rest int
+	for i, s := range seeds {
+		if alwaysShow[s.Name] {
+			pinned = append(pinned, i)
+		} else if s.Featured {
+			featured = append(featured, i)
+		} else {
+			rest++
+		}
+	}
+	highlighted := append(pinned, featured...)
+
+	if len(highlighted) > 0 {
+		fmt.Printf("  %sRecommended%s\n", cli.Bold, cli.Reset)
+		for _, i := range highlighted {
+			s := seeds[i]
+			marker := "★"
+			if !s.Featured {
+				marker = "›"
+			}
+			fmt.Printf("    %s%2d%s)%s %-30s %3d notes   %s%s%s\n",
+				cli.Cyan, i+1, cli.Reset, marker, s.Name, s.NoteCount, cli.Dim, s.Description, cli.Reset)
+		}
+		fmt.Println()
+	}
+
+	if rest > 0 {
+		fmt.Printf("  %s+%d more seeds (career, personal, devops, security) — run 'same seed list' to browse all%s\n",
+			cli.Dim, rest, cli.Reset)
+		fmt.Println()
+	}
+}
+
 // Shows available seeds and lets users pick one to install, or skip.
 // In non-interactive mode (--yes), shows the list without prompting.
 func showSeedIntro(opts InitOptions) {
@@ -727,18 +898,8 @@ func showSeedIntro(opts InitOptions) {
 		return
 	}
 
-	// Show numbered list
-	fmt.Printf("  %sAvailable seeds:%s                                              %sNotes%s\n",
-		cli.Bold, cli.Reset, cli.Dim, cli.Reset)
-	fmt.Println()
-	for i, s := range manifest.Seeds {
-		marker := " "
-		if s.Featured {
-			marker = "★"
-		}
-		fmt.Printf("    %s%2d%s)%s %-30s %3d   %s%s%s\n",
-			cli.Cyan, i+1, cli.Reset, marker, s.Name, s.NoteCount, cli.Dim, s.Description, cli.Reset)
-	}
+	// Show numbered list grouped by category
+	printSeedsByCategory(manifest.Seeds)
 	fmt.Println()
 
 	if opts.Yes {
@@ -1012,7 +1173,7 @@ func offerProviderChoice(ollamaDetected bool) string {
 	}{
 		{"ollama", ollamaLabel},
 		{"openai", "OpenAI API (requires OPENAI_API_KEY)"},
-		{"openai-compatible", "OpenAI-compatible (llama.cpp, VLLM, LM Studio, OpenRouter)"},
+		{"openai-compatible", "Other local/remote (LM Studio, llama.cpp, vLLM, Jan, OpenRouter — any OpenAI-compatible API)"},
 		{"none", "None (keyword-only — no semantic search, exact matches only)"},
 	}
 
@@ -1087,7 +1248,7 @@ func offerGraphLLM(vaultPath, embedProvider string, providerReady, autoYes bool)
 
 	if autoYes {
 		// Non-interactive: don't enable by default, just print a tip
-		fmt.Printf("\n  %sTip:%s Run %ssame graph enable%s for richer knowledge graph extraction.\n",
+		fmt.Printf("\n  %sTip:%s Run %ssame graph enable%s for richer knowledge graph extraction. Best results with 7B+ models.\n",
 			cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
 		return false
 	}
@@ -1114,8 +1275,225 @@ func offerGraphLLM(vaultPath, embedProvider string, providerReady, autoYes bool)
 	return false
 }
 
+// offerGraphLLMWithDetection is like offerGraphLLM but uses pre-detected model info
+// to auto-enable graph in --yes mode when a capable model is available.
+func offerGraphLLMWithDetection(vaultPath, embedProvider string, providerReady, autoYes bool, det *ollamaDetection) bool {
+	// Only suggest if graph LLM is currently off
+	if config.GraphLLMMode() != "off" {
+		return true // already enabled
+	}
+
+	// If we have detection data, use it for smarter auto-configuration
+	if det != nil && det.Running {
+		if det.ChatIs7BPlus && det.BestChat != "" {
+			if autoYes {
+				// Auto-enable graph with 7B+ model
+				if err := config.SetGraphLLMMode(vaultPath, "local-only"); err != nil {
+					fmt.Printf("  %s!%s Could not update config: %v\n", cli.Yellow, cli.Reset, err)
+					return false
+				}
+				chatName := det.BestChat
+				if idx := strings.Index(chatName, ":"); idx > 0 {
+					chatName = chatName[:idx]
+				}
+				fmt.Printf("  %s✓%s Found %s — enabling graph extraction\n",
+					cli.Green, cli.Reset, chatName)
+				fmt.Printf("    %s(Graph works best with 7B+ models)%s\n", cli.Dim, cli.Reset)
+				return true
+			}
+			// Interactive with 7B+ available — offer with strong default
+			fmt.Println()
+			chatName := det.BestChat
+			if idx := strings.Index(chatName, ":"); idx > 0 {
+				chatName = chatName[:idx]
+			}
+			fmt.Printf("  Found %s%s%s — graph extraction can find richer connections\n",
+				cli.Bold, chatName, cli.Reset)
+			fmt.Printf("  between notes (decisions, dependencies, references).\n\n")
+			if confirm("  Enable graph LLM extraction?", true) {
+				if err := config.SetGraphLLMMode(vaultPath, "local-only"); err != nil {
+					fmt.Printf("  %s!%s Could not update config: %v\n", cli.Yellow, cli.Reset, err)
+					return false
+				}
+				fmt.Printf("  %s✓%s Graph LLM extraction enabled (local-only)\n", cli.Green, cli.Reset)
+				return true
+			}
+			fmt.Printf("  %sOK. Run %ssame graph enable%s%s anytime to turn it on.%s\n",
+				cli.Dim, cli.Cyan, cli.Reset, cli.Dim, cli.Reset)
+			return false
+		}
+
+		// Chat models exist but all are small (<7B)
+		if len(det.ChatModels) > 0 {
+			if autoYes {
+				fmt.Printf("  %s✓%s Graph available (regex-only mode)\n", cli.Green, cli.Reset)
+				fmt.Printf("    %sFor richer extraction, pull a 7B+ model:%s\n", cli.Dim, cli.Reset)
+				fmt.Printf("    %sollama pull qwen2.5:7b%s\n", cli.Dim, cli.Reset)
+				return false
+			}
+			// Interactive — still offer but note it's small models only
+			fmt.Println()
+			fmt.Printf("  Graph extraction uses your model to find richer connections\n")
+			fmt.Printf("  between notes (decisions, dependencies, references).\n")
+			fmt.Printf("  %sNote: Best results with 7B+ models. Your models are smaller.%s\n\n", cli.Dim, cli.Reset)
+			if confirm("  Enable graph LLM extraction?", false) {
+				if err := config.SetGraphLLMMode(vaultPath, "local-only"); err != nil {
+					fmt.Printf("  %s!%s Could not update config: %v\n", cli.Yellow, cli.Reset, err)
+					return false
+				}
+				fmt.Printf("  %s✓%s Graph LLM extraction enabled (local-only)\n", cli.Green, cli.Reset)
+				return true
+			}
+			fmt.Printf("  %sOK. Using regex-only graph extraction.%s\n", cli.Dim, cli.Reset)
+			return false
+		}
+
+		// No chat models at all
+		if autoYes {
+			return false
+		}
+		return false
+	}
+
+	// No detection data — fall back to the original offerGraphLLM logic
+	return offerGraphLLM(vaultPath, embedProvider, providerReady, autoYes)
+}
+
+// autoConfigureEmbedding sets the SAME_EMBED_MODEL env var based on detection,
+// so that the config generation picks up the best available model automatically.
+func autoConfigureEmbedding(det *ollamaDetection) {
+	if det == nil || det.BestEmbedding == "" {
+		return
+	}
+	_ = os.Setenv("SAME_EMBED_MODEL", det.BestEmbedding)
+}
+
+// ollamaDetection holds the results of model detection during init.
+type ollamaDetection struct {
+	Running         bool
+	EmbeddingModels []string // available embedding models (by preference order)
+	ChatModels      []ollamaChatModel
+	BestEmbedding   string // best available embedding model
+	BestChat        string // best available chat model (empty if none)
+	ChatIs7BPlus    bool   // whether the best chat model is >= 7B
+	EmbeddingSource string // "auto-detected", "default", "pulled"
+}
+
+type ollamaChatModel struct {
+	Name string
+	Size int64 // bytes
+}
+
+// embeddingModelRanking defines preference order for embedding models (best first).
+var embeddingModelRanking = []string{
+	"qwen3-embedding",
+	"bge-m3",
+	"snowflake-arctic-embed2",
+	"nomic-embed-text-v2-moe",
+	"nomic-embed-text",
+}
+
+// knownEmbeddingModels is the set of models that are embedding-only.
+var knownEmbeddingModels = map[string]bool{
+	"nomic-embed-text":        true,
+	"nomic-embed-text-v2-moe": true,
+	"mxbai-embed-large":       true,
+	"all-minilm":              true,
+	"snowflake-arctic-embed":  true,
+	"snowflake-arctic-embed2": true,
+	"embeddinggemma":          true,
+	"qwen3-embedding":         true,
+	"bge-base-en":             true,
+	"bge-large-en":            true,
+	"bge-m3":                  true,
+}
+
+// detectOllamaModels queries Ollama's /api/tags and classifies available models.
+func detectOllamaModels(ollamaURL string) *ollamaDetection {
+	det := &ollamaDetection{}
+
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	resp, err := httpClient.Get(strings.TrimRight(ollamaURL, "/") + "/api/tags")
+	if err != nil {
+		return det
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return det
+	}
+
+	det.Running = true
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return det
+	}
+
+	var tagsResp struct {
+		Models []struct {
+			Name string `json:"name"`
+			Size int64  `json:"size"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(body, &tagsResp); err != nil {
+		return det
+	}
+
+	// Build lookup of available model base names
+	available := make(map[string]bool, len(tagsResp.Models))
+	for _, m := range tagsResp.Models {
+		baseName := m.Name
+		if idx := strings.Index(baseName, ":"); idx > 0 {
+			baseName = baseName[:idx]
+		}
+		available[baseName] = true
+
+		if knownEmbeddingModels[baseName] {
+			det.EmbeddingModels = append(det.EmbeddingModels, baseName)
+		} else {
+			det.ChatModels = append(det.ChatModels, ollamaChatModel{
+				Name: m.Name,
+				Size: m.Size,
+			})
+		}
+	}
+
+	// Pick best embedding model by ranking
+	for _, candidate := range embeddingModelRanking {
+		if available[candidate] {
+			det.BestEmbedding = candidate
+			det.EmbeddingSource = "auto-detected"
+			break
+		}
+	}
+
+	// Check for 7B+ chat model (size > 3.5GB typically means 7B+)
+	const size7BThreshold int64 = 3_500_000_000
+	for _, cm := range det.ChatModels {
+		if det.BestChat == "" {
+			det.BestChat = cm.Name
+		}
+		if cm.Size >= size7BThreshold {
+			det.ChatIs7BPlus = true
+			det.BestChat = cm.Name
+			break
+		}
+	}
+
+	return det
+}
+
 // checkOllama verifies Ollama is running and has the required model.
 func checkOllama() error {
+	_, err := checkOllamaWithDetection()
+	return err
+}
+
+// checkOllamaWithDetection verifies Ollama is running, detects available models,
+// and ensures at least one embedding model is available. Returns the detection
+// result for use in auto-configuration.
+func checkOllamaWithDetection() (*ollamaDetection, error) {
 	ollamaURL := "http://localhost:11434"
 	if v := os.Getenv("OLLAMA_URL"); v != "" {
 		ollamaURL = v
@@ -1125,18 +1503,16 @@ func checkOllama() error {
 	// This prevents SSRF if OLLAMA_URL is set to an external host.
 	u, err := url.Parse(ollamaURL)
 	if err != nil {
-		return fmt.Errorf("invalid OLLAMA_URL: %w", err)
+		return nil, fmt.Errorf("invalid OLLAMA_URL: %w", err)
 	}
 	host := u.Hostname()
 	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
-		return fmt.Errorf("OLLAMA_URL must point to localhost (got %s)", host)
+		return nil, fmt.Errorf("OLLAMA_URL must point to localhost (got %s)", host)
 	}
 
-	httpClient := &http.Client{Timeout: 5 * time.Second}
+	det := detectOllamaModels(ollamaURL)
 
-	// Check if Ollama is running
-	resp, err := httpClient.Get(ollamaURL + "/api/tags")
-	if err != nil {
+	if !det.Running {
 		fmt.Printf("  %s✗%s Ollama is not running\n\n",
 			cli.Yellow, cli.Reset)
 		fmt.Println("  To fix this:")
@@ -1151,32 +1527,22 @@ func checkOllama() error {
 		fmt.Println("    - If you don't see it, open the Ollama app")
 		fmt.Println()
 		fmt.Println("  Need help? Join our Discord: https://discord.gg/9KfTkcGs7g")
-		return fmt.Errorf("ollama not running: start Ollama and try 'same init' again")
+		return nil, fmt.Errorf("ollama not running: start Ollama and try 'same init' again")
 	}
-	defer resp.Body.Close()
 
 	fmt.Printf("  %s✓%s Running at localhost:11434\n",
 		cli.Green, cli.Reset)
 
-	// Check if the model is available
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-	if err != nil {
-		return fmt.Errorf("read Ollama response: %w", err)
+	// Use the best detected embedding model, or fall back to default
+	model := det.BestEmbedding
+	if model == "" {
+		model = config.EmbeddingModel // nomic-embed-text
 	}
 
-	var tagsResp struct {
-		Models []struct {
-			Name string `json:"name"`
-		} `json:"models"`
-	}
-	if err := json.Unmarshal(body, &tagsResp); err != nil {
-		return fmt.Errorf("parse Ollama response: %w", err)
-	}
-
-	model := config.EmbeddingModel
+	// Check if the selected model is actually pulled
 	found := false
-	for _, m := range tagsResp.Models {
-		if m.Name == model || strings.HasPrefix(m.Name, model+":") {
+	for _, em := range det.EmbeddingModels {
+		if em == model {
 			found = true
 			break
 		}
@@ -1189,13 +1555,28 @@ func checkOllama() error {
 			fmt.Printf("  %s✗%s Failed to pull: %v\n",
 				cli.Yellow, cli.Reset, err)
 			fmt.Printf("\n  Run manually: ollama pull %s\n", model)
-			return fmt.Errorf("model '%s' not available", model)
+			return nil, fmt.Errorf("model '%s' not available", model)
 		}
+		det.BestEmbedding = model
+		det.EmbeddingSource = "pulled"
 	}
 
-	fmt.Printf("  %s✓%s %s available\n",
-		cli.Green, cli.Reset, model)
-	return nil
+	// Print what was detected
+	if det.BestEmbedding != "" && det.BestEmbedding != config.EmbeddingModel {
+		fmt.Printf("  %s✓%s Using %s %s(best available)%s\n",
+			cli.Green, cli.Reset, det.BestEmbedding, cli.Dim, cli.Reset)
+	} else {
+		fmt.Printf("  %s✓%s %s available\n",
+			cli.Green, cli.Reset, model)
+	}
+
+	// Suggest upgrade if only nomic-embed-text is available
+	if det.BestEmbedding == "nomic-embed-text" && len(det.EmbeddingModels) == 1 {
+		fmt.Printf("    %sTip: For better search quality, run:%s\n", cli.Dim, cli.Reset)
+		fmt.Printf("    %sollama pull nomic-embed-text-v2-moe && same model use nomic-embed-text-v2-moe%s\n", cli.Dim, cli.Reset)
+	}
+
+	return det, nil
 }
 
 // pullModel pulls a model via the Ollama API with progress display.
@@ -1737,6 +2118,9 @@ const sameGitignoreTemplate = `# SAME — Privacy-first .gitignore
 # SAME system data (machine-specific, contains embeddings and DB)
 .same/data/
 
+# SAME plugin manifest (vault-local, must be explicitly trusted per-machine)
+.same/plugins.json
+
 # Welcome notes (generated by 'same init', indexed but not committed)
 welcome/
 
@@ -2178,6 +2562,62 @@ func showSmartSeedHints(ctx *ProjectContext) {
 // showModelAwareness shows a tip about model quality when using smaller/local models.
 // Only displayed for non-OpenAI, non-none providers where the user might benefit
 // from knowing that larger models produce richer output.
+// showConfigurationSummary prints a boxed summary of what was auto-configured
+// during init based on model detection.
+func showConfigurationSummary(det *ollamaDetection, embedProvider string, useEmbeddings bool) {
+	if det == nil || !det.Running {
+		return
+	}
+
+	fmt.Println()
+	fmt.Printf("  %s── Configuration ─────────────────────%s\n", cli.Dim, cli.Reset)
+
+	// Embedding line
+	if useEmbeddings && det.BestEmbedding != "" {
+		source := det.EmbeddingSource
+		if source == "" {
+			source = "default"
+		}
+		fmt.Printf("  Embedding: %s%s%s %s(%s)%s\n",
+			cli.Bold, det.BestEmbedding, cli.Reset, cli.Dim, source, cli.Reset)
+	} else if useEmbeddings {
+		fmt.Printf("  Embedding: %s%s%s\n", cli.Bold, config.EmbeddingModel, cli.Reset)
+	} else {
+		fmt.Printf("  Embedding: %snone (keyword-only)%s\n", cli.Dim, cli.Reset)
+	}
+
+	// Graph line
+	graphMode := config.GraphLLMMode()
+	switch graphMode {
+	case "local-only":
+		chatName := det.BestChat
+		if idx := strings.Index(chatName, ":"); idx > 0 {
+			chatName = chatName[:idx]
+		}
+		fmt.Printf("  Graph:     LLM-enhanced %s(%s detected)%s\n",
+			cli.Dim, chatName, cli.Reset)
+	case "on":
+		fmt.Printf("  Graph:     LLM-enhanced\n")
+	default:
+		if len(det.ChatModels) > 0 {
+			fmt.Printf("  Graph:     regex-only %s(enable with 'same graph enable')%s\n",
+				cli.Dim, cli.Reset)
+		} else {
+			fmt.Printf("  Graph:     regex-only\n")
+		}
+	}
+
+	// Search line
+	if useEmbeddings {
+		fmt.Printf("  Search:    semantic\n")
+	} else {
+		fmt.Printf("  Search:    keyword-only\n")
+	}
+	fmt.Println()
+	fmt.Printf("  Everything configured. Run %ssame demo%s to try it.\n", cli.Bold, cli.Reset)
+	fmt.Println()
+}
+
 func showModelAwareness(embedProvider string) {
 	// Don't show for OpenAI users (they're already on capable models)
 	// Don't show for none (no embeddings at all)
