@@ -221,11 +221,34 @@ func (e *Engine) consolidateGroup(noteGroup []NoteData) (Group, error) {
 }
 
 // writeConsolidatedNote writes a consolidated note to disk.
+// Content is sanitized to prevent prompt injection via crafted LLM output.
 func writeConsolidatedNote(knowledgeDir, absPath, content string) error {
 	if err := os.MkdirAll(knowledgeDir, 0o700); err != nil {
 		return fmt.Errorf("create knowledge dir: %w", err)
 	}
+	// Sanitize LLM output: strip structural tags that could be used
+	// for prompt injection if the consolidated note is later surfaced
+	// as agent context.
+	content = sanitizeConsolidatedOutput(content)
 	return os.WriteFile(absPath, []byte(content), 0o600)
+}
+
+// sanitizeConsolidatedOutput strips dangerous structural tags from LLM output
+// before writing to the vault. This prevents a compromised or prompt-injected
+// LLM from producing notes that contain instruction-override payloads.
+func sanitizeConsolidatedOutput(text string) string {
+	// Strip XML-style wrapper tags used by SAME's context system
+	dangerousTags := []string{
+		"same-context", "session-bootstrap", "vault-handoff",
+		"vault-decisions", "vault-staleness", "vault-source-divergence",
+		"same-diagnostic", "same-guidance", "system", "tool_result",
+	}
+	for _, tag := range dangerousTags {
+		text = strings.ReplaceAll(text, "<"+tag+">", "")
+		text = strings.ReplaceAll(text, "</"+tag+">", "")
+		text = strings.ReplaceAll(text, "<"+tag+" ", "")
+	}
+	return text
 }
 
 // buildConsolidationPrompt constructs the LLM prompt for a group of notes.

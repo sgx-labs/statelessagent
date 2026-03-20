@@ -24,8 +24,12 @@ const (
 
 // Manifest is the top-level seed registry structure.
 type Manifest struct {
-	SchemaVersion int    `json:"schema_version"`
-	Seeds         []Seed `json:"seeds"`
+	SchemaVersion    int    `json:"schema_version"`
+	InstallEngine    string `json:"install_engine,omitempty"`
+	InstallCommand   string `json:"install_command,omitempty"`
+	SeedInstallPat   string `json:"seed_install_pattern,omitempty"`
+	Website          string `json:"website,omitempty"`
+	Seeds            []Seed `json:"seeds"`
 }
 
 // Seed describes a single installable seed vault.
@@ -37,8 +41,11 @@ type Seed struct {
 	NoteCount      int      `json:"note_count"`
 	SizeKB         int      `json:"size_kb"`
 	Tags           []string `json:"tags"`
+	Keywords       []string `json:"keywords,omitempty"`
+	InstallCommand string   `json:"install_command,omitempty"`
 	MinSameVersion string   `json:"min_same_version"`
 	Path           string   `json:"path"`
+	Status         string   `json:"status,omitempty"`
 	Featured       bool     `json:"featured"`
 }
 
@@ -177,7 +184,7 @@ func validateSeedPath(path string) error {
 }
 
 func validateManifest(m *Manifest) error {
-	if m.SchemaVersion != 1 {
+	if m.SchemaVersion < 1 || m.SchemaVersion > 2 {
 		return fmt.Errorf("unsupported manifest schema version: %d", m.SchemaVersion)
 	}
 	for _, s := range m.Seeds {

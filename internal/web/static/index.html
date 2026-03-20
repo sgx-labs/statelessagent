@@ -1579,6 +1579,29 @@
     return div.innerHTML;
   }
 
+  // SECURITY: sanitize URLs by decoding ALL HTML entities first, then validating protocol.
+  // The textarea trick decodes numeric, hex, and named entities (e.g. javascript&#58;).
+  function sanitizeUrl(href) {
+    // Step 1: Decode ALL HTML entities via textarea
+    var txt = document.createElement('textarea');
+    txt.innerHTML = href;
+    var decoded = txt.value;
+
+    // Step 2: Let browser parse the decoded URL
+    try {
+      var a = document.createElement('a');
+      a.href = decoded;
+      var proto = a.protocol.toLowerCase();
+      if (proto !== 'http:' && proto !== 'https:' && proto !== 'mailto:' && proto !== '') {
+        return '#';
+      }
+      // Return the decoded version so no entities remain
+      return decoded;
+    } catch(e) {
+      return '#';
+    }
+  }
+
   // Safe DOM builder helpers
   function el(tag, attrs, children) {
     var node = document.createElement(tag);
@@ -2097,11 +2120,11 @@
     text = text.replace(/~~(.+?)~~/g, '<del>$1</del>');
     text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(m, label, href) {
       href = href.replace(/&amp;/g, '&');
-      var scheme = href.trim().toLowerCase().replace(/[\x00-\x1f\x7f]/g, '');
-      if (/^(javascript|data|vbscript)\s*:/i.test(scheme)) {
+      var safeHref = sanitizeUrl(href);
+      if (safeHref === '#') {
         return label;
       }
-      return '<a href="' + href + '" target="_blank" rel="noopener">' + label + '</a>';
+      return '<a href="' + escapeHTML(safeHref) + '" target="_blank" rel="noopener">' + label + '</a>';
     });
     return text;
   }
@@ -2250,12 +2273,12 @@
     if (!types.decision) {
       insights.push(buildInsight('tip',
         '<strong>No decisions captured yet.</strong> Decisions are logged automatically from your AI conversations via hooks, or you can add them manually.',
-        'same save-decision "Use JWT for auth"'));
+        'Decisions are saved automatically via MCP tools during AI conversations.'));
     }
     if (!types.handoff) {
       insights.push(buildInsight('tip',
         '<strong>No session handoffs.</strong> Handoffs capture what was done, what\'s pending, and blockers — so your next session picks up where you left off.',
-        'same create-handoff'));
+        'Handoffs are created automatically via MCP tools during AI conversations.'));
     }
 
     // Vault size tips

@@ -491,6 +491,8 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 			if model, _ := chatClient.PickBestModel(); model != "" {
 				fmt.Printf("\n  %sTip:%s %s'same graph enable'%s unlocks richer knowledge graph extraction.\n",
 					cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
+				fmt.Printf("        Works best with 7B+ models. Run %s'same tips'%s for model guidance.\n",
+					cli.Cyan, cli.Reset)
 			}
 		} else {
 			// chatClient wasn't created above — try fresh
@@ -498,6 +500,8 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 				if m, _ := c.PickBestModel(); m != "" {
 					fmt.Printf("\n  %sTip:%s %s'same graph enable'%s unlocks richer knowledge graph extraction.\n",
 						cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
+				fmt.Printf("        Works best with 7B+ models. Run %s'same tips'%s for model guidance.\n",
+					cli.Cyan, cli.Reset)
 				}
 			}
 		}
@@ -545,6 +549,12 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 			abs, err := filepath.Abs(expanded)
 			if err == nil {
 				targetDir = abs
+			}
+			// Create the directory if it doesn't exist
+			if err := os.MkdirAll(targetDir, 0o755); err != nil {
+				fmt.Printf("\n  %sCouldn't create %s: %v%s\n", cli.Red, targetDir, err, cli.Reset)
+				fmt.Printf("  Run %ssame init%s from your project directory.\n\n", cli.Cyan, cli.Reset)
+				return nil
 			}
 		}
 

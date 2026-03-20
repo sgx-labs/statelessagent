@@ -96,7 +96,8 @@ var KnownModels = []ModelInfo{
 	{"qwen3-embedding", 1024, "ollama", "Qwen3 with 32K context"},
 	{"nomic-embed-text-v2-moe", 768, "ollama", "MoE upgrade from nomic"},
 	{"bge-m3", 1024, "ollama", "Multilingual (BAAI)"},
-	{"text-embedding-3-small", 1536, "openai", "OpenAI cloud API"},
+	{"text-embedding-3-small", 1536, "openai", "OpenAI — recommended, best value"},
+	{"text-embedding-3-large", 3072, "openai", "OpenAI — more dimensions, 6.5x cost"},
 }
 
 // IsKnownModel returns true if the model name is in the known models list.
@@ -929,6 +930,13 @@ func SafeVaultSubpath(relativePath string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
+	// SECURITY: Canonicalize vault root through symlinks so that symlinked
+	// vault paths (e.g., /var -> /private/var on macOS) compare correctly.
+	realVault, err := filepath.EvalSymlinks(absVault)
+	if err != nil {
+		realVault = absVault
+	}
+
 	candidate := filepath.FromSlash(relativePath)
 	if filepath.IsAbs(candidate) {
 		return "", false
@@ -937,8 +945,24 @@ func SafeVaultSubpath(relativePath string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	// The resolved path must be under the vault root
-	if !pathWithinBase(absVault, absPath) {
+
+	// SECURITY: Resolve symlinks in the target path to prevent symlink-based
+	// escapes (e.g., a symlink inside the vault pointing outside it).
+	// Walk to the nearest existing ancestor for paths that don't exist yet.
+	checkPath := absPath
+	for checkPath != "/" && checkPath != "." {
+		if _, statErr := os.Lstat(checkPath); statErr == nil {
+			break
+		}
+		checkPath = filepath.Dir(checkPath)
+	}
+	realCheck, err := filepath.EvalSymlinks(checkPath)
+	if err != nil {
+		realCheck = checkPath
+	}
+
+	// Verify containment using the canonicalized paths
+	if !pathWithinBase(realVault, realCheck) {
 		return "", false
 	}
 	return absPath, true

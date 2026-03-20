@@ -120,49 +120,57 @@ func printSecurityTips() {
 }
 
 func printModelTips() {
-	cli.Section("Model Selection")
+	cli.Section("Embedding Models")
 
-	fmt.Printf("  %sSearch & basic features%s\n", cli.Bold, cli.Reset)
-	fmt.Printf("  Any model works, even keyword-only mode (no embeddings).\n\n")
+	fmt.Printf("  %sDefault: nomic-embed-text%s (274 MB)\n", cli.Bold, cli.Reset)
+	fmt.Printf("  Works on any machine. Good quality for most vaults.\n\n")
 
-	fmt.Printf("  %sHandoffs & decisions%s\n", cli.Bold, cli.Reset)
-	fmt.Printf("  Models with good instruction following:\n")
-	fmt.Printf("    - Claude Sonnet+, GPT-4+, Llama 3.1 8B+\n\n")
-
-	fmt.Printf("  %sGraph extraction%s\n", cli.Bold, cli.Reset)
-	fmt.Printf("  Smaller models (3B-8B) work for basic extraction.\n")
-	fmt.Printf("  Larger models produce richer, more accurate graphs:\n")
-	fmt.Printf("    - Good:  Claude Sonnet, GPT-4o-mini, Llama 3.2 3B+\n")
-	fmt.Printf("    - Best:  Claude Opus, GPT-4, Llama 3.3 70B\n\n")
-
-	fmt.Printf("  %sEmbeddings%s\n", cli.Bold, cli.Reset)
-	fmt.Printf("  %snomic-embed-text%s is the sweet spot of quality vs speed.\n",
-		cli.Cyan, cli.Reset)
-	fmt.Printf("  %ssnowflake-arctic-embed2%s if you need maximum retrieval quality.\n\n",
+	fmt.Printf("  %sUpgrade: nomic-embed-text-v2-moe%s (957 MB)\n", cli.Bold, cli.Reset)
+	fmt.Printf("  Better retrieval quality. Same dimensions — drop-in replacement.\n")
+	fmt.Printf("  %sollama pull nomic-embed-text-v2-moe && same model use nomic-embed-text-v2-moe%s\n\n",
 		cli.Cyan, cli.Reset)
 
-	fmt.Printf("  %sLocal vs cloud%s\n", cli.Bold, cli.Reset)
-	fmt.Printf("  Local keeps everything on your machine.\n")
-	fmt.Printf("  Cloud is faster but sends text to a provider.\n")
+	fmt.Printf("  %sBest: qwen3-embedding%s (4.7 GB)\n", cli.Bold, cli.Reset)
+	fmt.Printf("  Top-ranked embedding model. Needs 8GB+ free RAM.\n")
+	fmt.Printf("  %sollama pull qwen3-embedding && same model use qwen3-embedding%s\n",
+		cli.Cyan, cli.Reset)
 
-	cli.Section("Graph LLM Extraction")
+	cli.Section("Graph Extraction")
 
-	fmt.Printf("  %sWhat it does%s\n", cli.Bold, cli.Reset)
-	fmt.Printf("  Finds relationships between notes using your LLM instead of\n")
-	fmt.Printf("  just regex. Discovers decisions, dependencies, and references\n")
-	fmt.Printf("  that pattern matching would miss.\n\n")
+	fmt.Printf("  Graph enrichment extracts entities and relationships from your notes.\n")
+	fmt.Printf("  Quality depends heavily on the LLM model size.\n\n")
 
-	fmt.Printf("  %sHow to enable%s\n", cli.Bold, cli.Reset)
-	fmt.Printf("  %ssame graph enable%s              Use any available model\n", cli.Cyan, cli.Reset)
-	fmt.Printf("  %ssame graph enable --local-only%s  Restrict to local models only\n\n", cli.Cyan, cli.Reset)
+	fmt.Printf("  %sMinimum: qwen2.5-coder:3b%s (1.9 GB)\n", cli.Bold, cli.Reset)
+	fmt.Printf("  Produces basic extractions. ~7 entities per 35 notes.\n")
+	fmt.Printf("  Fine for getting started. Limited relationship detection.\n\n")
 
-	fmt.Printf("  %sBest models%s\n", cli.Bold, cli.Reset)
-	fmt.Printf("  Larger models produce richer, more accurate graphs.\n")
-	fmt.Printf("  Smaller models (7B) still help but may miss subtle connections.\n\n")
+	fmt.Printf("  %sRecommended: 7B+ model%s (4-5 GB)\n", cli.Bold, cli.Reset)
+	fmt.Printf("  Significantly richer extraction. 50+ entities per 35 notes.\n")
+	fmt.Printf("  %sollama pull qwen2.5:7b%s\n\n", cli.Cyan, cli.Reset)
 
-	fmt.Printf("  %sTradeoff%s\n", cli.Bold, cli.Reset)
-	fmt.Printf("  Slower indexing, better connections. Regex extraction is always\n")
-	fmt.Printf("  used as a baseline. LLM adds on top of what regex finds.\n")
+	fmt.Printf("  %sEnable:%s %ssame graph enable%s\n",
+		cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
+
+	cli.Section("Chat Model (for brief and ask)")
+
+	fmt.Printf("  Default: uses whatever Ollama model is available.\n")
+	fmt.Printf("  Recommended: %sqwen2.5-coder:3b%s or larger.\n",
+		cli.Cyan, cli.Reset)
+
+	cli.Section("Hardware Guide")
+
+	fmt.Printf("  %s 8 GB RAM:%s  nomic-embed-text + 3B chat model %s(minimum viable)%s\n",
+		cli.Bold, cli.Reset, cli.Dim, cli.Reset)
+	fmt.Printf("  %s16 GB RAM:%s  nomic-embed-text-v2-moe + 7B models %s(recommended)%s\n",
+		cli.Bold, cli.Reset, cli.Dim, cli.Reset)
+	fmt.Printf("  %s32 GB+ RAM:%s qwen3-embedding + 14B+ models %s(best quality)%s\n",
+		cli.Bold, cli.Reset, cli.Dim, cli.Reset)
+	fmt.Printf("  %sNo GPU:%s     Works on CPU. Embedding is slower but functional.\n",
+		cli.Bold, cli.Reset)
+	fmt.Printf("  %sContainer:%s  Expect ~3s/chunk for embedding. Use keyword-only mode\n",
+		cli.Bold, cli.Reset)
+	fmt.Printf("              for instant indexing: %ssame model use none%s\n",
+		cli.Cyan, cli.Reset)
 }
 
 func printTipsFooter() {
