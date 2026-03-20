@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "same": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@sgx-labs/same",
+        "mcp"
+      ],
+      "env": {
+        "VAULT_PATH": "."
+      }
+    }
+  }
+}
