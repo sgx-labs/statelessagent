@@ -1587,15 +1587,13 @@
     txt.innerHTML = href;
     var decoded = txt.value;
 
-    // Step 2: Let browser parse the decoded URL
+    // Step 2: Validate protocol via URL constructor (no DOM reinterpretation)
     try {
-      var a = document.createElement('a');
-      a.href = decoded;
-      var proto = a.protocol.toLowerCase();
-      if (proto !== 'http:' && proto !== 'https:' && proto !== 'mailto:' && proto !== '') {
+      var parsed = new URL(decoded, window.location.href);
+      var proto = parsed.protocol.toLowerCase();
+      if (proto !== 'http:' && proto !== 'https:' && proto !== 'mailto:') {
         return '#';
       }
-      // Return the decoded version so no entities remain
       return decoded;
     } catch(e) {
       return '#';
