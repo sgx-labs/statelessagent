@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sgx-labs/statelessagent/internal/config"
 )
 
 func TestSanitizeAlias(t *testing.T) {
@@ -159,5 +161,85 @@ func TestPathWithinBase(t *testing.T) {
 				t.Fatalf("pathWithinBase(%q, %q) = %v, want %v", base, tt.candidate, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestVaultPrune_RemovesMissingVaults(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	existing := t.TempDir()
+	missing := filepath.Join(home, "missing-vault")
+
+	reg := &config.VaultRegistry{
+		Vaults: map[string]string{
+			"missing": missing,
+			"live":    existing,
+		},
+		Default: "missing",
+	}
+	if err := reg.Save(); err != nil {
+		t.Fatalf("save registry: %v", err)
+	}
+
+	cmd := vaultCmd()
+	var runErr error
+	out := captureCommandStdout(t, func() {
+		cmd.SetArgs([]string{"prune"})
+		runErr = cmd.Execute()
+	})
+	if runErr != nil {
+		t.Fatalf("vault prune: %v", runErr)
+	}
+	if !strings.Contains(out, `Removed vault "missing"`) {
+		t.Fatalf("expected prune output to mention removed vault, got %q", out)
+	}
+
+	reg = config.LoadRegistry()
+	if _, ok := reg.Vaults["missing"]; ok {
+		t.Fatal("expected missing vault to be pruned")
+	}
+	if got := reg.Vaults["live"]; got != existing {
+		t.Fatalf("live vault path = %q, want %q", got, existing)
+	}
+	if reg.Default != "" {
+		t.Fatalf("default vault = %q, want empty after pruning default", reg.Default)
+	}
+}
+
+func TestVaultPrune_NoMissingVaults(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	existing := t.TempDir()
+	reg := &config.VaultRegistry{
+		Vaults:  map[string]string{"live": existing},
+		Default: "live",
+	}
+	if err := reg.Save(); err != nil {
+		t.Fatalf("save registry: %v", err)
+	}
+
+	cmd := vaultCmd()
+	var runErr error
+	out := captureCommandStdout(t, func() {
+		cmd.SetArgs([]string{"prune"})
+		runErr = cmd.Execute()
+	})
+	if runErr != nil {
+		t.Fatalf("vault prune: %v", runErr)
+	}
+	if !strings.Contains(out, "No missing vaults to prune.") {
+		t.Fatalf("expected no-op prune message, got %q", out)
+	}
+
+	reg = config.LoadRegistry()
+	if len(reg.Vaults) != 1 || reg.Vaults["live"] != existing {
+		t.Fatalf("registry changed unexpectedly: %#v", reg)
+	}
+	if reg.Default != "live" {
+		t.Fatalf("default vault = %q, want live", reg.Default)
 	}
 }
