@@ -2,8 +2,8 @@
   "$schema": "https://glama.ai/mcp/schemas/server.json",
   "maintainers": ["sgx-labs"],
   "name": "SAME - Stateless Agent Memory Engine",
-  "description": "Persistent memory for AI coding agents. Local-first SQLite + vector search. 17 MCP tools for semantic search, note management, decision tracking, session handoffs, and memory integrity. Works with Claude Code, Cursor, Windsurf, and any MCP client.",
-  "keywords": ["memory", "knowledge-management", "ai-agents", "semantic-search", "vector-search", "sqlite", "mcp", "claude-code", "cursor", "obsidian", "markdown", "knowledge-base", "context", "rag"],
+  "description": "Agentic storage and persistent memory for AI coding agents. Trust-aware retrieval with provenance tracking, stale detection, and contradiction flagging. 17 MCP tools for semantic search, decision tracking, session handoffs, and memory integrity. Local-first SQLite + vector search. Works with Claude Code, Cursor, Windsurf, Codex CLI, Gemini CLI, and any MCP client.",
+  "keywords": ["agentic-storage", "persistent-memory", "memory", "ai-memory", "knowledge-management", "ai-agents", "trust", "provenance", "semantic-search", "vector-search", "sqlite", "mcp", "claude-code", "cursor", "windsurf", "codex", "gemini", "obsidian", "markdown", "knowledge-base", "context", "rag", "local-first"],
   "tools": [
     {
       "name": "search_notes",

@@ -1,7 +1,7 @@
 {
   "name": "@sgx-labs/same",
   "version": "0.12.1",
-  "description": "Persistent memory for AI coding agents. Local-first, SQLite + vector search. MCP server with 17 tools.",
+  "description": "Agentic storage and persistent memory for AI coding agents. Trust-aware retrieval, provenance tracking, stale detection. Local-first SQLite + vector search. 17 MCP tools.",
   "homepage": "https://statelessagent.com",
   "repository": {
     "type": "git",
@@ -29,12 +29,20 @@
   "keywords": [
     "mcp",
     "model-context-protocol",
+    "agentic-storage",
+    "persistent-memory",
     "ai-memory",
+    "trust",
+    "provenance",
     "claude",
     "cursor",
+    "windsurf",
+    "codex",
     "coding-agent",
     "sqlite",
     "vector-search",
-    "local-first"
+    "semantic-search",
+    "local-first",
+    "knowledge-management"
   ]
 }
