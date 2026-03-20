@@ -11,22 +11,24 @@ import (
 
 // NoteRecord represents a vault note chunk in the database.
 type NoteRecord struct {
-	ID           int64
-	Path         string
-	Title        string
-	Tags         string // JSON array string
-	Domain       string
-	Workstream   string
-	Agent        string
-	ChunkID      int
-	ChunkHeading string
-	Text         string
-	Modified     float64
-	ContentHash  string
-	ContentType  string
-	ReviewBy     string
-	Confidence   float64
-	AccessCount  int
+	ID                  int64
+	Path                string
+	Title               string
+	Tags                string // JSON array string
+	Domain              string
+	Workstream          string
+	Agent               string
+	ChunkID             int
+	ChunkHeading        string
+	Text                string
+	Modified            float64
+	ContentHash         string
+	ContentType         string
+	ReviewBy            string
+	Confidence          float64
+	AccessCount         int
+	TrustState          string
+	ContradictionDetail string
 }
 
 // InsertNote inserts a note record and its embedding vector.
@@ -475,7 +477,8 @@ func (db *DB) ChunkCount() (int, error) {
 func (db *DB) GetNoteByPath(path string) ([]NoteRecord, error) {
 	rows, err := db.conn.Query(`
 		SELECT id, path, title, tags, domain, workstream, COALESCE(agent, ''), chunk_id, chunk_heading,
-			text, modified, content_hash, content_type, review_by, confidence, access_count
+			text, modified, content_hash, content_type, review_by, confidence, access_count,
+			COALESCE(trust_state, 'unknown'), COALESCE(contradiction_detail, '')
 		FROM vault_notes WHERE path = ? ORDER BY chunk_id`, path)
 	if err != nil {
 		return nil, err
@@ -490,7 +493,8 @@ func (db *DB) GetNoteByPath(path string) ([]NoteRecord, error) {
 func (db *DB) GetStaleNotes(maxResults int, overdueOnly bool) ([]NoteRecord, error) {
 	query := `
 		SELECT DISTINCT id, path, title, tags, domain, workstream, COALESCE(agent, ''), chunk_id, chunk_heading,
-			text, modified, content_hash, content_type, review_by, confidence, access_count
+			text, modified, content_hash, content_type, review_by, confidence, access_count,
+			COALESCE(trust_state, 'unknown'), COALESCE(contradiction_detail, '')
 		FROM vault_notes
 		WHERE review_by != '' AND review_by IS NOT NULL AND path NOT LIKE '_PRIVATE/%'
 		GROUP BY path
@@ -568,6 +572,7 @@ func scanNotes(rows *sql.Rows) ([]NoteRecord, error) {
 			&n.ID, &n.Path, &n.Title, &n.Tags, &n.Domain, &n.Workstream, &n.Agent,
 			&n.ChunkID, &n.ChunkHeading, &n.Text, &n.Modified,
 			&n.ContentHash, &n.ContentType, &n.ReviewBy, &n.Confidence, &n.AccessCount,
+			&n.TrustState, &n.ContradictionDetail,
 		); err != nil {
 			return nil, err
 		}
@@ -584,7 +589,8 @@ func (db *DB) RecentNotes(limit int) ([]NoteRecord, error) {
 	}
 	rows, err := db.conn.Query(`
 		SELECT id, path, title, tags, domain, workstream, COALESCE(agent, ''), chunk_id, chunk_heading,
-			text, modified, content_hash, content_type, review_by, confidence, access_count
+			text, modified, content_hash, content_type, review_by, confidence, access_count,
+			COALESCE(trust_state, 'unknown'), COALESCE(contradiction_detail, '')
 		FROM vault_notes
 		WHERE chunk_id = 0 AND path NOT LIKE '_PRIVATE/%'
 		ORDER BY modified DESC
@@ -601,7 +607,8 @@ func (db *DB) RecentNotes(limit int) ([]NoteRecord, error) {
 func (db *DB) AllNotes() ([]NoteRecord, error) {
 	rows, err := db.conn.Query(`
 		SELECT id, path, title, tags, domain, workstream, COALESCE(agent, ''), chunk_id, chunk_heading,
-			text, modified, content_hash, content_type, review_by, confidence, access_count
+			text, modified, content_hash, content_type, review_by, confidence, access_count,
+			COALESCE(trust_state, 'unknown'), COALESCE(contradiction_detail, '')
 		FROM vault_notes
 		WHERE chunk_id = 0 AND path NOT LIKE '_PRIVATE/%'
 		ORDER BY modified DESC`)

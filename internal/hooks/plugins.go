@@ -1,6 +1,8 @@
 package hooks
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -49,9 +51,111 @@ type PluginsFile struct {
 	Plugins []PluginConfig `json:"plugins"`
 }
 
+// trustedPluginsPath returns the path to the user-local trusted plugins registry.
+func trustedPluginsPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "same", "trusted-plugins.json")
+}
+
+// trustedPluginsRegistry maps vault plugin file paths to their SHA-256 hash
+// at the time the user explicitly trusted them.
+type trustedPluginsRegistry struct {
+	Trusted map[string]string `json:"trusted"` // vault_path -> sha256 of plugins.json
+}
+
+func loadTrustedRegistry() trustedPluginsRegistry {
+	data, err := os.ReadFile(trustedPluginsPath())
+	if err != nil {
+		return trustedPluginsRegistry{Trusted: map[string]string{}}
+	}
+	var reg trustedPluginsRegistry
+	if err := json.Unmarshal(data, &reg); err != nil {
+		return trustedPluginsRegistry{Trusted: map[string]string{}}
+	}
+	if reg.Trusted == nil {
+		reg.Trusted = map[string]string{}
+	}
+	return reg
+}
+
+func saveTrustedRegistry(reg trustedPluginsRegistry) error {
+	data, err := json.MarshalIndent(reg, "", "  ")
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(trustedPluginsPath())
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(trustedPluginsPath(), data, 0o600)
+}
+
+// hashFile returns the hex-encoded SHA-256 of the given file.
+func hashFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.Sum256(data)
+	return hex.EncodeToString(h[:]), nil
+}
+
+// TrustVaultPlugins explicitly trusts the current plugins.json for the active vault.
+// Called by 'same plugins trust'.
+func TrustVaultPlugins() error {
+	vp := config.VaultPath()
+	if vp == "" {
+		return fmt.Errorf("no vault found")
+	}
+	pluginPath := filepath.Join(vp, ".same", "plugins.json")
+	hash, err := hashFile(pluginPath)
+	if err != nil {
+		return fmt.Errorf("cannot read plugins file: %w", err)
+	}
+	reg := loadTrustedRegistry()
+	absVault, _ := filepath.Abs(vp)
+	reg.Trusted[absVault] = hash
+	return saveTrustedRegistry(reg)
+}
+
+// isPluginsTrusted checks if the vault's plugins.json has been explicitly trusted
+// and has not been modified since trust was granted.
+func isPluginsTrusted(vaultPath, pluginFilePath string) bool {
+	reg := loadTrustedRegistry()
+	absVault, _ := filepath.Abs(vaultPath)
+	trustedHash, ok := reg.Trusted[absVault]
+	if !ok {
+		return false
+	}
+	currentHash, err := hashFile(pluginFilePath)
+	if err != nil {
+		return false
+	}
+	return trustedHash == currentHash
+}
+
 // LoadPlugins reads the plugins config from the vault.
+// SECURITY: Requires explicit user trust via 'same plugins trust' before
+// loading vault-local plugins. This prevents supply-chain attacks where a
+// malicious repo ships a .same/plugins.json that auto-executes commands.
 func LoadPlugins() []PluginConfig {
-	path := filepath.Join(config.VaultPath(), ".same", "plugins.json")
+	vp := config.VaultPath()
+	if vp == "" {
+		return nil
+	}
+	path := filepath.Join(vp, ".same", "plugins.json")
+	if _, err := os.Stat(path); err != nil {
+		return nil
+	}
+
+	// SECURITY: check trust before loading
+	if !isPluginsTrusted(vp, path) {
+		fmt.Fprintf(os.Stderr, "\n  \u26a0 Untrusted plugin manifest found: .same/plugins.json\n")
+		fmt.Fprintf(os.Stderr, "    Run 'same plugin trust' to review and enable plugins for this vault.\n")
+		fmt.Fprintf(os.Stderr, "    Skipping plugin loading for safety.\n\n")
+		return nil
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil

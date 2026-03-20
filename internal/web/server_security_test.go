@@ -161,7 +161,9 @@ func TestWebNoteJSONAndRendererDefensesAgainstXSS(t *testing.T) {
 	mustContain := []string{
 		"function escapeHTML(str)",
 		"var escaped = escapeHTML(text);",
-		"if (/^(javascript|data|vbscript)\\s*:/i.test(scheme))",
+		"function sanitizeUrl(href)",
+		"txt.innerHTML = href",
+		"proto !== 'http:' && proto !== 'https:' && proto !== 'mailto:'",
 	}
 	for _, token := range mustContain {
 		if !strings.Contains(page, token) {

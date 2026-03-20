@@ -116,35 +116,66 @@ func TestRedact_Security(t *testing.T) {
 	}
 }
 
-func TestIsExcluded_TestFiles(t *testing.T) {
-	if !isExcluded("anything", "internal/guard/guard_test.go") {
+func TestIsExcludedFile_TestFiles(t *testing.T) {
+	if !isExcludedFile("internal/guard/guard_test.go") {
 		t.Error("expected test files to be excluded")
 	}
-	if !isExcluded("anything", "internal/tests/integration/foo.go") {
+	if !isExcludedFile("internal/tests/integration/foo.go") {
 		t.Error("expected /tests/ directory to be excluded")
 	}
-	if isExcluded("real content here", "internal/guard/guard.go") {
-		t.Error("non-test file should not be excluded without indicators")
+	if isExcludedFile("internal/guard/guard.go") {
+		t.Error("non-test file should not be excluded")
 	}
 }
 
-func TestIsExcluded_Indicators(t *testing.T) {
-	indicators := []string{
-		"this is an example",
+func TestIsFalsePositiveMatch(t *testing.T) {
+	falsePositives := []string{
 		"test@example.com",
-		"placeholder value",
-		"fake data here",
-		"dummy entry",
-		"mock service",
 		"user@example.com",
 		"noreply@company.com",
+		"no-reply@service.io",
 		"xxx-xx-xxxx",
 		"000-00-0000",
+		"test@test.com",
 	}
 
-	for _, line := range indicators {
-		if !isExcluded(line, "real_file.go") {
-			t.Errorf("expected line %q to be excluded", line)
+	for _, m := range falsePositives {
+		if !isFalsePositiveMatch(m) {
+			t.Errorf("expected match %q to be a false positive", m)
 		}
+	}
+
+	// Real secrets should NOT be false positives
+	realSecrets := []string{
+		"sk-ant-abc123456789012345678",
+		"AKIAIOSFODNN7EXAMPLE",
+		"user@realcompany.com",
+		"ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijkl",
+	}
+
+	for _, m := range realSecrets {
+		if isFalsePositiveMatch(m) {
+			t.Errorf("real secret %q should NOT be a false positive", m)
+		}
+	}
+}
+
+func TestScanLine_RealSecretNotHiddenByTestKeyword(t *testing.T) {
+	// SECURITY: A real API key on a line containing "test" must still be flagged.
+	// This was the vulnerability in the old line-level exclusion approach.
+	patterns := builtinPatterns()
+	line := "sk-ant-abc12345678901234567890 // test value"
+	results := scanLine(line, "real_file.go", patterns)
+	if len(results) == 0 {
+		t.Error("expected real sk- key to be detected even on a line with 'test'")
+	}
+}
+
+func TestScanLine_ExampleEmailSuppressed(t *testing.T) {
+	patterns := builtinPatterns()
+	line := "contact: user@example.com"
+	results := scanLine(line, "real_file.go", patterns)
+	if len(results) != 0 {
+		t.Error("expected example.com email to be suppressed as false positive")
 	}
 }

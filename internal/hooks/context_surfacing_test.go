@@ -581,6 +581,7 @@ func TestSanitizeContextTags_AllTagTypes(t *testing.T) {
 		"vault-handoff",
 		"vault-decisions",
 		"same-diagnostic",
+		"same-guidance",
 	}
 	for _, tag := range tags {
 		input := fmt.Sprintf("before <%s>content</%s> after", tag, tag)

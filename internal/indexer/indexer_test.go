@@ -453,13 +453,21 @@ func TestRelativePathSameDir(t *testing.T) {
 	}
 }
 
-func TestBuildRecords_AllEmbeddingsFailReturnsError(t *testing.T) {
+func TestBuildRecords_AllEmbeddingsFailReturnsRecordsWithSkippedError(t *testing.T) {
 	dir := t.TempDir()
 	filePath := writeTestNote(t, dir, "note.md", "# Example\n\nThis note should fail embedding.")
 
-	_, _, _, err := buildRecords(filePath, "note.md", dir, failingEmbeddingProvider{})
-	if !errors.Is(err, errNoEmbeddingsForFile) {
-		t.Fatalf("expected errNoEmbeddingsForFile, got %v", err)
+	records, embeddings, _, err := buildRecords(filePath, "note.md", dir, failingEmbeddingProvider{})
+	if !errors.Is(err, errEmbeddingSkipped) {
+		t.Fatalf("expected errEmbeddingSkipped, got %v", err)
+	}
+	// Records should still be populated for FTS5-only storage
+	if len(records) == 0 {
+		t.Fatal("expected records to be populated for lite fallback")
+	}
+	// Embeddings should be nil since all chunks failed
+	if embeddings != nil {
+		t.Fatalf("expected nil embeddings, got %d", len(embeddings))
 	}
 }
 

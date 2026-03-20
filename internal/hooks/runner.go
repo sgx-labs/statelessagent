@@ -319,7 +319,7 @@ func validateTranscriptPath(path string, hookName string) bool {
 		fmt.Fprintf(os.Stderr, "same hook %s: transcript must be .jsonl file\n", hookName)
 		return false
 	}
-	info, err := os.Stat(path)
+	info, err := os.Lstat(path) // Lstat: reject symlinks
 	if err != nil {
 		return false
 	}
