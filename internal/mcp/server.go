@@ -1033,6 +1033,12 @@ func handleRecentActivity(ctx context.Context, req *mcp.CallToolRequest, input r
 func handleGetSessionContext(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
 	result := map[string]any{}
 
+	// Inject current time so agents know the wall clock
+	if cfg, err := config.LoadConfig(); err == nil && cfg.Hooks.TimeInjection {
+		now := time.Now()
+		result["current_time"] = now.Format("2006-01-02 15:04 MST (Monday)")
+	}
+
 	// Pinned notes
 	pinned, err := db.GetPinnedNotes()
 	if err == nil && len(pinned) > 0 {

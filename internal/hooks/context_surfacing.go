@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/sgx-labs/statelessagent/internal/cli"
 	"github.com/sgx-labs/statelessagent/internal/config"
@@ -393,6 +394,12 @@ Suggested actions for the user:
 	}
 
 	contextText := strings.Join(parts, "\n---\n")
+
+	// Inject current time if enabled — helps agents track wall-clock time
+	if cfg, err := config.LoadConfig(); err == nil && cfg.Hooks.TimeInjection {
+		now := time.Now()
+		contextText = fmt.Sprintf("Current time: %s\n\n%s", now.Format("2006-01-02 15:04 MST (Monday)"), contextText)
+	}
 
 	// Sanitize: strip XML-like closing tags that could break the wrapper
 	// and allow indirect prompt injection via crafted note content.
