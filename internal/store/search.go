@@ -577,7 +577,7 @@ func (db *DB) HybridSearch(queryVec []float32, queryText string, opts SearchOpti
 		// and cause regressions when boosted.
 		for i, r := range merged {
 			if kwScore, ok := kwPathScore[r.Path]; ok && kwScore >= 0.7 {
-				merged[i].Score = round3(r.Score + 0.5*kwScore)
+				merged[i].Score = round3(math.Min(1.0, r.Score+0.5*kwScore))
 			}
 		}
 

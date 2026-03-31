@@ -1381,3 +1381,94 @@ func TestHybridSearch_NoLiteralMatch_NoBoost(t *testing.T) {
 		t.Fatal("expected at least 1 result from vector search")
 	}
 }
+
+func TestHybridSearch_FusedScoresCappedForBodyExactMatch(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	dim := 768
+	makeVec := func(val float32) []float32 {
+		v := make([]float32, dim)
+		v[0] = val
+		return v
+	}
+
+	notes := []NoteRecord{
+		{
+			Path: "notes/semantic.md", Title: "Alpha Beta Gamma Architecture",
+			Tags: "[]", ChunkID: 0, ChunkHeading: "(full)",
+			Text:        "Semantic match for the surrounding architecture discussion.",
+			Modified:    1700000000,
+			ContentHash: "sem1", ContentType: "note", Confidence: 0.5,
+		},
+		{
+			Path: "notes/body-exact.md", Title: "Alpha Notes",
+			Tags: "[]", ChunkID: 0, ChunkHeading: "(full)",
+			Text:        "This weaker note mentions the exact phrase alpha beta gamma in the body only.",
+			Modified:    1700000001,
+			ContentHash: "body1", ContentType: "note", Confidence: 0.5,
+		},
+		{
+			Path: "notes/filler-one.md", Title: "Filler One",
+			Tags: "[]", ChunkID: 0, ChunkHeading: "(full)",
+			Text:        "Additional semantically related filler content.",
+			Modified:    1700000002,
+			ContentHash: "fill1", ContentType: "note", Confidence: 0.5,
+		},
+		{
+			Path: "notes/filler-two.md", Title: "Filler Two",
+			Tags: "[]", ChunkID: 0, ChunkHeading: "(full)",
+			Text:        "More filler content for ranking coverage.",
+			Modified:    1700000003,
+			ContentHash: "fill2", ContentType: "note", Confidence: 0.5,
+		},
+	}
+
+	vecs := [][]float32{
+		makeVec(0.95),
+		makeVec(0.92),
+		makeVec(0.75),
+		makeVec(0.60),
+	}
+	for i := range notes {
+		if err := db.InsertNote(&notes[i], vecs[i]); err != nil {
+			t.Fatalf("InsertNote %d: %v", i, err)
+		}
+	}
+
+	queryVec := makeVec(0.95)
+	results, err := db.HybridSearch(queryVec, "alpha beta gamma", SearchOptions{TopK: 4})
+	if err != nil {
+		t.Fatalf("HybridSearch: %v", err)
+	}
+	if len(results) < 2 {
+		t.Fatalf("expected at least 2 results, got %d", len(results))
+	}
+
+	var semantic *SearchResult
+	var bodyExact *SearchResult
+	for i := range results {
+		if results[i].Score > 1.0 {
+			t.Fatalf("result %q exceeded capped score range: %.3f", results[i].Path, results[i].Score)
+		}
+		switch results[i].Path {
+		case "notes/semantic.md":
+			semantic = &results[i]
+		case "notes/body-exact.md":
+			bodyExact = &results[i]
+		}
+	}
+
+	if semantic == nil || bodyExact == nil {
+		t.Fatalf("expected both semantic and body-exact results, got %#v", results)
+	}
+	if bodyExact.Score > 1.0 {
+		t.Fatalf("expected body-exact fused score to be capped, got %.3f", bodyExact.Score)
+	}
+	if results[0].Path != "notes/semantic.md" {
+		t.Fatalf("expected the stronger semantic result to stay first, got %s", results[0].Path)
+	}
+}
