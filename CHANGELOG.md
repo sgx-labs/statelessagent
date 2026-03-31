@@ -17,7 +17,10 @@
 
 - **Stale note timing now shows source file modification time** — `same health` and staleness hooks previously showed "just now" for all stale notes after reindex, because they used the capture timestamp instead of the source file's mtime. Now correctly shows when the source file was actually modified. Deleted sources display "source deleted".
 - **CHANGELOG.md excluded from indexing** — added to default `.sameignore` patterns to prevent oversized chunks from changelogs.
-- **README accuracy** — corrected binary size (~12MB → ~14MB), added held-out validation context to eval metrics (93.3% Recall@5 on 30 blind test cases).
+- **README accuracy** — corrected binary size (~12MB → ~14MB), updated eval metrics to match current benchmark results (100% keyword / 84% semantic Recall@5 on 68 internal cases, 90% held-out).
+- **Reindex lockfile** — prevents concurrent `same reindex` runs from overloading Ollama. Stale locks from dead processes are automatically reclaimed.
+- **Agent ownership on mem_forget** — when called with an agent parameter, only the creating agent can suppress a note. Vault owner (no agent) can still suppress anything.
+- **Decision attribution preserved on append** — `save_decision` no longer rewrites file-level agent frontmatter when appending, preventing one agent from reattributing another's decisions.
 
 ### Claude Code Memory Import
 
