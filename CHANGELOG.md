@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.12.2
+
+### Container Support
+
+- **`host.docker.internal` allowed as Ollama endpoint** — container users (Docker, OrbStack, Codespaces, devcontainers) can now point SAME at the host machine's Ollama. Set `[ollama] url = "http://host.docker.internal:11434"` in `.same/config.toml`.
+
+### Claude Code Memory Import
+
+- **`same import` detects Claude Code memory files** — auto-scans `~/.claude/memory/` (global) and `.claude/projects/*/memory/` (project-scoped). Imports with SAME frontmatter, provenance tracking, and `trust_state: unknown`. Skips MEMORY.md index files and de-duplicates on re-import.
+
 ## v0.12.1
 
 ### Search & Retrieval
