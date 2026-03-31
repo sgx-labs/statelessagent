@@ -49,8 +49,22 @@ Thumbs.db
 .claude/
 .mcp.json
 
-# Eval data
-/eval/
+# Eval data (keep test_vault notes, ignore runtime artifacts)
+/eval/benchmark/
+/eval/memoryagentbench/
+/eval/seed_bench/
+/eval/*.go
+/eval/*.sh
+/eval/*.json
+/eval/results/
+
+# Test vault runtime data (contains local paths, regenerated on eval runs)
+eval/test_vault/.same/data/
+eval/test_vault/.mcp.json
+eval/test_vault/.same/config.toml
+
+# Security review files (must never be in public repo)
+CODEX-REVIEW*.md
 .vercel
 .env*.local
 

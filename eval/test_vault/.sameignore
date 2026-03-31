@@ -1,0 +1,65 @@
+# .sameignore — files and directories to exclude from SAME indexing
+# Works like .gitignore: glob patterns, one per line, # for comments
+
+# Build artifacts and dependencies
+node_modules/
+vendor/
+dist/
+build/
+.next/
+target/
+__pycache__/
+*.pyc
+.cache/
+.venv/
+venv/
+
+# IDE and tool config
+.git/
+.svn/
+.vscode/
+.idea/
+.kilocode/
+.cursor/
+.claude/
+
+# Binary and media files
+*.exe
+*.dll
+*.so
+*.dylib
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.woff
+*.woff2
+*.ttf
+*.mp3
+*.mp4
+*.zip
+*.tar.gz
+*.pdf
+
+# Lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+go.sum
+Cargo.lock
+Gemfile.lock
+poetry.lock
+
+# Generated files
+*.min.js
+*.min.css
+*.map
+*.bundle.js
+coverage/
+.nyc_output/
+
+# OS files
+.DS_Store
+Thumbs.db

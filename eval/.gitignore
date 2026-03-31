@@ -1,0 +1,5 @@
+# Eval output files (generated per-run)
+results/eval_*.json
+
+# SAME vault data created during eval
+test_vault/.same/
