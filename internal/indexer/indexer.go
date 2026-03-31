@@ -108,10 +108,16 @@ func ReindexWithProgress(ctx context.Context, db *store.DB, force bool, progress
 	case "off":
 		// Regex-only graph extraction.
 	case "local-only":
-		if chatClient, err := llm.NewClientWithOptions(llm.Options{LocalOnly: true}); err == nil {
+		chatClient, err := llm.NewClientWithOptions(llm.Options{LocalOnly: true})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "same: graph LLM unavailable: %v (using regex extraction)\n", err)
+		} else {
 			model := config.ChatModel()
 			if model == "" {
-				if m, modelErr := chatClient.PickBestModel(); modelErr == nil {
+				if m, modelErr := chatClient.PickBestModel(); modelErr != nil || model == "" {
+					if modelErr != nil {
+						fmt.Fprintf(os.Stderr, "same: no chat model found for graph extraction (using regex)\n")
+					}
 					model = m
 				}
 			}
@@ -120,10 +126,16 @@ func ReindexWithProgress(ctx context.Context, db *store.DB, force bool, progress
 			}
 		}
 	case "on":
-		if chatClient, err := llm.NewClient(); err == nil {
+		chatClient, err := llm.NewClient()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "same: graph LLM unavailable: %v (using regex extraction)\n", err)
+		} else {
 			model := config.ChatModel()
 			if model == "" {
-				if m, modelErr := chatClient.PickBestModel(); modelErr == nil {
+				if m, modelErr := chatClient.PickBestModel(); modelErr != nil || model == "" {
+					if modelErr != nil {
+						fmt.Fprintf(os.Stderr, "same: no chat model found for graph extraction (using regex)\n")
+					}
 					model = m
 				}
 			}

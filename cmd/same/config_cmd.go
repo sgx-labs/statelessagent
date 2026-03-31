@@ -41,6 +41,34 @@ func configCmd() *cobra.Command {
 
 			fmt.Printf("  %sEdit with: same config edit | same config edit --global%s\n\n", cli.Dim, cli.Reset)
 			fmt.Println(config.ShowConfig())
+
+			// Resolved values — show what the runtime actually uses after
+			// merging config file, env vars, and defaults.
+			fmt.Printf("# Resolved values:\n")
+			ec := config.EmbeddingProviderConfig()
+			provider := ec.Provider
+			if provider == "" {
+				provider = "ollama"
+			}
+			if provider == "ollama" || provider == "" {
+				ollamaURL, err := config.OllamaURL()
+				if err != nil {
+					fmt.Printf("# Ollama URL: (error: %v)\n", err)
+				} else {
+					source := "default"
+					if os.Getenv("OLLAMA_URL") != "" {
+						source = "from OLLAMA_URL env"
+					} else if cf := config.FindConfigFile(); cf != "" {
+						source = "from config.toml"
+					}
+					fmt.Printf("# Ollama URL: %s (%s)\n", ollamaURL, source)
+				}
+			}
+			model := ec.Model
+			if model == "" {
+				model = config.EmbeddingModel
+			}
+			fmt.Printf("# Embed model: %s\n", model)
 			return nil
 		},
 	})

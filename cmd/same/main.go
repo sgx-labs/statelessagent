@@ -19,6 +19,9 @@ import (
 // Version is set at build time via ldflags.
 var Version = "dev"
 
+// CommitHash is set at build time via ldflags.
+var CommitHash = "unknown"
+
 // compareSemver compares two semver strings (without "v" prefix).
 // Returns -1 if a < b, 0 if a == b, 1 if a > b.
 // Falls back to string comparison if parsing fails.

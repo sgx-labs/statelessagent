@@ -17,7 +17,7 @@ func mcpCmd() *cobra.Command {
 		Short: "Start the AI tool integration server (MCP)",
 		Long:  "Start the SAME MCP server for tool integration with Claude Code, Cursor, Windsurf, and other MCP clients. This is typically started automatically by your AI tool — you rarely need to run it manually. Use 'same init' to configure MCP integration.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mcpserver.Version = Version
+			mcpserver.Version = Version + "+" + CommitHash
 			return mcpserver.Serve()
 		},
 	}

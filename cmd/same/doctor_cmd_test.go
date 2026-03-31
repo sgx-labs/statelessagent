@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -95,5 +97,43 @@ func TestDoctorResult_StatusValues(t *testing.T) {
 		if !valid[check.Status] {
 			t.Fatalf("invalid status %q for check %q", check.Status, check.Name)
 		}
+	}
+}
+
+func TestDoctor_BinaryShadowing(t *testing.T) {
+	// Create a fake 'same' binary in a temp dir
+	tmpDir := t.TempDir()
+	fakeBin := filepath.Join(tmpDir, "same")
+	if err := os.WriteFile(fakeBin, []byte("#!/bin/sh\necho fake"), 0o755); err != nil {
+		t.Fatalf("write fake binary: %v", err)
+	}
+
+	// Prepend temp dir to PATH so the fake binary is found
+	origPath := os.Getenv("PATH")
+	t.Setenv("PATH", tmpDir+string(os.PathListSeparator)+origPath)
+
+	_, err := checkBinaryShadowing()
+	if err == nil {
+		t.Fatal("expected shadowing warning, got nil error")
+	}
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "Other 'same' binaries found in PATH") {
+		t.Fatalf("expected shadowing warning message, got: %q", errMsg)
+	}
+	if !strings.Contains(errMsg, tmpDir) {
+		t.Fatalf("expected shadowing path to include temp dir %q, got: %q", tmpDir, errMsg)
+	}
+}
+
+func TestDoctor_NoBinaryShadowing(t *testing.T) {
+	// With an empty PATH, no other binaries should be found
+	t.Setenv("PATH", "")
+
+	detail, err := checkBinaryShadowing()
+	if err != nil {
+		t.Fatalf("expected no shadowing error, got: %v", err)
+	}
+	if !strings.Contains(detail, "binary:") {
+		t.Fatalf("expected binary detail in output, got: %q", detail)
 	}
 }

@@ -120,6 +120,49 @@ func TestPrepareWindowsBackup_FallsBackToNumbered(t *testing.T) {
 	}
 }
 
+func TestVersionOutput_IncludesHash(t *testing.T) {
+	oldVersion := Version
+	oldHash := CommitHash
+	Version = "0.12.1"
+	CommitHash = "abc1234"
+	t.Cleanup(func() {
+		Version = oldVersion
+		CommitHash = oldHash
+	})
+
+	out := captureCommandStdout(t, func() {
+		cmd := versionCmd()
+		_ = cmd.Execute()
+	})
+	// Should show version+hash format
+	if !strings.Contains(out, "same 0.12.1+abc1234") {
+		t.Fatalf("expected version with hash, got: %q", out)
+	}
+}
+
+func TestVersionOutput_DevBuild(t *testing.T) {
+	oldVersion := Version
+	oldHash := CommitHash
+	Version = "dev"
+	CommitHash = "unknown"
+	t.Cleanup(func() {
+		Version = oldVersion
+		CommitHash = oldHash
+	})
+
+	out := captureCommandStdout(t, func() {
+		cmd := versionCmd()
+		_ = cmd.Execute()
+	})
+	// Should not include hash for dev builds
+	if strings.Contains(out, "+") {
+		t.Fatalf("dev build should not include hash, got: %q", out)
+	}
+	if !strings.Contains(out, "same dev") {
+		t.Fatalf("expected 'same dev' in output, got: %q", out)
+	}
+}
+
 type rtFunc func(req *http.Request) (*http.Response, error)
 
 func (f rtFunc) RoundTrip(req *http.Request) (*http.Response, error) {

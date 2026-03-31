@@ -430,7 +430,10 @@ func runDemo(clean, noSetup bool) error {
 			// Get context via search
 			var askResults []store.SearchResult
 			if semanticAvailable {
-				embedClient, _ := newEmbedProvider()
+				embedClient, embedErr := newEmbedProvider()
+				if embedErr != nil {
+					fmt.Fprintf(os.Stderr, "  %s⚠ Embedding unavailable: %v — using keyword search%s\n", cli.Dim, embedErr, cli.Reset)
+				}
 				if embedClient != nil {
 					askVec, err := embedClient.GetQueryEmbedding(askQuery)
 					if err == nil {

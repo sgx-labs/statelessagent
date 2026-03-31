@@ -35,7 +35,11 @@ func versionCmd() *cobra.Command {
 			if check {
 				return runVersionCheck()
 			}
-			fmt.Printf("same %s (%s/%s)\n", Version, runtime.GOOS, runtime.GOARCH)
+			if CommitHash != "" && CommitHash != "unknown" {
+				fmt.Printf("same %s+%s (%s/%s)\n", Version, CommitHash, runtime.GOOS, runtime.GOARCH)
+			} else {
+				fmt.Printf("same %s (%s/%s)\n", Version, runtime.GOOS, runtime.GOARCH)
+			}
 			return nil
 		},
 	}

@@ -70,14 +70,21 @@ Examples:
 			}()
 
 			// Create embed provider (nil is fine — keyword fallback)
-			embedClient, _ := newEmbedProvider()
+			embedClient, embedErr := newEmbedProvider()
+			if embedErr != nil {
+				fmt.Fprintf(os.Stderr, "  %s⚠ Embedding unavailable: %v — using keyword search%s\n", cli.Dim, embedErr, cli.Reset)
+			}
 
 			if foreground {
 				fmt.Printf("\n  Dashboard: %shttp://%s%s\n", cli.Bold, addr, cli.Reset)
 				fmt.Printf("  %sPress Ctrl+C to stop%s\n\n", cli.Dim, cli.Reset)
 			}
 
-			return web.Serve(ctx, addr, embedClient, Version, vp)
+			webVersion := Version
+			if CommitHash != "" && CommitHash != "unknown" {
+				webVersion = Version + "+" + CommitHash
+			}
+			return web.Serve(ctx, addr, embedClient, webVersion, vp)
 		},
 	}
 	cmd.Flags().IntVar(&port, "port", 4078, "Port to listen on")

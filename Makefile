@@ -1,7 +1,8 @@
 BINARY_NAME := same
 BUILD_DIR := build
 VERSION := 0.12.1
-LDFLAGS := -ldflags "-s -w -X main.Version=$(VERSION)"
+COMMIT := $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo "unknown")
+LDFLAGS := -ldflags "-s -w -X main.Version=$(VERSION) -X main.CommitHash=$(COMMIT)"
 
 # CGO is required for sqlite3 + sqlite-vec
 export CGO_ENABLED := 1

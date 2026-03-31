@@ -97,7 +97,11 @@ func Serve() error {
 			provCfg.BaseURL = ollamaURL
 		}
 	}
-	embedClient, _ = embedding.NewProvider(provCfg)
+	var embedErr error
+	embedClient, embedErr = embedding.NewProvider(provCfg)
+	if embedErr != nil {
+		fmt.Fprintf(os.Stderr, "same: mcp: embedding unavailable: %v (keyword fallback active)\n", embedErr)
+	}
 	// embedClient may be nil if Ollama is not running — search handlers
 	// fall back to FTS5/keyword search gracefully.
 	vaultRoot, _ = filepath.Abs(config.VaultPath())
@@ -132,6 +136,8 @@ func refreshEmbedClient() {
 	}
 	if client, err := embedding.NewProvider(provCfg); err == nil {
 		embedClient = client
+	} else {
+		fmt.Fprintf(os.Stderr, "same: mcp: embedding refresh failed: %v (keeping previous)\n", err)
 	}
 }
 
@@ -373,7 +379,10 @@ func handleSearchNotes(ctx context.Context, req *mcp.CallToolRequest, input sear
 	// Reconsolidation: increment access counts for surfaced notes (fire-and-forget).
 	incrementAccessCounts(results)
 
-	data, _ := json.MarshalIndent(results, "", "  ")
+	data, jsonErr := json.MarshalIndent(results, "", "  ")
+	if jsonErr != nil {
+		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
+	}
 	return textResult(string(data)), nil, nil
 }
 
@@ -423,7 +432,10 @@ func handleSearchNotesFiltered(ctx context.Context, req *mcp.CallToolRequest, in
 	// Reconsolidation: increment access counts for surfaced notes (fire-and-forget).
 	incrementAccessCounts(results)
 
-	data, _ := json.MarshalIndent(results, "", "  ")
+	data, jsonErr := json.MarshalIndent(results, "", "  ")
+	if jsonErr != nil {
+		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
+	}
 	return textResult(string(data)), nil, nil
 }
 
@@ -496,7 +508,10 @@ func handleFindSimilar(ctx context.Context, req *mcp.CallToolRequest, input simi
 	// Reconsolidation: increment access counts for surfaced notes (fire-and-forget).
 	incrementAccessCounts(results)
 
-	data, _ := json.MarshalIndent(results, "", "  ")
+	data, jsonErr := json.MarshalIndent(results, "", "  ")
+	if jsonErr != nil {
+		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
+	}
 	return textResult(string(data)), nil, nil
 }
 
@@ -540,13 +555,19 @@ func handleReindex(ctx context.Context, req *mcp.CallToolRequest, input reindexI
 	// current model/dimensions after a model change + reindex.
 	refreshEmbedClient()
 
-	data, _ := json.MarshalIndent(stats, "", "  ")
+	data, jsonErr := json.MarshalIndent(stats, "", "  ")
+	if jsonErr != nil {
+		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
+	}
 	return textResult(string(data)), nil, nil
 }
 
 func handleIndexStats(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
 	stats := indexer.GetStats(db)
-	data, _ := json.MarshalIndent(stats, "", "  ")
+	data, jsonErr := json.MarshalIndent(stats, "", "  ")
+	if jsonErr != nil {
+		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
+	}
 	return textResult(string(data)), nil, nil
 }
 
@@ -1026,7 +1047,10 @@ func handleRecentActivity(ctx context.Context, req *mcp.CallToolRequest, input r
 		})
 	}
 
-	data, _ := json.MarshalIndent(entries, "", "  ")
+	data, jsonErr := json.MarshalIndent(entries, "", "  ")
+	if jsonErr != nil {
+		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
+	}
 	return textResult(string(data)), nil, nil
 }
 
@@ -1117,7 +1141,10 @@ func handleGetSessionContext(ctx context.Context, req *mcp.CallToolRequest, inpu
 	stats := indexer.GetStats(db)
 	result["stats"] = stats
 
-	data, _ := json.MarshalIndent(result, "", "  ")
+	data, jsonErr := json.MarshalIndent(result, "", "  ")
+	if jsonErr != nil {
+		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
+	}
 	return textResult(string(data)), nil, nil
 }
 
@@ -1170,7 +1197,11 @@ func handleSearchAcrossVaults(ctx context.Context, req *mcp.CallToolRequest, inp
 	// Try to get query embedding
 	var queryVec []float32
 	if embedClient != nil {
-		queryVec, _ = embedClient.GetQueryEmbedding(input.Query)
+		var queryErr error
+		queryVec, queryErr = embedClient.GetQueryEmbedding(input.Query)
+		if queryErr != nil {
+			fmt.Fprintf(os.Stderr, "same: mcp: query embedding failed: %v (keyword fallback)\n", queryErr)
+		}
 	}
 
 	results, err := store.FederatedSearch(vaultDBPaths, queryVec, input.Query, store.SearchOptions{TopK: topK})
@@ -1205,7 +1236,10 @@ func handleSearchAcrossVaults(ctx context.Context, req *mcp.CallToolRequest, inp
 		_ = db.IncrementAccessCount(localPaths)
 	}
 
-	data, _ := json.MarshalIndent(results, "", "  ")
+	data, jsonErr := json.MarshalIndent(results, "", "  ")
+	if jsonErr != nil {
+		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
+	}
 	return textResult(string(data)), nil, nil
 }
 
@@ -1901,7 +1935,11 @@ func searchWithFallback(query string, opts store.SearchOptions) ([]store.SearchR
 	// Try vector+keyword hybrid search first
 	var queryVec []float32
 	if embedClient != nil {
-		queryVec, _ = embedClient.GetQueryEmbedding(query)
+		var queryErr error
+		queryVec, queryErr = embedClient.GetQueryEmbedding(query)
+		if queryErr != nil {
+			fmt.Fprintf(os.Stderr, "same: mcp: query embedding failed: %v (keyword fallback)\n", queryErr)
+		}
 	}
 
 	var results []store.SearchResult
