@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -226,6 +227,25 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 
 	// Global --vault flag
 	root.PersistentFlags().StringVar(&config.VaultOverride, "vault", "", "Vault name or path (overrides auto-detect)")
+
+	// Print active vault context before every vault-using command.
+	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		// Commands that don't operate on a vault
+		switch cmd.Name() {
+		case "init", "version", "completion", "help", "update", "same":
+			return nil
+		}
+		vp := config.VaultPath()
+		if vp != "" {
+			reg := config.LoadRegistry()
+			name := reg.NameForPath(vp)
+			if name == "" {
+				name = filepath.Base(vp)
+			}
+			fmt.Fprintf(os.Stderr, "  %sUsing vault: %s (%s)%s\n", cli.Dim, name, vp, cli.Reset)
+		}
+		return nil
+	}
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

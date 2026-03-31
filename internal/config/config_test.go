@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -486,5 +487,317 @@ func TestChatModel_Empty(t *testing.T) {
 	got := ChatModel()
 	if got != "" {
 		t.Fatalf("expected empty string, got %q", got)
+	}
+}
+
+// --- Vault UX tests ---
+
+func TestDefaultVaultPath_SingleChildVault(t *testing.T) {
+	parent := t.TempDir()
+	child := filepath.Join(parent, "myproject")
+	if err := os.MkdirAll(filepath.Join(child, ".same"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Clear overrides so defaultVaultPath() auto-detects
+	oldOverride := VaultOverride
+	VaultOverride = ""
+	t.Cleanup(func() { VaultOverride = oldOverride })
+	t.Setenv("VAULT_PATH", "")
+
+	// Change to the parent directory
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(parent); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWd) })
+
+	got := defaultVaultPath()
+	if got != child {
+		t.Errorf("expected single child vault %q, got %q", child, got)
+	}
+}
+
+func TestDefaultVaultPath_MultipleChildVaults(t *testing.T) {
+	parent := t.TempDir()
+	child1 := filepath.Join(parent, "project1")
+	child2 := filepath.Join(parent, "project2")
+	if err := os.MkdirAll(filepath.Join(child1, ".same"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(child2, ".same"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	oldOverride := VaultOverride
+	VaultOverride = ""
+	t.Cleanup(func() { VaultOverride = oldOverride })
+	t.Setenv("VAULT_PATH", "")
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(parent); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWd) })
+
+	// Capture stderr for the warning message
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = oldStderr })
+
+	got := defaultVaultPath()
+
+	w.Close()
+	var buf [4096]byte
+	n, _ := r.Read(buf[:])
+	output := string(buf[:n])
+
+	// Should NOT pick one of the children (should fall through to registry default)
+	if got == child1 || got == child2 {
+		t.Errorf("should not pick a child vault when multiple found, got %q", got)
+	}
+
+	// Should print a warning
+	if !strings.Contains(output, "Multiple vaults found") {
+		t.Errorf("expected multi-vault warning, got stderr: %q", output)
+	}
+	if !strings.Contains(output, "project1") || !strings.Contains(output, "project2") {
+		t.Errorf("expected both vault names in warning, got stderr: %q", output)
+	}
+}
+
+func TestDefaultVaultPath_NoChildVaults(t *testing.T) {
+	parent := t.TempDir()
+	// Create child dirs with no vault markers
+	os.MkdirAll(filepath.Join(parent, "notvault"), 0o755)
+
+	oldOverride := VaultOverride
+	VaultOverride = ""
+	t.Cleanup(func() { VaultOverride = oldOverride })
+	t.Setenv("VAULT_PATH", "")
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(parent); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWd) })
+
+	// Capture stderr — should have no warning
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = oldStderr })
+
+	_ = defaultVaultPath()
+
+	w.Close()
+	var buf [4096]byte
+	n, _ := r.Read(buf[:])
+	output := string(buf[:n])
+
+	if strings.Contains(output, "Multiple vaults found") {
+		t.Errorf("should not print warning when no child vaults, got stderr: %q", output)
+	}
+}
+
+func TestGlobalConfig_Loaded(t *testing.T) {
+	// Create a temp home dir and a temp vault
+	tmpHome := t.TempDir()
+	vault := t.TempDir()
+
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+
+	t.Setenv("VAULT_PATH", vault)
+	t.Setenv("OLLAMA_URL", "")
+	t.Setenv("HOME", tmpHome)
+
+	// Write global config
+	globalDir := filepath.Join(tmpHome, ".config", "same")
+	if err := os.MkdirAll(globalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	globalConfig := `[ollama]
+url = "http://global-host:11434"
+`
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(globalConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig error: %v", err)
+	}
+	if cfg.Ollama.URL != "http://global-host:11434" {
+		t.Errorf("expected global Ollama URL, got %q", cfg.Ollama.URL)
+	}
+}
+
+func TestGlobalConfig_VaultOverrides(t *testing.T) {
+	tmpHome := t.TempDir()
+	vault := t.TempDir()
+
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+
+	t.Setenv("VAULT_PATH", vault)
+	t.Setenv("OLLAMA_URL", "")
+	t.Setenv("HOME", tmpHome)
+
+	// Write global config
+	globalDir := filepath.Join(tmpHome, ".config", "same")
+	os.MkdirAll(globalDir, 0o755)
+	os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(`[ollama]
+url = "http://global:11434"
+`), 0o644)
+
+	// Write vault config that overrides
+	vaultDir := filepath.Join(vault, ".same")
+	os.MkdirAll(vaultDir, 0o755)
+	os.WriteFile(filepath.Join(vaultDir, "config.toml"), []byte(`[ollama]
+url = "http://vault:11434"
+`), 0o644)
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig error: %v", err)
+	}
+	if cfg.Ollama.URL != "http://vault:11434" {
+		t.Errorf("expected vault Ollama URL to override global, got %q", cfg.Ollama.URL)
+	}
+}
+
+func TestGlobalConfig_VaultInheritsGlobal(t *testing.T) {
+	tmpHome := t.TempDir()
+	vault := t.TempDir()
+
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+
+	t.Setenv("VAULT_PATH", vault)
+	t.Setenv("OLLAMA_URL", "")
+	t.Setenv("HOME", tmpHome)
+
+	// Write global config with Ollama URL
+	globalDir := filepath.Join(tmpHome, ".config", "same")
+	os.MkdirAll(globalDir, 0o755)
+	os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(`[ollama]
+url = "http://global:11434"
+`), 0o644)
+
+	// Write vault config with only vault path (no ollama section)
+	vaultDir := filepath.Join(vault, ".same")
+	os.MkdirAll(vaultDir, 0o755)
+	os.WriteFile(filepath.Join(vaultDir, "config.toml"), []byte(`[vault]
+path = "`+vault+`"
+`), 0o644)
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig error: %v", err)
+	}
+	// Ollama URL should come from global since vault didn't set it
+	if cfg.Ollama.URL != "http://global:11434" {
+		t.Errorf("expected global Ollama URL to be inherited, got %q", cfg.Ollama.URL)
+	}
+	// Vault path should come from vault config
+	if cfg.Vault.Path != vault {
+		t.Errorf("expected vault path from vault config, got %q", cfg.Vault.Path)
+	}
+}
+
+func TestRegistryCleanup_RemovesStale(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	regDir := filepath.Join(tmpHome, ".config", "same")
+	os.MkdirAll(regDir, 0o755)
+
+	// Create a registry with a stale entry pointing to non-existent path
+	reg := &VaultRegistry{
+		Vaults: map[string]string{
+			"stale_vault": "/tmp/nonexistent-test-path-" + t.Name(),
+		},
+	}
+	data, _ := json.MarshalIndent(reg, "", "  ")
+	os.WriteFile(filepath.Join(regDir, "vaults.json"), data, 0o600)
+
+	// Load registry — should prune the stale entry
+	loaded := LoadRegistry()
+	if _, ok := loaded.Vaults["stale_vault"]; ok {
+		t.Error("expected stale vault entry to be removed")
+	}
+}
+
+func TestRegistryCleanup_ClearsStaleDefault(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	regDir := filepath.Join(tmpHome, ".config", "same")
+	os.MkdirAll(regDir, 0o755)
+
+	existingVault := t.TempDir()
+
+	// Create a registry with a valid vault and a default pointing to a non-existent alias
+	reg := &VaultRegistry{
+		Vaults: map[string]string{
+			"valid_vault": existingVault,
+		},
+		Default: "nonexistent_alias",
+	}
+	data, _ := json.MarshalIndent(reg, "", "  ")
+	os.WriteFile(filepath.Join(regDir, "vaults.json"), data, 0o600)
+
+	loaded := LoadRegistry()
+	if loaded.Default != "" {
+		t.Errorf("expected stale default to be cleared, got %q", loaded.Default)
+	}
+	// Valid vault should still be present
+	if _, ok := loaded.Vaults["valid_vault"]; !ok {
+		t.Error("expected valid vault to remain in registry")
+	}
+}
+
+func TestNameForPath_ReverseLookup(t *testing.T) {
+	reg := &VaultRegistry{
+		Vaults: map[string]string{
+			"myproject": "/some/path",
+			"other":     "/other/path",
+		},
+	}
+
+	if got := reg.NameForPath("/some/path"); got != "myproject" {
+		t.Errorf("expected 'myproject', got %q", got)
+	}
+	if got := reg.NameForPath("/other/path"); got != "other" {
+		t.Errorf("expected 'other', got %q", got)
+	}
+	if got := reg.NameForPath("/unknown/path"); got != "" {
+		t.Errorf("expected empty string for unknown path, got %q", got)
+	}
+}
+
+func TestGlobalConfigPath(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("cannot get home dir")
+	}
+	got := GlobalConfigPath()
+	expected := filepath.Join(home, ".config", "same", "config.toml")
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
 	}
 }

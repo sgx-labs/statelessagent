@@ -233,12 +233,24 @@ func DefaultConfig() *Config {
 	}
 }
 
-// LoadConfig merges all configuration sources: defaults < TOML file < env vars.
+// LoadConfig merges all configuration sources: defaults < global TOML < per-vault TOML < env vars.
 // CLI flags (VaultOverride) are handled separately by the existing VaultPath() logic.
 func LoadConfig() (*Config, error) {
 	cfg := DefaultConfig()
 
-	// Try to load TOML config file
+	// Load global config as base layer (if it exists)
+	globalPath := GlobalConfigPath()
+	if globalPath != "" {
+		if _, err := os.Stat(globalPath); err == nil {
+			meta, err := toml.DecodeFile(globalPath, cfg)
+			if err != nil {
+				return nil, fmt.Errorf("parse global config %s: %w", globalPath, err)
+			}
+			warnUnknownKeys(meta, globalPath)
+		}
+	}
+
+	// Overlay per-vault config (if it exists)
 	configPath := findConfigFile()
 	if configPath != "" {
 		meta, err := toml.DecodeFile(configPath, cfg)
@@ -411,6 +423,13 @@ func ConfigFilePath(vaultPath string) string {
 	return filepath.Join(vaultPath, ".same", "config.toml")
 }
 
+// GlobalConfigPath returns the path to the global config file.
+// Global config provides defaults for all vaults; per-vault config overrides it.
+func GlobalConfigPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "same", "config.toml")
+}
+
 // GenerateConfig writes a default .same/config.toml with comments.
 // If vaultPath is provided, it's included in the generated config.
 func GenerateConfig(vaultPath string) error {
@@ -510,7 +529,21 @@ func ShowConfig() string {
 	}
 
 	var b strings.Builder
-	b.WriteString("# Effective SAME configuration (merged from all sources)\n\n")
+	b.WriteString("# Effective SAME configuration (merged from all sources)\n")
+	b.WriteString("#\n")
+	b.WriteString("# Loaded from:\n")
+	globalPath := GlobalConfigPath()
+	if _, statErr := os.Stat(globalPath); statErr == nil {
+		fmt.Fprintf(&b, "#   Global: %s\n", globalPath)
+	} else {
+		fmt.Fprintf(&b, "#   Global: (none)\n")
+	}
+	if cf := findConfigFile(); cf != "" {
+		fmt.Fprintf(&b, "#   Vault:  %s (overrides global)\n", cf)
+	} else {
+		fmt.Fprintf(&b, "#   Vault:  (none)\n")
+	}
+	b.WriteString("#\n\n")
 	enc := toml.NewEncoder(&b)
 	if err := enc.Encode(cfg); err != nil {
 		return fmt.Sprintf("# Error encoding config: %v\n", err)
@@ -1110,6 +1143,7 @@ func RegistryPath() string {
 }
 
 // LoadRegistry loads or creates the vault registry.
+// Stale entries (paths that no longer exist on disk) are pruned automatically.
 func LoadRegistry() *VaultRegistry {
 	data, err := os.ReadFile(RegistryPath())
 	if err != nil {
@@ -1122,7 +1156,37 @@ func LoadRegistry() *VaultRegistry {
 	if reg.Vaults == nil {
 		reg.Vaults = make(map[string]string)
 	}
+
+	// Prune stale entries whose paths no longer exist on disk.
+	changed := false
+	for alias, path := range reg.Vaults {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			delete(reg.Vaults, alias)
+			changed = true
+		}
+	}
+	if reg.Default != "" {
+		if _, ok := reg.Vaults[reg.Default]; !ok {
+			reg.Default = ""
+			changed = true
+		}
+	}
+	if changed {
+		_ = reg.Save()
+	}
+
 	return &reg
+}
+
+// NameForPath returns the registry alias for a given vault path.
+// Returns empty string if no alias is registered for that path.
+func (r *VaultRegistry) NameForPath(path string) string {
+	for alias, p := range r.Vaults {
+		if p == path {
+			return alias
+		}
+	}
+	return ""
 }
 
 // Save writes the registry to disk.
@@ -1235,6 +1299,40 @@ func defaultVaultPath() string {
 		for _, marker := range VaultMarkers {
 			if _, err := os.Stat(filepath.Join(cwd, marker)); err == nil {
 				return cwd
+			}
+		}
+
+		// No marker in cwd — check if child directories have vaults
+		entries, dirErr := os.ReadDir(cwd)
+		if dirErr == nil {
+			var childVaults []string
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					continue
+				}
+				for _, marker := range VaultMarkers {
+					markerPath := filepath.Join(cwd, entry.Name(), marker)
+					if _, statErr := os.Stat(markerPath); statErr == nil {
+						childVaults = append(childVaults, filepath.Join(cwd, entry.Name()))
+						break
+					}
+				}
+			}
+			if len(childVaults) == 1 {
+				return childVaults[0]
+			}
+			if len(childVaults) > 1 {
+				fmt.Fprintf(os.Stderr, "  \u26a0 Multiple vaults found near %s:\n", cwd)
+				reg := LoadRegistry()
+				for _, vp := range childVaults {
+					name := reg.NameForPath(vp)
+					if name == "" {
+						name = filepath.Base(vp)
+					}
+					fmt.Fprintf(os.Stderr, "    %-20s %s\n", name, vp)
+				}
+				fmt.Fprintf(os.Stderr, "  Use --vault <name> or cd into the project directory.\n\n")
+				// Fall through to registry default
 			}
 		}
 	}

@@ -183,6 +183,20 @@ func TestVaultPrune_RemovesMissingVaults(t *testing.T) {
 		t.Fatalf("save registry: %v", err)
 	}
 
+	// LoadRegistry now auto-prunes stale entries, so the missing vault
+	// should already be cleaned up before vault prune runs.
+	reg = config.LoadRegistry()
+	if _, ok := reg.Vaults["missing"]; ok {
+		t.Fatal("expected missing vault to be auto-pruned on load")
+	}
+	if got := reg.Vaults["live"]; got != existing {
+		t.Fatalf("live vault path = %q, want %q", got, existing)
+	}
+	if reg.Default != "" {
+		t.Fatalf("default vault = %q, want empty after auto-pruning default", reg.Default)
+	}
+
+	// vault prune should still run cleanly (nothing left to prune)
 	cmd := vaultCmd()
 	var runErr error
 	out := captureCommandStdout(t, func() {
@@ -192,19 +206,8 @@ func TestVaultPrune_RemovesMissingVaults(t *testing.T) {
 	if runErr != nil {
 		t.Fatalf("vault prune: %v", runErr)
 	}
-	if !strings.Contains(out, `Removed vault "missing"`) {
-		t.Fatalf("expected prune output to mention removed vault, got %q", out)
-	}
-
-	reg = config.LoadRegistry()
-	if _, ok := reg.Vaults["missing"]; ok {
-		t.Fatal("expected missing vault to be pruned")
-	}
-	if got := reg.Vaults["live"]; got != existing {
-		t.Fatalf("live vault path = %q, want %q", got, existing)
-	}
-	if reg.Default != "" {
-		t.Fatalf("default vault = %q, want empty after pruning default", reg.Default)
+	if !strings.Contains(out, "No missing vaults to prune") {
+		t.Fatalf("expected no-op prune message after auto-cleanup, got %q", out)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -24,11 +25,21 @@ func configCmd() *cobra.Command {
 		Short: "Show effective configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Printf("\n  %sEffective Configuration%s\n", cli.Bold, cli.Reset)
-			fmt.Printf("  %sMerged from config file, environment variables, and defaults.%s\n", cli.Dim, cli.Reset)
-			if cf := config.FindConfigFile(); cf != "" {
-				fmt.Printf("  %sLoaded from: %s%s\n", cli.Dim, cli.ShortenHome(cf), cli.Reset)
+			fmt.Printf("  %sMerged from global config, vault config, environment variables, and defaults.%s\n", cli.Dim, cli.Reset)
+
+			globalPath := config.GlobalConfigPath()
+			if _, err := os.Stat(globalPath); err == nil {
+				fmt.Printf("  %sGlobal: %s%s\n", cli.Dim, cli.ShortenHome(globalPath), cli.Reset)
+			} else {
+				fmt.Printf("  %sGlobal: (none)%s\n", cli.Dim, cli.Reset)
 			}
-			fmt.Printf("  %sEdit with: same config edit%s\n\n", cli.Dim, cli.Reset)
+			if cf := config.FindConfigFile(); cf != "" {
+				fmt.Printf("  %sVault:  %s (overrides global)%s\n", cli.Dim, cli.ShortenHome(cf), cli.Reset)
+			} else {
+				fmt.Printf("  %sVault:  (none)%s\n", cli.Dim, cli.Reset)
+			}
+
+			fmt.Printf("  %sEdit with: same config edit | same config edit --global%s\n\n", cli.Dim, cli.Reset)
 			fmt.Println(config.ShowConfig())
 			return nil
 		},
@@ -47,19 +58,36 @@ func configCmd() *cobra.Command {
 		},
 	})
 
-	cmd.AddCommand(&cobra.Command{
+	var editGlobal bool
+	editCmd := &cobra.Command{
 		Use:   "edit",
 		Short: "Open config file in $EDITOR",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			vp := config.VaultPath()
-			if vp == "" {
-				return fmt.Errorf("no vault found — run 'same init' or set VAULT_PATH")
-			}
-			configPath := config.ConfigFilePath(vp)
-			if _, err := os.Stat(configPath); os.IsNotExist(err) {
-				fmt.Println("No config file found. Generating default...")
-				if err := config.GenerateConfig(vp); err != nil {
-					return err
+			var configPath string
+			if editGlobal {
+				configPath = config.GlobalConfigPath()
+				// Ensure the global config directory exists
+				if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+					return fmt.Errorf("create global config directory: %w", err)
+				}
+				// Create a starter file if none exists
+				if _, err := os.Stat(configPath); os.IsNotExist(err) {
+					starter := "# SAME Global Configuration\n# Settings here apply to all vaults. Per-vault config overrides these.\n\n[ollama]\n# url = \"http://localhost:11434\"\n\n[chat]\n# model = \"\"\n\n[display]\n# mode = \"full\"  # full, compact, quiet\n"
+					if err := os.WriteFile(configPath, []byte(starter), 0o600); err != nil {
+						return fmt.Errorf("create global config: %w", err)
+					}
+				}
+			} else {
+				vp := config.VaultPath()
+				if vp == "" {
+					return fmt.Errorf("no vault found — run 'same init' or set VAULT_PATH")
+				}
+				configPath = config.ConfigFilePath(vp)
+				if _, err := os.Stat(configPath); os.IsNotExist(err) {
+					fmt.Println("No config file found. Generating default...")
+					if err := config.GenerateConfig(vp); err != nil {
+						return err
+					}
 				}
 			}
 			editor := os.Getenv("EDITOR")
@@ -69,7 +97,9 @@ func configCmd() *cobra.Command {
 			fmt.Printf("Opening %s in %s...\n", configPath, editor)
 			return runEditor(editor, configPath)
 		},
-	})
+	}
+	editCmd.Flags().BoolVar(&editGlobal, "global", false, "Edit global config (~/.config/same/config.toml)")
+	cmd.AddCommand(editCmd)
 
 	return cmd
 }
