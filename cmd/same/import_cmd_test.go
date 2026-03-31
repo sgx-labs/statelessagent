@@ -1,11 +1,14 @@
 package main
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/sgx-labs/statelessagent/internal/indexer"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
@@ -713,5 +716,213 @@ func TestImportCmd_AutoIndexAfterImport(t *testing.T) {
 	}
 	if !found {
 		t.Error("imported file was NOT auto-indexed — not found in keyword search results")
+	}
+}
+
+// TestImportProvenanceHealthPipeline is an end-to-end integration test that verifies:
+//
+//	provenance_source frontmatter -> indexer -> note_sources -> divergence detection
+//
+// This is the core value proposition of the import feature: SAME can detect when
+// the original source of an imported note has changed or been deleted.
+func TestImportProvenanceHealthPipeline(t *testing.T) {
+	// 1. Create a temp vault directory
+	vaultDir, db := setupCommandTestVault(t)
+
+	// 2. Create a fake source file (simulates the original file being imported)
+	sourceDir := t.TempDir()
+	sourceFile := filepath.Join(sourceDir, "memory.md")
+	sourceContent := []byte("# Original Memory\n\nThe user prefers Go over Python.\n")
+	if err := os.WriteFile(sourceFile, sourceContent, 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+	sourceHash := fmt.Sprintf("%x", sha256.Sum256(sourceContent))
+
+	// 3. Create a note in imports/ with provenance_source frontmatter
+	importsDir := filepath.Join(vaultDir, "imports")
+	if err := os.MkdirAll(importsDir, 0o755); err != nil {
+		t.Fatalf("mkdir imports: %v", err)
+	}
+	noteContent := fmt.Sprintf(`---
+title: "Imported Memory"
+provenance_source: %s
+provenance_hash: %s
+trust_state: unknown
+---
+
+# Imported from Claude Code (global)
+# Source: %s
+
+The user prefers Go over Python.
+`, sourceFile, sourceHash, sourceFile)
+	notePath := filepath.Join(importsDir, "test-memory.md")
+	if err := os.WriteFile(notePath, []byte(noteContent), 0o644); err != nil {
+		t.Fatalf("write imported note: %v", err)
+	}
+
+	// 4. Run the indexer on the vault
+	relPath := "imports/test-memory.md"
+	if err := indexer.IndexSingleFileLite(db, notePath, relPath, vaultDir); err != nil {
+		t.Fatalf("IndexSingleFileLite: %v", err)
+	}
+
+	// 5. Query note_sources table — verify the source is recorded
+	sources, err := db.GetSourcesForNote(relPath)
+	if err != nil {
+		t.Fatalf("GetSourcesForNote: %v", err)
+	}
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source recorded in note_sources, got %d", len(sources))
+	}
+	if sources[0].SourcePath != sourceFile {
+		t.Errorf("expected source_path %q, got %q", sourceFile, sources[0].SourcePath)
+	}
+	if sources[0].SourceHash != sourceHash {
+		t.Errorf("expected source_hash %q, got %q", sourceHash, sources[0].SourceHash)
+	}
+	if sources[0].SourceType != "file" {
+		t.Errorf("expected source_type 'file', got %q", sources[0].SourceType)
+	}
+
+	// 6. Run CheckSourceDivergence — should report NO divergence (hash matches)
+	diverged, err := db.CheckSourceDivergence(vaultDir)
+	if err != nil {
+		t.Fatalf("CheckSourceDivergence (initial): %v", err)
+	}
+	if len(diverged) != 0 {
+		t.Fatalf("expected 0 divergences when source unchanged, got %d", len(diverged))
+	}
+
+	// 7. Modify the source file
+	modifiedContent := []byte("# Updated Memory\n\nThe user now prefers Rust over Go.\n")
+	if err := os.WriteFile(sourceFile, modifiedContent, 0o644); err != nil {
+		t.Fatalf("write modified source: %v", err)
+	}
+
+	// 8. Run CheckSourceDivergence — should detect stale (hash diverged)
+	diverged, err = db.CheckSourceDivergence(vaultDir)
+	if err != nil {
+		t.Fatalf("CheckSourceDivergence (after modify): %v", err)
+	}
+	if len(diverged) != 1 {
+		t.Fatalf("expected 1 divergence after source modification, got %d", len(diverged))
+	}
+	if diverged[0].NotePath != relPath {
+		t.Errorf("diverged note_path: expected %q, got %q", relPath, diverged[0].NotePath)
+	}
+	if diverged[0].StoredHash != sourceHash {
+		t.Errorf("diverged stored_hash: expected %q, got %q", sourceHash, diverged[0].StoredHash)
+	}
+	expectedModifiedHash := fmt.Sprintf("%x", sha256.Sum256(modifiedContent))
+	if diverged[0].CurrentHash != expectedModifiedHash {
+		t.Errorf("diverged current_hash: expected %q, got %q", expectedModifiedHash, diverged[0].CurrentHash)
+	}
+
+	// 9. Delete the source file
+	if err := os.Remove(sourceFile); err != nil {
+		t.Fatalf("remove source file: %v", err)
+	}
+
+	// 10. Run CheckSourceDivergence — should report diverged (source deleted)
+	diverged, err = db.CheckSourceDivergence(vaultDir)
+	if err != nil {
+		t.Fatalf("CheckSourceDivergence (after delete): %v", err)
+	}
+	if len(diverged) != 1 {
+		t.Fatalf("expected 1 divergence after source deletion, got %d", len(diverged))
+	}
+	if diverged[0].NotePath != relPath {
+		t.Errorf("diverged note_path after delete: expected %q, got %q", relPath, diverged[0].NotePath)
+	}
+	if diverged[0].CurrentHash != "" {
+		t.Errorf("expected empty current_hash for deleted source, got %q", diverged[0].CurrentHash)
+	}
+}
+
+// TestImportProvenance_TrustBoundary verifies that provenance_source frontmatter
+// is ONLY recorded for notes inside the imports/ directory. Notes outside imports/
+// must NOT have their provenance recorded, because provenance_source values could
+// be attacker-controlled (e.g., via MCP save_note) and point at sensitive files.
+func TestImportProvenance_TrustBoundary(t *testing.T) {
+	vaultDir, db := setupCommandTestVault(t)
+
+	// Create a source file
+	sourceDir := t.TempDir()
+	sourceFile := filepath.Join(sourceDir, "secret.md")
+	sourceContent := []byte("# Secret File\n\nThis is sensitive content.\n")
+	if err := os.WriteFile(sourceFile, sourceContent, 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+	sourceHash := fmt.Sprintf("%x", sha256.Sum256(sourceContent))
+
+	noteTemplate := `---
+title: "Note With Provenance"
+provenance_source: %s
+provenance_hash: %s
+---
+
+This note claims provenance from an external file.
+`
+
+	// Case 1: Note INSIDE imports/ — provenance SHOULD be recorded
+	importsDir := filepath.Join(vaultDir, "imports")
+	if err := os.MkdirAll(importsDir, 0o755); err != nil {
+		t.Fatalf("mkdir imports: %v", err)
+	}
+	insidePath := filepath.Join(importsDir, "trusted-note.md")
+	if err := os.WriteFile(insidePath, []byte(fmt.Sprintf(noteTemplate, sourceFile, sourceHash)), 0o644); err != nil {
+		t.Fatalf("write inside note: %v", err)
+	}
+	insideRelPath := "imports/trusted-note.md"
+	if err := indexer.IndexSingleFileLite(db, insidePath, insideRelPath, vaultDir); err != nil {
+		t.Fatalf("IndexSingleFileLite (inside imports): %v", err)
+	}
+
+	insideSources, err := db.GetSourcesForNote(insideRelPath)
+	if err != nil {
+		t.Fatalf("GetSourcesForNote (inside): %v", err)
+	}
+	if len(insideSources) != 1 {
+		t.Errorf("imports/ note: expected 1 provenance source, got %d", len(insideSources))
+	}
+
+	// Case 2: Note OUTSIDE imports/ — provenance MUST NOT be recorded
+	notesDir := filepath.Join(vaultDir, "notes")
+	if err := os.MkdirAll(notesDir, 0o755); err != nil {
+		t.Fatalf("mkdir notes: %v", err)
+	}
+	outsidePath := filepath.Join(notesDir, "untrusted-note.md")
+	if err := os.WriteFile(outsidePath, []byte(fmt.Sprintf(noteTemplate, sourceFile, sourceHash)), 0o644); err != nil {
+		t.Fatalf("write outside note: %v", err)
+	}
+	outsideRelPath := "notes/untrusted-note.md"
+	if err := indexer.IndexSingleFileLite(db, outsidePath, outsideRelPath, vaultDir); err != nil {
+		t.Fatalf("IndexSingleFileLite (outside imports): %v", err)
+	}
+
+	outsideSources, err := db.GetSourcesForNote(outsideRelPath)
+	if err != nil {
+		t.Fatalf("GetSourcesForNote (outside): %v", err)
+	}
+	if len(outsideSources) != 0 {
+		t.Errorf("non-imports/ note: expected 0 provenance sources (trust boundary), got %d", len(outsideSources))
+	}
+
+	// Case 3: Note at vault root — also MUST NOT be recorded
+	rootPath := filepath.Join(vaultDir, "root-note.md")
+	if err := os.WriteFile(rootPath, []byte(fmt.Sprintf(noteTemplate, sourceFile, sourceHash)), 0o644); err != nil {
+		t.Fatalf("write root note: %v", err)
+	}
+	rootRelPath := "root-note.md"
+	if err := indexer.IndexSingleFileLite(db, rootPath, rootRelPath, vaultDir); err != nil {
+		t.Fatalf("IndexSingleFileLite (root): %v", err)
+	}
+
+	rootSources, err := db.GetSourcesForNote(rootRelPath)
+	if err != nil {
+		t.Fatalf("GetSourcesForNote (root): %v", err)
+	}
+	if len(rootSources) != 0 {
+		t.Errorf("root note: expected 0 provenance sources (trust boundary), got %d", len(rootSources))
 	}
 }
