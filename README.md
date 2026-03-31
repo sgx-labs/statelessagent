@@ -123,8 +123,8 @@ Your markdown notes get embedded and stored in SQLite. When your AI starts a ses
 
 | Metric | Value |
 |--------|-------|
-| Retrieval precision | **99.5%** on internal eval (105 tuning cases). Held-out validation: 93.3% Recall@5 on 30 blind test cases (see `eval/METHODOLOGY.md`) |
-| MRR | **0.949** (right note first, almost every time) |
+| Recall@5 | **100%** keyword, **84%** semantic on internal eval (68 cases). Held-out: **90%** Recall@5 on 30 blind cases (see `eval/METHODOLOGY.md`) |
+| MRR | **0.65** keyword, **0.62** semantic |
 | Prompt overhead | **<200ms** |
 | Binary size | **~14MB** |
 | Setup time | **Under 2 minutes** |
@@ -336,11 +336,10 @@ Internal evaluation on 105 tuning cases. Held-out validation: 93.3% Recall@5 on 
 
 | Metric | Value | Dataset |
 |--------|-------|---------|
-| Precision | 99.5% | Internal (105 tuning cases) |
-| Coverage | 90.5% | Internal (105 tuning cases) |
-| MRR | 0.949 | Internal (105 tuning cases) |
-| Recall@5 | 93.3% | Held-out (30 blind cases) |
-| BAD cases | 0 | Both |
+| Recall@5 (keyword) | 100% | Internal (68 cases) |
+| Recall@5 (semantic) | 84% | Internal (68 cases) |
+| MRR (keyword) | 0.65 | Internal (68 cases) |
+| Recall@5 | 90% | Held-out (30 blind cases) |
 
 All evaluation uses synthetic vault data. No user data used.
 
