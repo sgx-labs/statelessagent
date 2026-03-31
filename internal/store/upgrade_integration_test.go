@@ -25,9 +25,9 @@ func TestUpgradeV9ToV10(t *testing.T) {
 	}
 	defer db.Close()
 
-	// --- Schema version should now be 10 ---
-	if got := db.SchemaVersion(); got != 10 {
-		t.Fatalf("schema version = %d, want 10", got)
+	// --- Schema version should now be 11 ---
+	if got := db.SchemaVersion(); got != 11 {
+		t.Fatalf("schema version = %d, want 11", got)
 	}
 
 	// --- All 5 notes should still exist ---
@@ -191,8 +191,8 @@ func TestUpgradeV10OpenedByV9Binary(t *testing.T) {
 	).Scan(&versionStr); err != nil {
 		t.Fatalf("read schema_version: %v", err)
 	}
-	if versionStr != "10" {
-		t.Fatalf("fixture schema version = %s, want 10", versionStr)
+	if versionStr != "11" {
+		t.Fatalf("fixture schema version = %s, want 11", versionStr)
 	}
 
 	// Now set it to version 99 to simulate a future version
@@ -244,8 +244,8 @@ func TestUpgradeV9ToV10_MigrationIdempotent(t *testing.T) {
 	}
 	defer db.Close()
 
-	if got := db.SchemaVersion(); got != 10 {
-		t.Fatalf("schema version after second open = %d, want 10", got)
+	if got := db.SchemaVersion(); got != 11 {
+		t.Fatalf("schema version after second open = %d, want 11", got)
 	}
 
 	// Data from first session should survive

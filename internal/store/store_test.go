@@ -443,10 +443,10 @@ func TestSchemaVersion(t *testing.T) {
 	}
 	defer db.Close()
 
-	// After migrate(), version should be 10 (through contradiction detail migration).
+	// After migrate(), version should be 11 (through facts table migration).
 	v := db.SchemaVersion()
-	if v != 10 {
-		t.Errorf("expected schema version 10, got %d", v)
+	if v != 11 {
+		t.Errorf("expected schema version 11, got %d", v)
 	}
 }
 

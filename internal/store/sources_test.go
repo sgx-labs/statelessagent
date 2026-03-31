@@ -433,10 +433,10 @@ func TestMigrationV8ToV9(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Schema version should be 10 (through contradiction detail migration)
+	// Schema version should be 11 (through facts table migration)
 	v := db.SchemaVersion()
-	if v != 10 {
-		t.Errorf("expected schema version 10, got %d", v)
+	if v != 11 {
+		t.Errorf("expected schema version 11, got %d", v)
 	}
 
 	// note_sources table should exist
@@ -475,8 +475,8 @@ func TestMigrationV8ToV9(t *testing.T) {
 		t.Fatalf("re-migrate should succeed: %v", err)
 	}
 	v = db.SchemaVersion()
-	if v != 10 {
-		t.Errorf("expected schema version 10 after re-migrate, got %d", v)
+	if v != 11 {
+		t.Errorf("expected schema version 11 after re-migrate, got %d", v)
 	}
 }
 

@@ -970,6 +970,50 @@ func TestConfigSet_CreatesFileIfMissing(t *testing.T) {
 	}
 }
 
+func TestConfigSet_AuthToken(t *testing.T) {
+	vault := setupTestVault(t)
+
+	if err := SetConfigValue("auth.token", "my-secret-token", false); err != nil {
+		t.Fatalf("SetConfigValue: %v", err)
+	}
+
+	cfg, err := LoadConfigFrom(ConfigFilePath(vault))
+	if err != nil {
+		t.Fatalf("LoadConfigFrom: %v", err)
+	}
+	if cfg.Auth.Token != "my-secret-token" {
+		t.Errorf("auth.token = %q, want %q", cfg.Auth.Token, "my-secret-token")
+	}
+}
+
+func TestAuthToken_EnvOverrides(t *testing.T) {
+	vault := setupTestVault(t)
+
+	// Set a token in config
+	if err := SetConfigValue("auth.token", "config-token", false); err != nil {
+		t.Fatalf("SetConfigValue: %v", err)
+	}
+
+	// Verify config value loads
+	cfg, err := LoadConfigFrom(ConfigFilePath(vault))
+	if err != nil {
+		t.Fatalf("LoadConfigFrom: %v", err)
+	}
+	if cfg.Auth.Token != "config-token" {
+		t.Errorf("auth.token from config = %q, want %q", cfg.Auth.Token, "config-token")
+	}
+
+	// Env var should override
+	t.Setenv("SAME_MCP_TOKEN", "env-token")
+	cfg2, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg2.Auth.Token != "env-token" {
+		t.Errorf("auth.token with env override = %q, want %q", cfg2.Auth.Token, "env-token")
+	}
+}
+
 func TestConfigSet_PreservesExistingValues(t *testing.T) {
 	vault := setupTestVault(t)
 

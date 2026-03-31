@@ -136,6 +136,12 @@ type Config struct {
 	Memory    MemoryConfig    `toml:"memory"`
 	Hooks     HooksConfig     `toml:"hooks"`
 	Display   DisplayConfig   `toml:"display"`
+	Auth      AuthConfig      `toml:"auth"`
+}
+
+// AuthConfig holds authentication settings for remote access.
+type AuthConfig struct {
+	Token string `toml:"token"` // Bearer token for Streamable HTTP MCP endpoint
 }
 
 // VaultConfig holds vault-related settings.
@@ -306,6 +312,10 @@ func LoadConfig() (*Config, error) {
 	}
 	if v := os.Getenv("SAME_GRAPH_LLM"); v != "" {
 		cfg.Graph.LLMMode = v
+	}
+	// Auth token override
+	if v := os.Getenv("SAME_MCP_TOKEN"); v != "" {
+		cfg.Auth.Token = v
 	}
 	// Also check OPENAI_API_KEY as a convenience fallback
 	if cfg.Embedding.APIKey == "" && (cfg.Embedding.Provider == "openai" || cfg.Embedding.Provider == "openai-compatible") {
@@ -634,6 +644,18 @@ func MemoryMaxTokenBudget() int {
 		return cfg.Memory.MaxTokenBudget
 	}
 	return 1600
+}
+
+// AuthToken returns the configured Bearer auth token for MCP HTTP access.
+// Checks SAME_MCP_TOKEN env var first, then config file auth.token.
+func AuthToken() string {
+	if v := os.Getenv("SAME_MCP_TOKEN"); v != "" {
+		return v
+	}
+	if cfg := loadConfigSafe(); cfg != nil && cfg.Auth.Token != "" {
+		return cfg.Auth.Token
+	}
+	return ""
 }
 
 // IsEmbeddingProviderExplicit returns true when the user has explicitly
@@ -1739,6 +1761,8 @@ func setField(cfg *Config, section, field, value string) error {
 		cfg.Vault.Path = value
 	case "vault.handoff_dir":
 		cfg.Vault.HandoffDir = value
+	case "auth.token":
+		cfg.Auth.Token = value
 	default:
 		return fmt.Errorf("unknown config key %q — run 'same config show' to see available keys", key)
 	}

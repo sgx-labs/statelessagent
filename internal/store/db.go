@@ -21,7 +21,7 @@ type DB struct {
 	ftsAvailable bool       // true if FTS5 module is available
 }
 
-const maxSchemaVersion = 10
+const maxSchemaVersion = 11
 
 // Open opens or creates the database at the configured path.
 func Open() (*DB, error) {
@@ -281,6 +281,7 @@ func (db *DB) migrate() error {
 		{8, db.migrateV8}, // suppressed column for mem_forget
 		{9, db.migrateV9},  // provenance tracking (note_sources + trust_state)
 		{10, db.migrateV10}, // contradiction detail tracking
+		{11, db.migrateV11}, // atomic facts table for dual-layer memory
 	}
 	for _, m := range versionedMigrations {
 		if currentVersion < m.version {
@@ -652,6 +653,32 @@ func (db *DB) UnsuppressNote(path string) (int64, error) {
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// migrateV11 creates the facts table and vector index for dual-layer memory.
+// Facts are atomic knowledge entries extracted from source chunks, providing
+// a precision search layer linked back to full chunks for recall.
+func (db *DB) migrateV11() error {
+	if _, err := db.conn.Exec(`CREATE TABLE IF NOT EXISTS facts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		fact_text TEXT NOT NULL,
+		source_path TEXT NOT NULL,
+		chunk_id INTEGER NOT NULL DEFAULT 0,
+		confidence REAL NOT NULL DEFAULT 0.6,
+		created_at INTEGER NOT NULL DEFAULT (unixepoch())
+	)`); err != nil {
+		return fmt.Errorf("create facts table: %w", err)
+	}
+	if _, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_facts_source_path ON facts(source_path)`); err != nil {
+		return err
+	}
+
+	// Vector table for fact embeddings — same dimensions as vault_notes_vec.
+	_, err := db.conn.Exec(fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS facts_vec USING vec0(
+		fact_id INTEGER PRIMARY KEY,
+		embedding float[%d]
+	)`, config.EmbeddingDim()))
+	return err
 }
 
 // ListSuppressed returns paths of all suppressed (forgotten) notes.

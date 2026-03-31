@@ -71,17 +71,18 @@ func checkWriteRateLimit() bool {
 // Version is set by the caller (main) before calling Serve.
 var Version = "dev"
 
-// Serve starts the MCP server on stdio.
-func Serve() error {
-	var err error
+// InitGlobals opens the vault database and initializes the package-level
+// embedding client and vault root. Call once before using NewMCPServer.
+// The caller is responsible for closing the returned *store.DB when done.
+func InitGlobals() (*store.DB, error) {
 	// Propagate config-driven noise paths to the store package for ranking filters.
 	store.NoisePaths = config.NoisePaths()
 
+	var err error
 	db, err = store.Open()
 	if err != nil {
-		return fmt.Errorf("SAME vault not initialized. Run 'same init' in your project directory first. (details: %v)", err)
+		return nil, fmt.Errorf("SAME vault not initialized. Run 'same init' in your project directory first. (details: %v)", err)
 	}
-	defer db.Close()
 
 	ec := config.EmbeddingProviderConfig()
 	provCfg := embedding.ProviderConfig{
@@ -114,12 +115,33 @@ func Serve() error {
 
 	vaultRoot, _ = filepath.Abs(config.VaultPath())
 
+	return db, nil
+}
+
+// NewMCPServer creates a configured MCP server with all SAME tools registered.
+// The caller must call initGlobals() first to initialize the database and
+// embedding client. This allows the same server to be used with different
+// transports (stdio, Streamable HTTP).
+func NewMCPServer() *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "same",
 		Version: Version,
 	}, nil)
 
 	registerTools(server)
+
+	return server
+}
+
+// Serve starts the MCP server on stdio.
+func Serve() error {
+	openedDB, err := InitGlobals()
+	if err != nil {
+		return err
+	}
+	defer openedDB.Close()
+
+	server := NewMCPServer()
 
 	return server.Run(context.Background(), &mcp.StdioTransport{})
 }

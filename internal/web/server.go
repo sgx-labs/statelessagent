@@ -29,7 +29,8 @@ import (
 // Serve starts the web server on the given address.
 // embedClient may be nil if no embedding provider is available (keyword-only mode).
 // vaultPath is the resolved vault directory, shown in the dashboard for orientation.
-func Serve(ctx context.Context, addr string, embedClient embedding.Provider, version string, vaultPath string) error {
+// mcpOpts, if non-nil, enables the Streamable HTTP MCP endpoint on /mcp.
+func Serve(ctx context.Context, addr string, embedClient embedding.Provider, version string, vaultPath string, mcpOpts *MCPOptions) error {
 	db, err := store.Open()
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
@@ -49,20 +50,32 @@ func Serve(ctx context.Context, addr string, embedClient embedding.Provider, ver
 	}
 	fileServer := http.FileServer(http.FS(staticSub))
 
-	mux := http.NewServeMux()
-	mux.Handle("/", s.staticHandler(fileServer))
-	mux.HandleFunc("/api/status", s.handleStatus)
-	mux.HandleFunc("/api/notes/recent", s.handleRecentNotes)
-	mux.HandleFunc("/api/notes/", s.handleNoteByPath) // /api/notes/{path}
-	mux.HandleFunc("/api/notes", s.handleAllNotes)
-	mux.HandleFunc("/api/search", s.handleSearch)
-	mux.HandleFunc("/api/pinned", s.handlePinned)
-	mux.HandleFunc("/api/related/", s.handleRelated) // /api/related/{path}
-	mux.HandleFunc("/api/trust/summary", s.handleTrustSummary)
-	mux.HandleFunc("/api/graph/stats", s.handleGraphStats)
-	mux.HandleFunc("/api/graph/connections/", s.handleGraphConnections) // /api/graph/connections/{path}
+	dashMux := http.NewServeMux()
+	dashMux.Handle("/", s.staticHandler(fileServer))
+	dashMux.HandleFunc("/api/status", s.handleStatus)
+	dashMux.HandleFunc("/api/notes/recent", s.handleRecentNotes)
+	dashMux.HandleFunc("/api/notes/", s.handleNoteByPath) // /api/notes/{path}
+	dashMux.HandleFunc("/api/notes", s.handleAllNotes)
+	dashMux.HandleFunc("/api/search", s.handleSearch)
+	dashMux.HandleFunc("/api/pinned", s.handlePinned)
+	dashMux.HandleFunc("/api/related/", s.handleRelated) // /api/related/{path}
+	dashMux.HandleFunc("/api/trust/summary", s.handleTrustSummary)
+	dashMux.HandleFunc("/api/graph/stats", s.handleGraphStats)
+	dashMux.HandleFunc("/api/graph/connections/", s.handleGraphConnections) // /api/graph/connections/{path}
 
-	handler := localhostOnly(securityHeaders(methodGET(mux)))
+	// Top-level mux: MCP endpoint gets its own handler chain (allows POST/GET/DELETE),
+	// while the dashboard goes through the GET-only handler chain.
+	topMux := http.NewServeMux()
+
+	if mcpOpts != nil {
+		mcpHandler := newMCPHandler(*mcpOpts)
+		topMux.Handle("/mcp", mcpHandler)
+	}
+
+	// All non-MCP routes go through the dashboard's GET-only chain
+	topMux.Handle("/", securityHeaders(methodGET(dashMux)))
+
+	handler := localhostOnly(topMux)
 
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
