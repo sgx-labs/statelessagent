@@ -89,6 +89,7 @@ func Serve() error {
 		APIKey:     ec.APIKey,
 		BaseURL:    ec.BaseURL,
 		Dimensions: ec.Dimensions,
+		SkipRetry:  !config.IsEmbeddingProviderExplicit(),
 	}
 	// For ollama provider, use the legacy [ollama] URL if no base_url is set
 	if (provCfg.Provider == "ollama" || provCfg.Provider == "") && provCfg.BaseURL == "" {
@@ -123,6 +124,7 @@ func refreshEmbedClient() {
 		APIKey:     ec.APIKey,
 		BaseURL:    ec.BaseURL,
 		Dimensions: ec.Dimensions,
+		SkipRetry:  !config.IsEmbeddingProviderExplicit(),
 	}
 	if (provCfg.Provider == "ollama" || provCfg.Provider == "") && provCfg.BaseURL == "" {
 		ollamaURL, urlErr := config.OllamaURL()

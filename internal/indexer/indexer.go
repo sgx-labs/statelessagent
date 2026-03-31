@@ -85,6 +85,7 @@ func ReindexWithProgress(ctx context.Context, db *store.DB, force bool, progress
 		APIKey:     ec.APIKey,
 		BaseURL:    ec.BaseURL,
 		Dimensions: ec.Dimensions,
+		SkipRetry:  !config.IsEmbeddingProviderExplicit(),
 	}
 	// For ollama provider, use the legacy [ollama] URL if no base_url is set
 	if (provCfg.Provider == "ollama" || provCfg.Provider == "") && provCfg.BaseURL == "" {
@@ -1226,6 +1227,7 @@ func ReindexProgressive(ctx context.Context, db *store.DB, force bool, liteProgr
 		APIKey:     ec.APIKey,
 		BaseURL:    ec.BaseURL,
 		Dimensions: ec.Dimensions,
+		SkipRetry:  !config.IsEmbeddingProviderExplicit(),
 	}
 	if (provCfg.Provider == "ollama" || provCfg.Provider == "") && provCfg.BaseURL == "" {
 		if ollamaURL, urlErr := config.OllamaURL(); urlErr == nil {

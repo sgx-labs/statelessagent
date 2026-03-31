@@ -636,6 +636,34 @@ func MemoryMaxTokenBudget() int {
 	return 1600
 }
 
+// IsEmbeddingProviderExplicit returns true when the user has explicitly
+// configured an embedding provider via env var or config file. Returns false
+// when no provider has been set and the system would default to "ollama".
+// This is used to gate connection retries: when the provider was not
+// explicitly configured, retries are skipped to avoid slow fallback delays.
+func IsEmbeddingProviderExplicit() bool {
+	// Env var explicitly set — the user chose a provider.
+	if os.Getenv("SAME_EMBED_PROVIDER") != "" {
+		return true
+	}
+	// Config file has a non-empty provider — the user chose it during init.
+	if cfg := loadConfigSafe(); cfg != nil {
+		// loadConfigSafe loads via LoadConfig which starts from DefaultConfig().
+		// DefaultConfig sets Embedding.Provider = "ollama". After TOML decode,
+		// if the user never wrote [embedding] provider = "...", the field stays
+		// "ollama" (from defaults). We check whether the provider differs from
+		// the default OR if the config file exists and contains an [embedding]
+		// section. Since we can't easily distinguish "default" from "explicitly
+		// set to ollama", we check whether a config file exists at all. If a
+		// config file exists, the user ran 'same init' which writes the provider
+		// explicitly, so we treat it as explicit.
+		if findConfigFile() != "" {
+			return true
+		}
+	}
+	return false
+}
+
 // EmbeddingProvider returns the configured embedding provider name.
 func EmbeddingProvider() string {
 	if v := os.Getenv("SAME_EMBED_PROVIDER"); v != "" {
