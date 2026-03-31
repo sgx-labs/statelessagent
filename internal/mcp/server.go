@@ -626,6 +626,13 @@ func handleSaveNote(ctx context.Context, req *mcp.CallToolRequest, input saveNot
 	if relErr != nil {
 		return errorResult("Error: path must stay within the vault. Use a relative path like 'notes/topic.md'."), nil, nil
 	}
+	if firstSegment, _, found := strings.Cut(relPath, "/"); found {
+		if strings.EqualFold(firstSegment, "imports") {
+			return errorResult("Error: save_note cannot write to imports/. Use same import for imported content."), nil, nil
+		}
+	} else if strings.EqualFold(relPath, "imports") {
+		return errorResult("Error: save_note cannot write to imports/. Use same import for imported content."), nil, nil
+	}
 	if !checkWriteRateLimit() {
 		return errorResult("Error: too many write operations. Try again in a minute."), nil, nil
 	}

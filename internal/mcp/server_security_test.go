@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -340,21 +341,34 @@ func TestSafeVaultSubpath_TraversalPrevention(t *testing.T) {
 }
 
 func TestSaveNote_BlockedInImportsDir(t *testing.T) {
-	// Verify MCP save_note cannot write to imports/ directory
+	vault := setupHandlerTest(t)
+
 	paths := []string{
 		"imports/malicious.md",
 		"imports/claude-memory/planted.md",
 		"imports/../imports/tricky.md",
 	}
 	for _, p := range paths {
-		clean := filepath.ToSlash(filepath.Clean(p))
-		if !strings.HasPrefix(clean, "imports/") && clean != "imports" {
-			continue // path normalizes outside imports, not the bug we're testing
-		}
-		// The check in handleSaveNote blocks these
-		if strings.HasPrefix(clean, "imports/") || clean == "imports" {
-			// This is what we expect — the path would be blocked
-			t.Logf("correctly blocked: %s (cleaned: %s)", p, clean)
-		}
+		t.Run(p, func(t *testing.T) {
+			result, _, err := handleSaveNote(context.Background(), nil, saveNoteInput{
+				Path:    p,
+				Content: "# planted\n",
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			text := resultText(t, result)
+			if !strings.Contains(text, "cannot write to imports/") {
+				t.Fatalf("expected imports rejection for %q, got %q", p, text)
+			}
+
+			clean, normalizeErr := store.NormalizeClaimPath(p)
+			if normalizeErr != nil {
+				t.Fatalf("NormalizeClaimPath(%q): %v", p, normalizeErr)
+			}
+			if _, statErr := os.Stat(filepath.Join(vault, filepath.FromSlash(clean))); !os.IsNotExist(statErr) {
+				t.Fatalf("expected no file to be written for %q, stat err=%v", p, statErr)
+			}
+		})
 	}
 }
