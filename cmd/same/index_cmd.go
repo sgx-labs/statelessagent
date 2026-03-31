@@ -17,24 +17,27 @@ import (
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/embedding"
 	"github.com/sgx-labs/statelessagent/internal/indexer"
+	"github.com/sgx-labs/statelessagent/internal/llm"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
 func reindexCmd() *cobra.Command {
 	var (
-		force   bool
-		verbose bool
+		force        bool
+		verbose      bool
+		extractFacts bool
 	)
 	cmd := &cobra.Command{
 		Use:     "reindex",
 		Aliases: []string{"index"},
 		Short:   "Scan your notes and rebuild the search index",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runReindex(force, verbose)
+			return runReindex(force, verbose, extractFacts)
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "Re-embed all files regardless of changes")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show each file being processed")
+	cmd.Flags().BoolVar(&extractFacts, "extract-facts", false, "Extract atomic facts from notes (requires LLM, slow)")
 	return cmd
 }
 
@@ -53,7 +56,7 @@ func migrateCmd() *cobra.Command {
 		Use:   "migrate",
 		Short: "Rebuild index from scratch (replaces old data)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runReindex(true, false)
+			return runReindex(true, false, false)
 		},
 	}
 }
@@ -150,7 +153,7 @@ func acquireReindexLock() (func(), error) {
 	return cleanup, nil
 }
 
-func runReindex(force bool, verbose bool) error {
+func runReindex(force bool, verbose bool, extractFacts bool) error {
 	db, err := store.Open()
 	if err != nil {
 		return userError("No SAME vault found", "Run 'same init' first.")
@@ -241,6 +244,12 @@ func runReindex(force bool, verbose bool) error {
 		}
 	}
 
+	// Phase 3: Fact extraction (optional, requires LLM)
+	var factResult *indexer.FactExtractionProgress
+	if extractFacts && !errors.Is(err, indexer.ErrCanceled) {
+		factResult = runFactExtraction(ctx, db)
+	}
+
 	fmt.Println()
 	if stats != nil && stats.Canceled {
 		fmt.Printf("  %sReindex canceled by user. %d of %d notes indexed.%s\n\n",
@@ -258,6 +267,10 @@ func runReindex(force bool, verbose bool) error {
 		fmt.Printf("  Notes in index:  %d\n", stats.NotesInIndex)
 		fmt.Printf("  Chunks in index: %d\n", stats.ChunksInIndex)
 	}
+	if factResult != nil {
+		factCount, _ := db.FactCount()
+		fmt.Printf("  Facts extracted: %d (%d new this run)\n", factCount, factResult.Facts)
+	}
 	searchMode := "keyword-only"
 	if db.HasVectors() {
 		searchMode = "semantic"
@@ -267,6 +280,60 @@ func runReindex(force bool, verbose bool) error {
 	fmt.Printf("  Graph role:     additive (works with search, not a replacement)\n")
 	fmt.Printf("\n  %sTip: Run 'same watch' in another terminal to auto-reindex as you edit notes.%s\n", cli.Dim, cli.Reset)
 	return nil
+}
+
+// runFactExtraction handles Phase 3 of the reindex pipeline: LLM-based
+// atomic fact extraction. Returns nil if LLM is unavailable.
+func runFactExtraction(ctx context.Context, db *store.DB) *indexer.FactExtractionProgress {
+	// Create LLM client
+	chatClient, chatErr := llm.NewClient()
+	if chatErr != nil {
+		fmt.Fprintf(os.Stderr, "  Fact extraction skipped: no LLM available (%v)\n", chatErr)
+		return nil
+	}
+
+	model := config.ChatModel()
+	if model == "" {
+		var pickErr error
+		model, pickErr = chatClient.PickBestModel()
+		if pickErr != nil || model == "" {
+			fmt.Fprintf(os.Stderr, "  Fact extraction skipped: no chat model found\n")
+			return nil
+		}
+	}
+
+	// Create embedding client for fact vectors
+	embedClient, embErr := newEmbedProvider()
+	if embErr != nil {
+		fmt.Fprintf(os.Stderr, "  Fact extraction skipped: no embedding provider (%v)\n", embErr)
+		return nil
+	}
+
+	fmt.Fprintf(os.Stderr, "\n  Extracting facts (model: %s)...\n", model)
+
+	factProgress := func(completed, total int) {
+		fmt.Fprintf(os.Stderr, "\r  Extracting facts: %d/%d notes...  ", completed, total)
+	}
+
+	factResult, factErr := indexer.BackfillFacts(ctx, db, chatClient, model, embedClient, factProgress)
+
+	// Clear progress line
+	if factResult != nil && factResult.Total > 0 {
+		fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 60))
+		if factErr == nil {
+			fmt.Fprintf(os.Stderr, "  Facts: %d extracted from %d notes.\n", factResult.Facts, factResult.Completed)
+		} else if errors.Is(factErr, indexer.ErrCanceled) {
+			fmt.Fprintf(os.Stderr, "  Fact extraction paused: %d/%d notes done.\n", factResult.Completed, factResult.Total)
+		}
+	} else if factResult != nil && factResult.Total == 0 {
+		fmt.Fprintf(os.Stderr, "  All notes already have facts extracted.\n")
+	}
+
+	if factErr != nil && !errors.Is(factErr, indexer.ErrCanceled) {
+		fmt.Fprintf(os.Stderr, "  [WARN] fact extraction: %v\n", factErr)
+	}
+
+	return factResult
 }
 
 func graphModeSummary(mode string) string {

@@ -1,0 +1,8 @@
+# Downloaded dataset files (fetched from HuggingFace on demand)
+data/
+
+# Results contain per-question details
+results/*.json
+
+# Python cache
+__pycache__/

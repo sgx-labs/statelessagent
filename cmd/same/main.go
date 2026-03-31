@@ -186,6 +186,7 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 		importCmd(),
 		vaultCmd(),
 		graphCmd(),
+		factsCmd(),
 		consolidateCmd(),
 		kaizenCmd(),
 	)

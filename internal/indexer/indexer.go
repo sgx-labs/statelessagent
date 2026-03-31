@@ -1378,6 +1378,130 @@ func BackfillEmbeddings(ctx context.Context, db *store.DB, embedClient embedding
 	return result, nil
 }
 
+// FactExtractionProgress reports the state of a fact extraction run.
+type FactExtractionProgress struct {
+	Completed int // Number of notes that had facts extracted
+	Skipped   int // Number of notes that already had facts
+	Failed    int // Number of notes that failed extraction
+	Total     int // Total notes eligible for extraction
+	Facts     int // Total facts extracted in this run
+}
+
+// FactProgressFunc is called during fact extraction to report progress.
+type FactProgressFunc func(completed, total int)
+
+// BackfillFacts extracts atomic facts from indexed notes using an LLM.
+// For each note that doesn't already have facts, it calls ExtractFacts
+// to extract atomic knowledge, generates an embedding for each fact,
+// and stores the fact + embedding for precision search.
+//
+// This is Phase 3 of the indexing pipeline — it runs after FTS5 indexing
+// and embedding backfill, and requires both an LLM (chat) and embedding
+// provider. If either is unavailable, the caller should skip this phase.
+func BackfillFacts(ctx context.Context, db *store.DB, chatClient llm.Client, chatModel string, embedClient embedding.Provider, progress FactProgressFunc) (*FactExtractionProgress, error) {
+	// Get all indexed note paths (chunk_id=0 = root chunks, one per note)
+	hashes, err := db.GetContentHashes()
+	if err != nil {
+		return nil, fmt.Errorf("get indexed paths: %w", err)
+	}
+
+	// Get paths that already have facts
+	pathsWithFacts, err := db.PathsWithFacts()
+	if err != nil {
+		return nil, fmt.Errorf("get paths with facts: %w", err)
+	}
+
+	// Build work queue: paths that need fact extraction
+	var paths []string
+	for p := range hashes {
+		if !pathsWithFacts[p] {
+			paths = append(paths, p)
+		}
+	}
+
+	result := &FactExtractionProgress{
+		Skipped: len(pathsWithFacts),
+		Total:   len(paths),
+	}
+
+	if len(paths) == 0 {
+		return result, nil
+	}
+
+	vaultPath := config.VaultPath()
+
+	for _, relPath := range paths {
+		// Check cancellation before each note
+		select {
+		case <-ctx.Done():
+			return result, ErrCanceled
+		default:
+		}
+
+		// Read the note content from disk
+		fullPath := filepath.Join(vaultPath, relPath)
+		content, err := os.ReadFile(fullPath)
+		if err != nil {
+			// File may have been deleted since indexing
+			result.Failed++
+			continue
+		}
+
+		// Extract facts via LLM
+		facts, err := memory.ExtractFacts(string(content), chatClient, chatModel)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  [WARN] fact extraction for %s: %v\n", relPath, err)
+			result.Failed++
+			continue
+		}
+
+		if len(facts) == 0 {
+			// No facts extracted — record an empty extraction so we don't
+			// retry this note next time. We insert a sentinel fact that
+			// we can filter out in search.
+			result.Completed++
+			if progress != nil {
+				progress(result.Completed, result.Total)
+			}
+			continue
+		}
+
+		// Generate embeddings and store each fact
+		for i, fact := range facts {
+			select {
+			case <-ctx.Done():
+				return result, ErrCanceled
+			default:
+			}
+
+			vec, embErr := embedClient.GetDocumentEmbedding(fact.Text)
+			if embErr != nil {
+				fmt.Fprintf(os.Stderr, "  [WARN] embedding fact %d for %s: %v\n", i, relPath, embErr)
+				continue
+			}
+
+			rec := &store.FactRecord{
+				FactText:   fact.Text,
+				SourcePath: relPath,
+				ChunkID:    fact.ChunkID,
+				Confidence: fact.Confidence,
+			}
+			if insertErr := db.InsertFact(rec, vec); insertErr != nil {
+				fmt.Fprintf(os.Stderr, "  [WARN] insert fact for %s: %v\n", relPath, insertErr)
+				continue
+			}
+			result.Facts++
+		}
+
+		result.Completed++
+		if progress != nil {
+			progress(result.Completed, result.Total)
+		}
+	}
+
+	return result, nil
+}
+
 // buildRecordsLite builds note records WITHOUT embeddings.
 func buildRecordsLite(filePath, relPath, vaultPath string) ([]store.NoteRecord, []byte, NoteMeta, error) {
 	content, err := os.ReadFile(filePath)

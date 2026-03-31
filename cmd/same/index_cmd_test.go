@@ -31,7 +31,7 @@ func TestRunReindex_NoVault(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(vault, 0o700) })
 
-	err := runReindex(false, false)
+	err := runReindex(false, false, false)
 	if err == nil {
 		t.Fatal("expected reindex to fail without a valid vault")
 	}

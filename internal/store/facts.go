@@ -160,6 +160,62 @@ func (db *DB) GetFactsForPath(sourcePath string) ([]FactRecord, error) {
 	return facts, rows.Err()
 }
 
+// PathsWithFacts returns the set of source paths that already have facts extracted.
+// Used by the fact extraction backfill to skip notes that have already been processed.
+func (db *DB) PathsWithFacts() (map[string]bool, error) {
+	rows, err := db.conn.Query("SELECT DISTINCT source_path FROM facts")
+	if err != nil {
+		return nil, fmt.Errorf("paths with facts: %w", err)
+	}
+	defer rows.Close()
+
+	paths := make(map[string]bool)
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		paths[p] = true
+	}
+	return paths, rows.Err()
+}
+
+// GetSampleFacts returns up to limit facts ordered by most recently created.
+func (db *DB) GetSampleFacts(limit int) ([]FactRecord, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	rows, err := db.conn.Query(`
+		SELECT id, fact_text, source_path, chunk_id, confidence, created_at
+		FROM facts
+		ORDER BY id DESC
+		LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get sample facts: %w", err)
+	}
+	defer rows.Close()
+
+	var facts []FactRecord
+	for rows.Next() {
+		var f FactRecord
+		if err := rows.Scan(&f.ID, &f.FactText, &f.SourcePath, &f.ChunkID, &f.Confidence, &f.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan fact: %w", err)
+		}
+		facts = append(facts, f)
+	}
+	return facts, rows.Err()
+}
+
+// HasFacts returns true if the facts table has any entries.
+func (db *DB) HasFacts() bool {
+	var exists int
+	err := db.conn.QueryRow("SELECT EXISTS(SELECT 1 FROM facts LIMIT 1)").Scan(&exists)
+	if err != nil {
+		return false
+	}
+	return exists == 1
+}
+
 // serializeFactVec converts a float32 slice to little-endian bytes for sqlite-vec.
 // This is the same encoding as serializeFloat32 in notes.go but kept as a
 // package-private function to avoid exporting the low-level serialization detail.
