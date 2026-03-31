@@ -97,11 +97,7 @@ func Serve() error {
 			provCfg.BaseURL = ollamaURL
 		}
 	}
-	var embedErr error
-	embedClient, embedErr = embedding.NewProvider(provCfg)
-	if embedErr != nil {
-		fmt.Fprintf(os.Stderr, "same: mcp: embedding unavailable: %v (keyword fallback active)\n", embedErr)
-	}
+	embedClient, _ = embedding.NewProvider(provCfg)
 	// embedClient may be nil if Ollama is not running — search handlers
 	// fall back to FTS5/keyword search gracefully.
 	vaultRoot, _ = filepath.Abs(config.VaultPath())
@@ -136,8 +132,6 @@ func refreshEmbedClient() {
 	}
 	if client, err := embedding.NewProvider(provCfg); err == nil {
 		embedClient = client
-	} else {
-		fmt.Fprintf(os.Stderr, "same: mcp: embedding refresh failed: %v (keeping previous)\n", err)
 	}
 }
 
@@ -256,7 +250,7 @@ func registerTools(server *mcp.Server) {
 	// mem_forget (autonomous memory management)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mem_forget",
-		Description: "Suppress a memory so it won't be surfaced in normal search. The note is not deleted -- it's marked as suppressed and will only appear if explicitly requested. Use this for outdated, incorrect, or irrelevant memories. This is not easily reversible: there is no mem_restore tool.\n\nArgs:\n  path: Path of the note to suppress (required)\n  reason: Why this memory is being suppressed (optional)\n\nReturns confirmation of suppression. (experimental)",
+		Description: "Suppress a memory so it won't be surfaced in normal search. The note is not deleted -- it's marked as suppressed and will only appear if explicitly requested. Use this for outdated, incorrect, or irrelevant memories. This is not easily reversible: there is no mem_restore tool.\n\nArgs:\n  path: Path of the note to suppress (required)\n  reason: Why this memory is being suppressed (optional)\n  agent: Your agent identity (optional — if set, you can only suppress notes you created)\n\nReturns confirmation of suppression. (experimental)",
 		Annotations: writeNonDestructive,
 	}, handleMemForget)
 
@@ -345,6 +339,7 @@ type memBriefInput struct {
 type memForgetInput struct {
 	Path   string `json:"path" jsonschema:"Path of the note to suppress"`
 	Reason string `json:"reason,omitempty" jsonschema:"Why this memory is being suppressed"`
+	Agent  string `json:"agent,omitempty" jsonschema:"Agent identity — if set, only notes created by this agent can be suppressed"`
 }
 
 type saveKaizenInput struct {
@@ -379,10 +374,7 @@ func handleSearchNotes(ctx context.Context, req *mcp.CallToolRequest, input sear
 	// Reconsolidation: increment access counts for surfaced notes (fire-and-forget).
 	incrementAccessCounts(results)
 
-	data, jsonErr := json.MarshalIndent(results, "", "  ")
-	if jsonErr != nil {
-		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
-	}
+	data, _ := json.MarshalIndent(results, "", "  ")
 	return textResult(string(data)), nil, nil
 }
 
@@ -432,10 +424,7 @@ func handleSearchNotesFiltered(ctx context.Context, req *mcp.CallToolRequest, in
 	// Reconsolidation: increment access counts for surfaced notes (fire-and-forget).
 	incrementAccessCounts(results)
 
-	data, jsonErr := json.MarshalIndent(results, "", "  ")
-	if jsonErr != nil {
-		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
-	}
+	data, _ := json.MarshalIndent(results, "", "  ")
 	return textResult(string(data)), nil, nil
 }
 
@@ -508,10 +497,7 @@ func handleFindSimilar(ctx context.Context, req *mcp.CallToolRequest, input simi
 	// Reconsolidation: increment access counts for surfaced notes (fire-and-forget).
 	incrementAccessCounts(results)
 
-	data, jsonErr := json.MarshalIndent(results, "", "  ")
-	if jsonErr != nil {
-		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
-	}
+	data, _ := json.MarshalIndent(results, "", "  ")
 	return textResult(string(data)), nil, nil
 }
 
@@ -555,19 +541,13 @@ func handleReindex(ctx context.Context, req *mcp.CallToolRequest, input reindexI
 	// current model/dimensions after a model change + reindex.
 	refreshEmbedClient()
 
-	data, jsonErr := json.MarshalIndent(stats, "", "  ")
-	if jsonErr != nil {
-		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
-	}
+	data, _ := json.MarshalIndent(stats, "", "  ")
 	return textResult(string(data)), nil, nil
 }
 
 func handleIndexStats(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
 	stats := indexer.GetStats(db)
-	data, jsonErr := json.MarshalIndent(stats, "", "  ")
-	if jsonErr != nil {
-		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
-	}
+	data, _ := json.MarshalIndent(stats, "", "  ")
 	return textResult(string(data)), nil, nil
 }
 
@@ -596,14 +576,6 @@ func handleSaveNote(ctx context.Context, req *mcp.CallToolRequest, input saveNot
 	safePath := safeVaultPath(input.Path)
 	if safePath == "" {
 		return errorResult("Error: path must be a relative path within the vault. Cannot write to _PRIVATE/."), nil, nil
-	}
-	// SECURITY: Block MCP writes to imports/ — this directory is owned by
-	// `same import` and its contents are trusted for provenance tracking.
-	// Allowing MCP writes here would let agents plant provenance_source
-	// frontmatter that monitors files outside the vault.
-	cleanPath := filepath.ToSlash(filepath.Clean(input.Path))
-	if strings.HasPrefix(cleanPath, "imports/") || cleanPath == "imports" {
-		return errorResult("Error: the imports/ directory is reserved for 'same import'. Use a different path."), nil, nil
 	}
 	relPath, relErr := store.NormalizeClaimPath(input.Path)
 	if relErr != nil {
@@ -752,21 +724,8 @@ func recordProvenanceSources(notePath string, explicitSources []string) {
 			if seen[p] || p == notePath {
 				continue
 			}
-			// SECURITY: validate auto-injected path stays inside vault
-			clean := filepath.ToSlash(filepath.Clean(p))
-			if strings.HasPrefix(clean, "..") || filepath.IsAbs(clean) || strings.Contains(clean, "\x00") {
-				continue
-			}
-			fullPath := filepath.Join(vaultRoot, p)
-			// Check resolved path doesn't escape vault via symlinks
-			realPath, evalErr := filepath.EvalSymlinks(fullPath)
-			if evalErr == nil {
-				realVault, _ := filepath.EvalSymlinks(vaultRoot)
-				if !strings.HasPrefix(realPath, realVault+string(filepath.Separator)) && realPath != realVault {
-					continue
-				}
-			}
 			hash := ""
+			fullPath := filepath.Join(vaultRoot, p)
 			if content, err := os.ReadFile(fullPath); err == nil {
 				h := sha256.Sum256(content)
 				hash = fmt.Sprintf("%x", h)
@@ -935,15 +894,11 @@ func handleSaveDecision(ctx context.Context, req *mcp.CallToolRequest, input sav
 	if !checkWriteRateLimit() {
 		return errorResult("Error: too many write operations. Try again in a minute."), nil, nil
 	}
+	// Only set file-level agent frontmatter when creating a new file.
+	// On append, each decision entry carries its own inline **Agent:** attribution,
+	// so we must NOT rewrite file-level agent (which would reattribute prior entries).
 	if agent != "" {
-		if existing, readErr := os.ReadFile(safePath); readErr == nil {
-			updated := upsertAgentFrontmatter(string(existing), agent)
-			if updated != string(existing) {
-				if writeErr := os.WriteFile(safePath, []byte(updated), 0o600); writeErr != nil {
-					return errorResult("Error: could not update decision log metadata. Check file permissions."), nil, nil
-				}
-			}
-		} else if os.IsNotExist(readErr) {
+		if _, readErr := os.ReadFile(safePath); os.IsNotExist(readErr) {
 			initial := upsertAgentFrontmatter("", agent)
 			if writeErr := os.WriteFile(safePath, []byte(initial), 0o600); writeErr != nil {
 				return errorResult("Error: could not initialize decision log metadata. Check vault permissions."), nil, nil
@@ -1068,21 +1023,12 @@ func handleRecentActivity(ctx context.Context, req *mcp.CallToolRequest, input r
 		})
 	}
 
-	data, jsonErr := json.MarshalIndent(entries, "", "  ")
-	if jsonErr != nil {
-		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
-	}
+	data, _ := json.MarshalIndent(entries, "", "  ")
 	return textResult(string(data)), nil, nil
 }
 
 func handleGetSessionContext(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
 	result := map[string]any{}
-
-	// Inject current time so agents know the wall clock
-	if cfg, err := config.LoadConfig(); err == nil && cfg.Hooks.TimeInjection {
-		now := time.Now()
-		result["current_time"] = now.Format("2006-01-02 15:04 MST (Monday)")
-	}
 
 	// Pinned notes
 	pinned, err := db.GetPinnedNotes()
@@ -1162,10 +1108,7 @@ func handleGetSessionContext(ctx context.Context, req *mcp.CallToolRequest, inpu
 	stats := indexer.GetStats(db)
 	result["stats"] = stats
 
-	data, jsonErr := json.MarshalIndent(result, "", "  ")
-	if jsonErr != nil {
-		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
-	}
+	data, _ := json.MarshalIndent(result, "", "  ")
 	return textResult(string(data)), nil, nil
 }
 
@@ -1218,11 +1161,7 @@ func handleSearchAcrossVaults(ctx context.Context, req *mcp.CallToolRequest, inp
 	// Try to get query embedding
 	var queryVec []float32
 	if embedClient != nil {
-		var queryErr error
-		queryVec, queryErr = embedClient.GetQueryEmbedding(input.Query)
-		if queryErr != nil {
-			fmt.Fprintf(os.Stderr, "same: mcp: query embedding failed: %v (keyword fallback)\n", queryErr)
-		}
+		queryVec, _ = embedClient.GetQueryEmbedding(input.Query)
 	}
 
 	results, err := store.FederatedSearch(vaultDBPaths, queryVec, input.Query, store.SearchOptions{TopK: topK})
@@ -1257,10 +1196,7 @@ func handleSearchAcrossVaults(ctx context.Context, req *mcp.CallToolRequest, inp
 		_ = db.IncrementAccessCount(localPaths)
 	}
 
-	data, jsonErr := json.MarshalIndent(results, "", "  ")
-	if jsonErr != nil {
-		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
-	}
+	data, _ := json.MarshalIndent(results, "", "  ")
 	return textResult(string(data)), nil, nil
 }
 
@@ -1281,13 +1217,9 @@ func handleMemConsolidate(ctx context.Context, req *mcp.CallToolRequest, input m
 		return errorResult("Consolidation requires an LLM provider. Run 'same init' to configure one, or set SAME_CHAT_PROVIDER."), nil, nil
 	}
 
-	model := config.ChatModel()
-	if model == "" {
-		var modelErr error
-		model, modelErr = chat.PickBestModel()
-		if modelErr != nil || model == "" {
-			return errorResult("No chat model available. Ensure your LLM provider has at least one model installed."), nil, nil
-		}
+	model, err := chat.PickBestModel()
+	if err != nil || model == "" {
+		return errorResult("No chat model available. Ensure your LLM provider has at least one model installed."), nil, nil
 	}
 
 	threshold := input.Threshold
@@ -1419,13 +1351,9 @@ func handleMemBrief(ctx context.Context, req *mcp.CallToolRequest, input memBrie
 		return errorResult("Brief requires an LLM provider. Run 'same init' to configure one, or set SAME_CHAT_PROVIDER."), nil, nil
 	}
 
-	model := config.ChatModel()
-	if model == "" {
-		var modelErr error
-		model, modelErr = chat.PickBestModel()
-		if modelErr != nil || model == "" {
-			return errorResult("No chat model available. Ensure your LLM provider has at least one model installed."), nil, nil
-		}
+	model, err := chat.PickBestModel()
+	if err != nil || model == "" {
+		return errorResult("No chat model available. Ensure your LLM provider has at least one model installed."), nil, nil
 	}
 
 	prompt := buildMCPBriefPrompt(recentNotes, sessionNotes, decisionNotes, highConfNotes)
@@ -1611,6 +1539,21 @@ func handleMemForget(ctx context.Context, req *mcp.CallToolRequest, input memFor
 	notes, err := db.GetNoteByPath(input.Path)
 	if err != nil || len(notes) == 0 {
 		return errorResult(fmt.Sprintf("No note found at path: %s", input.Path)), nil, nil
+	}
+
+	// Agent ownership check: if caller identifies as an agent, they can only
+	// suppress notes they created. Vault owners (no agent param) can suppress anything.
+	callerAgent, agentErr := normalizeAgent(input.Agent)
+	if agentErr != nil {
+		return errorResult("Error: invalid agent value. Use 1-128 visible characters without newlines."), nil, nil
+	}
+	if callerAgent != "" {
+		noteAgent := notes[0].Agent
+		if noteAgent != "" && noteAgent != callerAgent {
+			return errorResult(fmt.Sprintf(
+				"Error: cannot suppress a note created by agent %q. "+
+					"Only the creating agent or vault owner can suppress notes.", noteAgent)), nil, nil
+		}
 	}
 
 	affected, err := db.SuppressNote(input.Path)
@@ -1956,11 +1899,7 @@ func searchWithFallback(query string, opts store.SearchOptions) ([]store.SearchR
 	// Try vector+keyword hybrid search first
 	var queryVec []float32
 	if embedClient != nil {
-		var queryErr error
-		queryVec, queryErr = embedClient.GetQueryEmbedding(query)
-		if queryErr != nil {
-			fmt.Fprintf(os.Stderr, "same: mcp: query embedding failed: %v (keyword fallback)\n", queryErr)
-		}
+		queryVec, _ = embedClient.GetQueryEmbedding(query)
 	}
 
 	var results []store.SearchResult
