@@ -42,6 +42,20 @@ func TestShouldChunkByTurns_HumanAIFormat(t *testing.T) {
 	}
 }
 
+func TestShouldChunkByTurns_RequiresAlternatingPairs(t *testing.T) {
+	body := "User: first question\nUser: follow-up before any reply\nAssistant: one answer\nAssistant: trailing answer\n"
+	if ShouldChunkByTurns(body) {
+		t.Error("expected non-alternating roles to stay out of turn chunking")
+	}
+}
+
+func TestShouldChunkByTurns_IgnoresCodeBlocks(t *testing.T) {
+	body := "## Prompt Format\n\n```md\nUser: example one\nAssistant: example response\nUser: example two\nAssistant: example response two\n```\n\nThese are docs, not a transcript.\n"
+	if ShouldChunkByTurns(body) {
+		t.Error("expected fenced code block markers to be ignored")
+	}
+}
+
 // --- ChunkByTurns tests ---
 
 func TestChunkByTurns_BasicConversation(t *testing.T) {
@@ -198,6 +212,24 @@ func TestChunkByTurns_EmptyBody(t *testing.T) {
 	}
 	if chunks[0].Heading != "(full)" {
 		t.Errorf("expected (full) heading for empty body, got %q", chunks[0].Heading)
+	}
+}
+
+func TestChunkByTurns_IgnoresCodeBlockMarkers(t *testing.T) {
+	body := "User: Real question\nAssistant: Real answer\n\n```md\nUser: example only\nAssistant: do not split here\n```\n\nUser: Second real question\nAssistant: Second real answer\n"
+	chunks := ChunkByTurns(body)
+
+	if len(chunks) != 2 {
+		t.Fatalf("expected 2 real turn chunks, got %d", len(chunks))
+	}
+	if !strings.Contains(chunks[0].Text, "Real answer") {
+		t.Fatalf("expected first chunk to contain the real assistant reply, got %q", chunks[0].Text)
+	}
+	if !strings.Contains(chunks[0].Text, "do not split here") {
+		t.Fatalf("expected code block to stay attached to the surrounding chunk, got %q", chunks[0].Text)
+	}
+	if !strings.Contains(chunks[1].Text, "Second real answer") {
+		t.Fatalf("expected second chunk to contain the second real assistant reply, got %q", chunks[1].Text)
 	}
 }
 
