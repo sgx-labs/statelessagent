@@ -60,6 +60,10 @@ poetry.lock
 coverage/
 .nyc_output/
 
+# Large generated files
+CHANGELOG.md
+CHANGELOG
+
 # OS files
 .DS_Store
 Thumbs.db

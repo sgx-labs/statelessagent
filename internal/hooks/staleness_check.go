@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -71,9 +72,17 @@ func buildDivergenceContext(db *store.DB, vaultPath string) string {
 	lines := []string{"The following notes may be outdated because their source files changed:"}
 	for _, d := range unique {
 		sourceBase := filepath.Base(d.SourcePath)
-		capturedAt := time.Unix(d.CapturedAt, 0)
-		ago := time.Since(capturedAt)
-		agoStr := formatDivergenceAge(ago)
+		// Show when the source file was modified, not when we captured it
+		sourcePath := d.SourcePath
+		if !filepath.IsAbs(sourcePath) {
+			sourcePath = filepath.Join(vaultPath, sourcePath)
+		}
+		var agoStr string
+		if sourceInfo, statErr := os.Stat(sourcePath); statErr == nil {
+			agoStr = formatDivergenceAge(time.Since(sourceInfo.ModTime()))
+		} else {
+			agoStr = "source deleted"
+		}
 		lines = append(lines, fmt.Sprintf("- %s (source: %s changed %s)", d.NotePath, sourceBase, agoStr))
 	}
 

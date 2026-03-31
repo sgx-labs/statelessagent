@@ -123,10 +123,10 @@ Your markdown notes get embedded and stored in SQLite. When your AI starts a ses
 
 | Metric | Value |
 |--------|-------|
-| Retrieval precision | **99.5%** on internal eval (105 synthetic test cases) |
+| Retrieval precision | **99.5%** on internal eval (105 tuning cases). Held-out validation: 93.3% Recall@5 on 30 blind test cases (see `eval/METHODOLOGY.md`) |
 | MRR | **0.949** (right note first, almost every time) |
 | Prompt overhead | **<200ms** |
-| Binary size | **~12MB** |
+| Binary size | **~14MB** |
 | Setup time | **Under 2 minutes** |
 
 ## Add to Your AI Tool
@@ -325,21 +325,22 @@ Start with `same doctor` -- it runs 20+ checks and tells you what's wrong.
 | Memory integrity | Provenance + trust | No | No | No |
 | Knowledge graph | Built-in | Requires Neo4j | No | No |
 | Cross-tool memory | Yes | API only | No | Claude only |
-| Runs on Pi | Yes (~12MB) | No | No | Yes |
+| Runs on Pi | Yes (~14MB) | No | No | Yes |
 
 </details>
 
 <details>
 <summary><strong>Eval Methodology</strong></summary>
 
-Retrieval benchmarked against 105 ground-truth test cases with known-relevant notes.
+Internal evaluation on 105 tuning cases. Held-out validation: 93.3% Recall@5 on 30 blind test cases (see `eval/METHODOLOGY.md`).
 
-| Metric | Value |
-|--------|-------|
-| Precision | 99.5% |
-| Coverage | 90.5% |
-| MRR | 0.949 |
-| BAD cases | 0 |
+| Metric | Value | Dataset |
+|--------|-------|---------|
+| Precision | 99.5% | Internal (105 tuning cases) |
+| Coverage | 90.5% | Internal (105 tuning cases) |
+| MRR | 0.949 | Internal (105 tuning cases) |
+| Recall@5 | 93.3% | Held-out (30 blind cases) |
+| BAD cases | 0 | Both |
 
 All evaluation uses synthetic vault data. No user data used.
 

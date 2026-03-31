@@ -65,6 +65,10 @@ Cargo.lock
 Gemfile.lock
 poetry.lock
 
+# Large generated files
+CHANGELOG.md
+CHANGELOG
+
 # Generated files
 *.min.js
 *.min.css

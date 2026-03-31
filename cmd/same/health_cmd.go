@@ -353,9 +353,17 @@ func runHealth() error {
 			}
 			d := divergedByNote[notePath]
 			sourceBase := filepath.Base(d.SourcePath)
-			capturedAt := time.Unix(d.CapturedAt, 0)
-			ago := time.Since(capturedAt)
-			agoStr := relativeTimeStr(ago)
+			// Show when the source file was modified, not when we captured it
+			sourcePath := d.SourcePath
+			if !filepath.IsAbs(sourcePath) {
+				sourcePath = filepath.Join(vaultPath, sourcePath)
+			}
+			var agoStr string
+			if sourceInfo, statErr := os.Stat(sourcePath); statErr == nil {
+				agoStr = relativeTimeStr(time.Since(sourceInfo.ModTime()))
+			} else {
+				agoStr = "source deleted"
+			}
 			fmt.Printf("    %s%-30s%s %s%s— %s changed %s%s\n",
 				cli.Yellow, notePath, cli.Reset,
 				cli.Dim, "", sourceBase, agoStr, cli.Reset)
