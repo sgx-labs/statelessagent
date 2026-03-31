@@ -956,6 +956,14 @@ func recordFrontmatterProvenance(database *store.DB, notePath string, meta NoteM
 	if meta.ProvenanceSource == "" {
 		return
 	}
+	// SECURITY: Only trust provenance_source frontmatter for notes in the
+	// imports/ directory. These notes were created by `same import`, a trusted
+	// local command. Notes created by MCP save_note or manual editing could
+	// contain attacker-controlled provenance_source values pointing at
+	// sensitive files outside the vault.
+	if !strings.HasPrefix(notePath, "imports/") {
+		return
+	}
 
 	hash := meta.ProvenanceHash
 	if hash == "" {

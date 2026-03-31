@@ -183,17 +183,23 @@ func TestVaultPrune_RemovesMissingVaults(t *testing.T) {
 		t.Fatalf("save registry: %v", err)
 	}
 
-	// LoadRegistry now auto-prunes stale entries, so the missing vault
-	// should already be cleaned up before vault prune runs.
+	// LoadRegistry is read-only — missing vault should still be there
+	reg = config.LoadRegistry()
+	if _, ok := reg.Vaults["missing"]; !ok {
+		t.Fatal("expected missing vault to be preserved by read-only LoadRegistry")
+	}
+
+	// PruneRegistry should remove it
+	config.PruneRegistry()
 	reg = config.LoadRegistry()
 	if _, ok := reg.Vaults["missing"]; ok {
-		t.Fatal("expected missing vault to be auto-pruned on load")
+		t.Fatal("expected missing vault to be removed by PruneRegistry")
 	}
 	if got := reg.Vaults["live"]; got != existing {
 		t.Fatalf("live vault path = %q, want %q", got, existing)
 	}
 	if reg.Default != "" {
-		t.Fatalf("default vault = %q, want empty after auto-pruning default", reg.Default)
+		t.Fatalf("default vault = %q, want empty after pruning default", reg.Default)
 	}
 
 	// vault prune should still run cleanly (nothing left to prune)

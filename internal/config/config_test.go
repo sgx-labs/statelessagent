@@ -735,10 +735,17 @@ func TestRegistryCleanup_RemovesStale(t *testing.T) {
 	data, _ := json.MarshalIndent(reg, "", "  ")
 	os.WriteFile(filepath.Join(regDir, "vaults.json"), data, 0o600)
 
-	// Load registry — should prune the stale entry
+	// LoadRegistry should NOT prune (read-only)
 	loaded := LoadRegistry()
-	if _, ok := loaded.Vaults["stale_vault"]; ok {
-		t.Error("expected stale vault entry to be removed")
+	if _, ok := loaded.Vaults["stale_vault"]; !ok {
+		t.Error("expected stale vault entry to be preserved by read-only LoadRegistry")
+	}
+
+	// PruneRegistry should remove the stale entry
+	PruneRegistry()
+	pruned := LoadRegistry()
+	if _, ok := pruned.Vaults["stale_vault"]; ok {
+		t.Error("expected stale vault entry to be removed by PruneRegistry")
 	}
 }
 
@@ -761,9 +768,17 @@ func TestRegistryCleanup_ClearsStaleDefault(t *testing.T) {
 	data, _ := json.MarshalIndent(reg, "", "  ")
 	os.WriteFile(filepath.Join(regDir, "vaults.json"), data, 0o600)
 
+	// LoadRegistry should NOT clear stale default (read-only)
 	loaded := LoadRegistry()
-	if loaded.Default != "" {
-		t.Errorf("expected stale default to be cleared, got %q", loaded.Default)
+	if loaded.Default == "" {
+		t.Error("expected stale default to be preserved by read-only LoadRegistry")
+	}
+
+	// PruneRegistry should clear it
+	PruneRegistry()
+	pruned := LoadRegistry()
+	if pruned.Default != "" {
+		t.Errorf("expected stale default to be cleared by PruneRegistry, got %q", pruned.Default)
 	}
 	// Valid vault should still be present
 	if _, ok := loaded.Vaults["valid_vault"]; !ok {

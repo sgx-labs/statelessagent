@@ -165,11 +165,12 @@ func runImport(scanDir, explicitFile string, recursive bool) error {
 
 	// Import Claude Code memory files
 	if len(claudeMemories) > 0 {
-		memImported, err := importClaudeMemories(claudeMemories, importsDir, now)
+		memFiles, memImported, err := importClaudeMemories(claudeMemories, importsDir, now)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  [ERROR] importing Claude memories: %v\n", err)
 		}
 		imported += memImported
+		successfulImports = append(successfulImports, memFiles...)
 	}
 
 	if imported == 0 {
@@ -201,10 +202,10 @@ func runImport(scanDir, explicitFile string, recursive bool) error {
 
 // importClaudeMemories writes Claude memory files to the vault with SAME frontmatter.
 // Returns the count of successfully imported files.
-func importClaudeMemories(memories []claudeMemory, importsDir, now string) (int, error) {
+func importClaudeMemories(memories []claudeMemory, importsDir, now string) ([]importedFile, int, error) {
 	memDir := filepath.Join(importsDir, "claude-memory")
-	if err := os.MkdirAll(memDir, 0o755); err != nil {
-		return 0, fmt.Errorf("create claude-memory directory: %w", err)
+	if err := os.MkdirAll(memDir, 0o700); err != nil {
+		return nil, 0, fmt.Errorf("create claude-memory directory: %w", err)
 	}
 
 	// Check for de-duplication — skip already-imported files
@@ -224,7 +225,7 @@ func importClaudeMemories(memories []claudeMemory, importsDir, now string) (int,
 			fmt.Printf("\n  %sClaude memories: %d already imported, nothing new.%s\n",
 				cli.Dim, skipped, cli.Reset)
 		}
-		return 0, nil
+		return nil, 0, nil
 	}
 
 	// Recount by scope for preview (only non-skipped)
@@ -267,11 +268,12 @@ func importClaudeMemories(memories []claudeMemory, importsDir, now string) (int,
 	answer = strings.TrimSpace(strings.ToLower(answer))
 	if answer != "" && answer != "y" && answer != "yes" {
 		fmt.Println("  Skipped.")
-		return 0, nil
+		return nil, 0, nil
 	}
 
 	// Write files
 	imported := 0
+	var importedFiles []importedFile
 	for _, m := range toImport {
 		sameType := mapClaudeTypeToSAME(m.memType)
 		tags := "claude-memory"
@@ -299,14 +301,20 @@ func importClaudeMemories(memories []claudeMemory, importsDir, now string) (int,
 		sb.WriteString(m.body)
 
 		destPath := filepath.Join(memDir, m.slug())
-		if err := os.WriteFile(destPath, []byte(sb.String()), 0o644); err != nil {
+		if err := os.WriteFile(destPath, []byte(sb.String()), 0o600); err != nil {
 			fmt.Fprintf(os.Stderr, "  [ERROR] writing %s: %v\n", destPath, err)
 			continue
 		}
 
+		slug := m.slug()
 		fmt.Printf("  %s✓%s %s → imports/claude-memory/%s\n",
-			cli.Green, cli.Reset, filepath.Base(m.absPath), m.slug())
+			cli.Green, cli.Reset, filepath.Base(m.absPath), slug)
 		imported++
+		importedFiles = append(importedFiles, importedFile{
+			sourcePath: m.absPath,
+			slug:       filepath.Join("claude-memory", slug),
+			toolName:   "Claude Code memory",
+		})
 	}
 
 	if imported > 0 {
@@ -316,7 +324,7 @@ func importClaudeMemories(memories []claudeMemory, importsDir, now string) (int,
 			cli.Dim, cli.Reset)
 	}
 
-	return imported, nil
+	return importedFiles, imported, nil
 }
 
 // detectConfigFiles finds known AI config files in the given directory.

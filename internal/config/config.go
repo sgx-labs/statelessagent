@@ -1142,8 +1142,8 @@ func RegistryPath() string {
 	return filepath.Join(home, ".config", "same", "vaults.json")
 }
 
-// LoadRegistry loads or creates the vault registry.
-// Stale entries (paths that no longer exist on disk) are pruned automatically.
+// LoadRegistry loads or creates the vault registry. Read-only — does not
+// modify the file on disk. Use PruneRegistry for explicit cleanup.
 func LoadRegistry() *VaultRegistry {
 	data, err := os.ReadFile(RegistryPath())
 	if err != nil {
@@ -1156,8 +1156,14 @@ func LoadRegistry() *VaultRegistry {
 	if reg.Vaults == nil {
 		reg.Vaults = make(map[string]string)
 	}
+	return &reg
+}
 
-	// Prune stale entries whose paths no longer exist on disk.
+// PruneRegistry removes stale entries (paths that no longer exist on disk)
+// from the vault registry and saves. Call from explicit vault management
+// commands, not from every registry load.
+func PruneRegistry() {
+	reg := LoadRegistry()
 	changed := false
 	for alias, path := range reg.Vaults {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -1174,8 +1180,6 @@ func LoadRegistry() *VaultRegistry {
 	if changed {
 		_ = reg.Save()
 	}
-
-	return &reg
 }
 
 // NameForPath returns the registry alias for a given vault path.
