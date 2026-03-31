@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1593,4 +1594,154 @@ func saveUserConfig(cfg userConfig) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o600)
+}
+
+// SetConfigValue sets a config value using dot notation (e.g., "ollama.url").
+// When global is true, writes to GlobalConfigPath; otherwise writes to vault config.
+func SetConfigValue(key, value string, global bool) error {
+	parts := strings.SplitN(key, ".", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid key format %q — use section.key (e.g., ollama.url)", key)
+	}
+	section, field := parts[0], parts[1]
+
+	var cfgPath string
+	if global {
+		cfgPath = GlobalConfigPath()
+	} else {
+		vp := VaultPath()
+		if vp == "" {
+			return ErrNoVault
+		}
+		cfgPath = ConfigFilePath(vp)
+	}
+
+	cfg, err := LoadConfigFrom(cfgPath)
+	if err != nil {
+		cfg = DefaultConfig()
+	}
+
+	if err := setField(cfg, section, field, value); err != nil {
+		return err
+	}
+
+	var buf bytes.Buffer
+	encoder := toml.NewEncoder(&buf)
+	if err := encoder.Encode(cfg); err != nil {
+		return fmt.Errorf("encode config: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+	return os.WriteFile(cfgPath, buf.Bytes(), 0o600)
+}
+
+// setField maps dot-notation keys to Config struct fields.
+func setField(cfg *Config, section, field, value string) error {
+	key := section + "." + field
+	switch key {
+	case "ollama.url":
+		cfg.Ollama.URL = value
+	case "ollama.model":
+		cfg.Ollama.Model = value
+	case "embedding.provider":
+		cfg.Embedding.Provider = value
+	case "embedding.model":
+		cfg.Embedding.Model = value
+	case "embedding.api_key":
+		cfg.Embedding.APIKey = value
+	case "embedding.base_url":
+		cfg.Embedding.BaseURL = value
+	case "embedding.dimensions":
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer for %s: %w", key, err)
+		}
+		cfg.Embedding.Dimensions = n
+	case "chat.model":
+		cfg.Chat.Model = value
+	case "graph.llm_mode":
+		valid := map[string]bool{"off": true, "local-only": true, "on": true}
+		if !valid[value] {
+			return fmt.Errorf("invalid value for graph.llm_mode: %q (use off, local-only, or on)", value)
+		}
+		cfg.Graph.LLMMode = value
+	case "graph.model":
+		cfg.Graph.Model = value
+	case "memory.max_token_budget":
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer for %s: %w", key, err)
+		}
+		cfg.Memory.MaxTokenBudget = n
+	case "memory.max_results":
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer for %s: %w", key, err)
+		}
+		cfg.Memory.MaxResults = n
+	case "memory.distance_threshold":
+		f, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid float for %s: %w", key, err)
+		}
+		cfg.Memory.DistanceThreshold = f
+	case "memory.composite_threshold":
+		f, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid float for %s: %w", key, err)
+		}
+		cfg.Memory.CompositeThreshold = f
+	case "hooks.context_surfacing":
+		cfg.Hooks.ContextSurfacing = parseBoolValue(value)
+	case "hooks.decision_extractor":
+		cfg.Hooks.DecisionExtractor = parseBoolValue(value)
+	case "hooks.handoff_generator":
+		cfg.Hooks.HandoffGenerator = parseBoolValue(value)
+	case "hooks.staleness_check":
+		cfg.Hooks.StalenessCheck = parseBoolValue(value)
+	case "display.mode":
+		valid := map[string]bool{"full": true, "compact": true, "quiet": true}
+		if !valid[value] {
+			return fmt.Errorf("invalid value for display.mode: %q (use full, compact, or quiet)", value)
+		}
+		cfg.Display.Mode = value
+	case "vault.path":
+		cfg.Vault.Path = value
+	case "vault.handoff_dir":
+		cfg.Vault.HandoffDir = value
+	default:
+		return fmt.Errorf("unknown config key %q — run 'same config show' to see available keys", key)
+	}
+	return nil
+}
+
+// parseBoolValue parses a boolean string value (true/false/yes/no/on/off/1/0).
+func parseBoolValue(s string) bool {
+	switch strings.ToLower(s) {
+	case "true", "yes", "on", "1":
+		return true
+	default:
+		return false
+	}
+}
+
+// ConfigFilePath returns the path to the vault config file.
+func ConfigFilePath(vaultPath string) string {
+	return filepath.Join(vaultPath, ".same", "config.toml")
+}
+
+// LoadConfigFrom loads a config from a specific path.
+func LoadConfigFrom(path string) (*Config, error) {
+	var cfg Config
+	if _, err := toml.DecodeFile(path, &cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+// DefaultConfig returns a Config with default values.
+func DefaultConfig() *Config {
+	return &Config{}
 }
