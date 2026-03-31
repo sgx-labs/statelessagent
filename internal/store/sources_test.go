@@ -581,6 +581,137 @@ func TestGetContradictionSummary(t *testing.T) {
 	}
 }
 
+func TestCheckSourceDivergence_AbsolutePath(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Create a temp file to serve as the absolute-path source
+	sourceDir := t.TempDir()
+	sourceFile := filepath.Join(sourceDir, "memory.md")
+	originalContent := []byte("# Original Memory\n\nOriginal content.\n")
+	if err := os.WriteFile(sourceFile, originalContent, 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+	originalHash := fmt.Sprintf("%x", sha256.Sum256(originalContent))
+
+	// Record source with an absolute path (as the import command would)
+	if err := db.RecordSource("imported/memory.md", sourceFile, "file", originalHash); err != nil {
+		t.Fatalf("RecordSource: %v", err)
+	}
+
+	// No divergence yet — hash matches
+	vaultDir := t.TempDir()
+	results, err := db.CheckSourceDivergence(vaultDir)
+	if err != nil {
+		t.Fatalf("CheckSourceDivergence: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected 0 divergences, got %d", len(results))
+	}
+
+	// Modify the source file
+	modifiedContent := []byte("# Updated Memory\n\nContent has changed.\n")
+	if err := os.WriteFile(sourceFile, modifiedContent, 0o644); err != nil {
+		t.Fatalf("write modified file: %v", err)
+	}
+
+	// Now divergence should be detected
+	results, err = db.CheckSourceDivergence(vaultDir)
+	if err != nil {
+		t.Fatalf("CheckSourceDivergence after modify: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 divergence, got %d", len(results))
+	}
+	if results[0].NotePath != "imported/memory.md" {
+		t.Errorf("expected note_path 'imported/memory.md', got %q", results[0].NotePath)
+	}
+	if results[0].SourcePath != sourceFile {
+		t.Errorf("expected source_path %q, got %q", sourceFile, results[0].SourcePath)
+	}
+	if results[0].StoredHash != originalHash {
+		t.Errorf("expected stored_hash %q, got %q", originalHash, results[0].StoredHash)
+	}
+	expectedModifiedHash := fmt.Sprintf("%x", sha256.Sum256(modifiedContent))
+	if results[0].CurrentHash != expectedModifiedHash {
+		t.Errorf("expected current_hash %q, got %q", expectedModifiedHash, results[0].CurrentHash)
+	}
+}
+
+func TestCheckSourceDivergence_AbsolutePath_Deleted(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Create and then delete a temp file
+	sourceDir := t.TempDir()
+	sourceFile := filepath.Join(sourceDir, "memory.md")
+	if err := os.WriteFile(sourceFile, []byte("temp"), 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	// Record source with absolute path
+	if err := db.RecordSource("imported/memory.md", sourceFile, "file", "originalhash"); err != nil {
+		t.Fatalf("RecordSource: %v", err)
+	}
+
+	// Delete the source file
+	if err := os.Remove(sourceFile); err != nil {
+		t.Fatalf("remove source file: %v", err)
+	}
+
+	// Should report as diverged with empty CurrentHash
+	vaultDir := t.TempDir()
+	results, err := db.CheckSourceDivergence(vaultDir)
+	if err != nil {
+		t.Fatalf("CheckSourceDivergence: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 divergence for deleted file, got %d", len(results))
+	}
+	if results[0].CurrentHash != "" {
+		t.Errorf("expected empty current_hash for deleted file, got %q", results[0].CurrentHash)
+	}
+	if results[0].StoredHash != "originalhash" {
+		t.Errorf("expected stored_hash 'originalhash', got %q", results[0].StoredHash)
+	}
+}
+
+func TestCheckSourceDivergence_RelativePath_StillSecure(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	vaultDir := t.TempDir()
+
+	// Record sources with traversal paths that should still be blocked
+	traversalPaths := []string{
+		"../../../etc/passwd",
+		"../../etc/shadow",
+		"..\\..\\windows\\system32\\config\\sam",
+	}
+	for _, p := range traversalPaths {
+		if err := db.RecordSource("notes/malicious.md", p, "file", "fakehash"); err != nil {
+			t.Fatalf("RecordSource %q: %v", p, err)
+		}
+	}
+
+	results, err := db.CheckSourceDivergence(vaultDir)
+	if err != nil {
+		t.Fatalf("CheckSourceDivergence: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 divergences (traversal paths should be skipped), got %d", len(results))
+	}
+}
+
 func TestGetContradictionSummary_Empty(t *testing.T) {
 	db, err := OpenMemory()
 	if err != nil {

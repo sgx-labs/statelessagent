@@ -179,25 +179,39 @@ func (db *DB) CheckSourceDivergence(vaultPath string) ([]DivergenceResult, error
 			return nil, fmt.Errorf("scan divergence row: %w", err)
 		}
 
-		// SECURITY: validate stored path to prevent traversal reads outside vault
+		// SECURITY: validate stored path to prevent traversal reads outside vault.
+		// Absolute paths are allowed only for imported provenance (set by SAME's
+		// import command, not user-supplied MCP input).
 		clean := filepath.ToSlash(filepath.Clean(sourcePath))
-		if strings.HasPrefix(clean, "..") || filepath.IsAbs(clean) || strings.Contains(clean, "\x00") {
+		if strings.Contains(clean, "\x00") {
 			continue
 		}
-		fullPath := filepath.Join(vaultPath, sourcePath)
-		// SECURITY: check for symlink escape before reading.
-		// Canonicalize both sides so macOS /var → /private/var comparisons work.
-		vaultAbs, _ := filepath.Abs(vaultPath)
-		realVault, rvErr := filepath.EvalSymlinks(vaultAbs)
-		if rvErr != nil {
-			realVault = vaultAbs
-		}
-		realPath, evalErr := filepath.EvalSymlinks(fullPath)
-		if evalErr == nil {
-			if !strings.HasPrefix(realPath, realVault+string(filepath.Separator)) && realPath != realVault {
+
+		var fullPath string
+		if filepath.IsAbs(clean) {
+			// Absolute path — used for imported provenance (e.g., ~/.claude/memory/...).
+			// Safe because these paths are set by SAME's import command, not user input.
+			fullPath = sourcePath
+		} else {
+			if strings.HasPrefix(clean, "..") {
 				continue
 			}
+			fullPath = filepath.Join(vaultPath, sourcePath)
+			// SECURITY: check for symlink escape before reading.
+			// Canonicalize both sides so macOS /var → /private/var comparisons work.
+			vaultAbs, _ := filepath.Abs(vaultPath)
+			realVault, rvErr := filepath.EvalSymlinks(vaultAbs)
+			if rvErr != nil {
+				realVault = vaultAbs
+			}
+			realPath, evalErr := filepath.EvalSymlinks(fullPath)
+			if evalErr == nil {
+				if !strings.HasPrefix(realPath, realVault+string(filepath.Separator)) && realPath != realVault {
+					continue
+				}
+			}
 		}
+
 		content, err := os.ReadFile(fullPath)
 		if err != nil {
 			// File no longer exists or is unreadable — that's divergence.

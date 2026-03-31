@@ -16,9 +16,11 @@ type NoteMeta struct {
 	Agent       string   `yaml:"agent"`
 	ContentType string   `yaml:"content_type"`
 	ReviewBy    string   `yaml:"review_by"`
-	ReviewByAlt string   `yaml:"review-by"`    // alternate key
-	TrustState  string   `yaml:"trust_state"`  // validated, stale, contradicted, unknown
-	Confidence  float64  `yaml:"confidence"`   // 0.0-1.0 confidence score from frontmatter
+	ReviewByAlt      string   `yaml:"review-by"`         // alternate key
+	TrustState       string   `yaml:"trust_state"`       // validated, stale, contradicted, unknown
+	Confidence       float64  `yaml:"confidence"`        // 0.0-1.0 confidence score from frontmatter
+	ProvenanceSource string   `yaml:"provenance_source"` // absolute path to original file
+	ProvenanceHash   string   `yaml:"provenance_hash"`   // SHA256 at import time
 }
 
 // ParsedNote holds the parsed content of a markdown note.

@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -457,7 +458,7 @@ func TestBuildRecords_AllEmbeddingsFailReturnsRecordsWithSkippedError(t *testing
 	dir := t.TempDir()
 	filePath := writeTestNote(t, dir, "note.md", "# Example\n\nThis note should fail embedding.")
 
-	records, embeddings, _, err := buildRecords(filePath, "note.md", dir, failingEmbeddingProvider{})
+	records, embeddings, _, _, err := buildRecords(filePath, "note.md", dir, failingEmbeddingProvider{})
 	if !errors.Is(err, errEmbeddingSkipped) {
 		t.Fatalf("expected errEmbeddingSkipped, got %v", err)
 	}
@@ -743,7 +744,7 @@ REST is simpler and better suited for our use case.
 	filePath := writeTestNote(t, dir, "decisions/api-design.md", content)
 	relPath := "decisions/api-design.md"
 
-	records, _, err := buildRecordsLite(filePath, relPath, dir)
+	records, _, _, err := buildRecordsLite(filePath, relPath, dir)
 	if err != nil {
 		t.Fatalf("buildRecordsLite: %v", err)
 	}
@@ -793,7 +794,7 @@ func TestBuildRecordsLiteTitleFromFilename(t *testing.T) {
 	content := "# No Frontmatter\n\nJust body text.\n"
 	filePath := writeTestNote(t, dir, "my-note.md", content)
 
-	records, _, err := buildRecordsLite(filePath, "my-note.md", dir)
+	records, _, _, err := buildRecordsLite(filePath, "my-note.md", dir)
 	if err != nil {
 		t.Fatalf("buildRecordsLite: %v", err)
 	}
@@ -816,7 +817,7 @@ Body.
 `
 	filePath := writeTestNote(t, dir, "note.md", content)
 
-	records, _, err := buildRecordsLite(filePath, "note.md", dir)
+	records, _, _, err := buildRecordsLite(filePath, "note.md", dir)
 	if err != nil {
 		t.Fatalf("buildRecordsLite: %v", err)
 	}
@@ -842,7 +843,7 @@ func TestBuildRecordsLiteChunking(t *testing.T) {
 
 	filePath := writeTestNote(t, dir, "long.md", body.String())
 
-	records, _, err := buildRecordsLite(filePath, "long.md", dir)
+	records, _, _, err := buildRecordsLite(filePath, "long.md", dir)
 	if err != nil {
 		t.Fatalf("buildRecordsLite: %v", err)
 	}
@@ -876,7 +877,7 @@ func TestBuildRecordsLiteTextTruncation(t *testing.T) {
 	content := "---\ntitle: \"Huge\"\n---\n\n" + strings.Repeat("x", 12000)
 	filePath := writeTestNote(t, dir, "huge.md", content)
 
-	records, _, err := buildRecordsLite(filePath, "huge.md", dir)
+	records, _, _, err := buildRecordsLite(filePath, "huge.md", dir)
 	if err != nil {
 		t.Fatalf("buildRecordsLite: %v", err)
 	}
@@ -889,7 +890,7 @@ func TestBuildRecordsLiteTextTruncation(t *testing.T) {
 }
 
 func TestBuildRecordsLiteFileNotFound(t *testing.T) {
-	_, _, err := buildRecordsLite("/nonexistent/file.md", "file.md", "/nonexistent")
+	_, _, _, err := buildRecordsLite("/nonexistent/file.md", "file.md", "/nonexistent")
 	if err == nil {
 		t.Error("expected error for nonexistent file")
 	}
@@ -1283,5 +1284,117 @@ func TestGetStatsCorruptedJSONFallsBackToLiveQuery(t *testing.T) {
 	}
 	if _, ok := stats["total_chunks_in_index"]; !ok {
 		t.Fatalf("expected live chunk count in fallback stats: %#v", stats)
+	}
+}
+
+func TestFrontmatterProvenance_RecordedDuringIndex(t *testing.T) {
+	// Create a temp dir to act as the "original source" location
+	sourceDir := t.TempDir()
+	sourceContent := []byte("# Original Claude Memory\n\nThis is the original content.\n")
+	sourceFile := filepath.Join(sourceDir, "memory.md")
+	if err := os.WriteFile(sourceFile, sourceContent, 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+	sourceHash := fmt.Sprintf("%x", sha256.Sum256(sourceContent))
+
+	// Set up a vault with a note that has provenance frontmatter
+	vaultDir := setupTestVault(t)
+	noteContent := fmt.Sprintf(`---
+title: "Imported Memory"
+provenance_source: %s
+provenance_hash: %s
+---
+
+This is an imported memory note.
+`, sourceFile, sourceHash)
+
+	writeTestNote(t, vaultDir, "imported/memory.md", noteContent)
+
+	db, err := store.OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Use ReindexLite since it doesn't require an embedding provider
+	stats, err := ReindexLite(context.Background(), db, true, nil)
+	if err != nil {
+		t.Fatalf("ReindexLite: %v", err)
+	}
+	if stats.NewlyIndexed != 1 {
+		t.Fatalf("expected 1 newly indexed, got %d", stats.NewlyIndexed)
+	}
+
+	// Query note_sources table to verify provenance was recorded
+	sources, err := db.GetSourcesForNote("imported/memory.md")
+	if err != nil {
+		t.Fatalf("GetSourcesForNote: %v", err)
+	}
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source for imported note, got %d", len(sources))
+	}
+	if sources[0].SourcePath != sourceFile {
+		t.Errorf("expected source_path %q, got %q", sourceFile, sources[0].SourcePath)
+	}
+	if sources[0].SourceType != "file" {
+		t.Errorf("expected source_type 'file', got %q", sources[0].SourceType)
+	}
+	if sources[0].SourceHash != sourceHash {
+		t.Errorf("expected source_hash %q, got %q", sourceHash, sources[0].SourceHash)
+	}
+}
+
+func TestFrontmatterProvenance_ComputesHashWhenMissing(t *testing.T) {
+	// Create a source file but provide no hash in frontmatter
+	sourceDir := t.TempDir()
+	sourceContent := []byte("# Memory Content\n\nSome content here.\n")
+	sourceFile := filepath.Join(sourceDir, "memory.md")
+	if err := os.WriteFile(sourceFile, sourceContent, 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+	expectedHash := fmt.Sprintf("%x", sha256.Sum256(sourceContent))
+
+	// Record provenance with empty hash — it should compute from file
+	db, err := store.OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	meta := NoteMeta{
+		ProvenanceSource: sourceFile,
+		ProvenanceHash:   "", // empty — should be computed
+	}
+	recordFrontmatterProvenance(db, "test/note.md", meta)
+
+	sources, err := db.GetSourcesForNote("test/note.md")
+	if err != nil {
+		t.Fatalf("GetSourcesForNote: %v", err)
+	}
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source, got %d", len(sources))
+	}
+	if sources[0].SourceHash != expectedHash {
+		t.Errorf("expected computed hash %q, got %q", expectedHash, sources[0].SourceHash)
+	}
+}
+
+func TestFrontmatterProvenance_SkippedWhenEmpty(t *testing.T) {
+	db, err := store.OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// Meta with no provenance should be a no-op
+	meta := NoteMeta{Title: "Normal Note"}
+	recordFrontmatterProvenance(db, "test/note.md", meta)
+
+	sources, err := db.GetSourcesForNote("test/note.md")
+	if err != nil {
+		t.Fatalf("GetSourcesForNote: %v", err)
+	}
+	if len(sources) != 0 {
+		t.Errorf("expected 0 sources for note without provenance, got %d", len(sources))
 	}
 }
