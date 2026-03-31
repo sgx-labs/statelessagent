@@ -13,6 +13,8 @@ import (
 
 	"github.com/sgx-labs/statelessagent/internal/cli"
 	"github.com/sgx-labs/statelessagent/internal/config"
+	"github.com/sgx-labs/statelessagent/internal/indexer"
+	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
 // knownConfigFiles lists AI tool configuration files to auto-detect.
@@ -91,7 +93,7 @@ func runImport(scanDir, explicitFile string, recursive bool) error {
 	}
 
 	importsDir := filepath.Join(vaultPath, "imports")
-	if err := os.MkdirAll(importsDir, 0o755); err != nil {
+	if err := os.MkdirAll(importsDir, 0o700); err != nil {
 		return fmt.Errorf("create imports directory: %w", err)
 	}
 
@@ -138,6 +140,7 @@ func runImport(scanDir, explicitFile string, recursive bool) error {
 
 	imported := 0
 	now := time.Now().Format("2006-01-02")
+	var successfulImports []importedFile
 
 	for _, f := range toImport {
 		content, err := os.ReadFile(f.sourcePath)
@@ -150,13 +153,14 @@ func runImport(scanDir, explicitFile string, recursive bool) error {
 		output := header + string(content)
 
 		destPath := filepath.Join(importsDir, f.slug)
-		if err := os.WriteFile(destPath, []byte(output), 0o644); err != nil {
+		if err := os.WriteFile(destPath, []byte(output), 0o600); err != nil {
 			fmt.Fprintf(os.Stderr, "  [ERROR] writing %s: %v\n", destPath, err)
 			continue
 		}
 
 		fmt.Printf("  %s✓%s %s → imports/%s\n", cli.Green, cli.Reset, f.toolName, f.slug)
 		imported++
+		successfulImports = append(successfulImports, f)
 	}
 
 	// Import Claude Code memory files
@@ -170,6 +174,23 @@ func runImport(scanDir, explicitFile string, recursive bool) error {
 
 	if imported == 0 {
 		return fmt.Errorf("no files were imported successfully")
+	}
+
+	// Index imported files so they're immediately searchable
+	database, dbErr := store.Open()
+	if dbErr == nil {
+		defer database.Close()
+		for _, f := range successfulImports {
+			destPath := filepath.Join(importsDir, f.slug)
+			relPath, relErr := filepath.Rel(vaultPath, destPath)
+			if relErr != nil {
+				continue
+			}
+			// Use lite indexing (keyword-only) — no embedding provider needed
+			if idxErr := indexer.IndexSingleFileLite(database, destPath, relPath, vaultPath); idxErr != nil {
+				fmt.Fprintf(os.Stderr, "  [WARN] indexing %s: %v\n", f.slug, idxErr)
+			}
+		}
 	}
 
 	fmt.Printf("\n  Imported %d file(s) into vault. Run %ssame search%s to verify.\n\n",

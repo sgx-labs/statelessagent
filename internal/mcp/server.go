@@ -744,8 +744,21 @@ func recordProvenanceSources(notePath string, explicitSources []string) {
 			if seen[p] || p == notePath {
 				continue
 			}
-			hash := ""
+			// SECURITY: validate auto-injected path stays inside vault
+			clean := filepath.ToSlash(filepath.Clean(p))
+			if strings.HasPrefix(clean, "..") || filepath.IsAbs(clean) || strings.Contains(clean, "\x00") {
+				continue
+			}
 			fullPath := filepath.Join(vaultRoot, p)
+			// Check resolved path doesn't escape vault via symlinks
+			realPath, evalErr := filepath.EvalSymlinks(fullPath)
+			if evalErr == nil {
+				realVault, _ := filepath.EvalSymlinks(vaultRoot)
+				if !strings.HasPrefix(realPath, realVault+string(filepath.Separator)) && realPath != realVault {
+					continue
+				}
+			}
+			hash := ""
 			if content, err := os.ReadFile(fullPath); err == nil {
 				h := sha256.Sum256(content)
 				hash = fmt.Sprintf("%x", h)

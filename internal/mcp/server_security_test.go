@@ -1,9 +1,12 @@
 package mcp
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/store"
@@ -198,6 +201,112 @@ func TestOllamaURL_SSRFPrevention(t *testing.T) {
 				t.Errorf("expected no error for URL %q, got %v", tt.url, err)
 			}
 		})
+	}
+}
+
+// --- recordProvenanceSources: auto-injected path validation ---
+
+// seedContextUsage inserts a context_usage row with the given injected_paths.
+func seedContextUsage(t *testing.T, paths []string) {
+	t.Helper()
+	pathsJSON, err := json.Marshal(paths)
+	if err != nil {
+		t.Fatalf("marshal paths: %v", err)
+	}
+	ts := time.Now().UTC().Format("2006-01-02 15:04:05")
+	_, err = db.Conn().Exec(
+		`INSERT INTO context_usage (session_id, timestamp, hook_name, injected_paths)
+		 VALUES (?, ?, 'test', ?)`,
+		fmt.Sprintf("test-%d", time.Now().UnixNano()), ts, string(pathsJSON),
+	)
+	if err != nil {
+		t.Fatalf("seed context_usage: %v", err)
+	}
+}
+
+func TestRecordProvenance_AutoInjectedTraversalBlocked(t *testing.T) {
+	vault := setupHandlerTest(t)
+
+	// Create the note being saved
+	os.MkdirAll(filepath.Join(vault, "notes"), 0o755)
+	os.WriteFile(filepath.Join(vault, "notes", "saved.md"), []byte("# Saved"), 0o644)
+
+	// Seed context_usage with a traversal path
+	seedContextUsage(t, []string{"../../../etc/passwd"})
+
+	// Call recordProvenanceSources with no explicit sources
+	recordProvenanceSources("notes/saved.md", nil)
+
+	// Verify no source was recorded for the traversal path
+	sources, err := db.GetSourcesForNote("notes/saved.md")
+	if err != nil {
+		t.Fatalf("GetSourcesForNote: %v", err)
+	}
+	for _, s := range sources {
+		if s.SourcePath == "../../../etc/passwd" {
+			t.Error("traversal path was NOT blocked — recorded as provenance source")
+		}
+	}
+}
+
+func TestRecordProvenance_AutoInjectedAbsoluteBlocked(t *testing.T) {
+	vault := setupHandlerTest(t)
+
+	// Create the note being saved
+	os.MkdirAll(filepath.Join(vault, "notes"), 0o755)
+	os.WriteFile(filepath.Join(vault, "notes", "saved.md"), []byte("# Saved"), 0o644)
+
+	// Seed context_usage with an absolute path
+	seedContextUsage(t, []string{"/etc/passwd"})
+
+	// Call recordProvenanceSources with no explicit sources
+	recordProvenanceSources("notes/saved.md", nil)
+
+	// Verify no source was recorded for the absolute path
+	sources, err := db.GetSourcesForNote("notes/saved.md")
+	if err != nil {
+		t.Fatalf("GetSourcesForNote: %v", err)
+	}
+	for _, s := range sources {
+		if s.SourcePath == "/etc/passwd" {
+			t.Error("absolute path was NOT blocked — recorded as provenance source")
+		}
+	}
+}
+
+func TestRecordProvenance_ValidAutoInjectedPath(t *testing.T) {
+	vault := setupHandlerTest(t)
+
+	// Create the note being saved and a source note
+	os.MkdirAll(filepath.Join(vault, "notes"), 0o755)
+	os.WriteFile(filepath.Join(vault, "notes", "saved.md"), []byte("# Saved"), 0o644)
+	os.WriteFile(filepath.Join(vault, "notes", "source.md"), []byte("# Source"), 0o644)
+
+	// Seed context_usage with a valid vault-relative path
+	seedContextUsage(t, []string{"notes/source.md"})
+
+	// Call recordProvenanceSources with no explicit sources
+	recordProvenanceSources("notes/saved.md", nil)
+
+	// Verify the valid source was recorded
+	sources, err := db.GetSourcesForNote("notes/saved.md")
+	if err != nil {
+		t.Fatalf("GetSourcesForNote: %v", err)
+	}
+	found := false
+	for _, s := range sources {
+		if s.SourcePath == "notes/source.md" {
+			found = true
+			if s.SourceType != "note" {
+				t.Errorf("expected source_type 'note', got %q", s.SourceType)
+			}
+			if s.SourceHash == "" {
+				t.Error("expected non-empty hash for valid source file")
+			}
+		}
+	}
+	if !found {
+		t.Error("valid auto-injected path was NOT recorded as provenance source")
 	}
 }
 

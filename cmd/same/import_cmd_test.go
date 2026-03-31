@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
 func TestImportCmd_NoFilesFound(t *testing.T) {
@@ -614,5 +616,102 @@ func TestParseClaudeFrontmatter(t *testing.T) {
 				t.Errorf("body = %q, want %q", body, tt.wantBody)
 			}
 		})
+	}
+}
+
+func TestImportCmd_FilePermissions(t *testing.T) {
+	tmp, _ := setupCommandTestVault(t)
+
+	// Create a source file to import
+	srcFile := filepath.Join(tmp, "test-rules.md")
+	if err := os.WriteFile(srcFile, []byte("# Test Rules\nSome content"), 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	_ = captureCommandStdout(t, func() {
+		if err := runImport(tmp, srcFile, false); err != nil {
+			t.Fatalf("runImport: %v", err)
+		}
+	})
+
+	// Check imports/ directory permissions
+	importsDir := filepath.Join(tmp, "imports")
+	info, err := os.Stat(importsDir)
+	if err != nil {
+		t.Fatalf("stat imports dir: %v", err)
+	}
+	dirPerm := info.Mode().Perm()
+	if dirPerm != 0o700 {
+		t.Errorf("imports/ directory permissions = %o, want 0700", dirPerm)
+	}
+
+	// Check imported file permissions
+	importedFile := filepath.Join(importsDir, "test-rules.md")
+	finfo, err := os.Stat(importedFile)
+	if err != nil {
+		t.Fatalf("stat imported file: %v", err)
+	}
+	filePerm := finfo.Mode().Perm()
+	if filePerm != 0o600 {
+		t.Errorf("imported file permissions = %o, want 0600", filePerm)
+	}
+}
+
+func TestImportCmd_AutoIndexAfterImport(t *testing.T) {
+	tmp, database := setupCommandTestVault(t)
+
+	// Verify no notes in DB before import
+	countBefore, err := database.NoteCount()
+	if err != nil {
+		t.Fatalf("NoteCount before: %v", err)
+	}
+	if countBefore != 0 {
+		t.Fatalf("expected 0 notes before import, got %d", countBefore)
+	}
+
+	// Create a source file to import
+	if err := os.WriteFile(filepath.Join(tmp, "CLAUDE.md"), []byte("# Claude Instructions\nBuild with go test"), 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	// Run import — should auto-index
+	_ = captureCommandStdout(t, func() {
+		if err := runImport(tmp, "", false); err != nil {
+			t.Fatalf("runImport: %v", err)
+		}
+	})
+
+	// Re-open DB to check — the import function opens its own DB connection,
+	// so we need to check via a fresh query on our test DB connection.
+	// Actually, let's just open a new DB to read results since import opens its own.
+	database2, err := store.Open()
+	if err != nil {
+		t.Fatalf("store.Open for verification: %v", err)
+	}
+	defer database2.Close()
+
+	// Verify the note is in the database (was auto-indexed)
+	countAfter, err := database2.NoteCount()
+	if err != nil {
+		t.Fatalf("NoteCount after: %v", err)
+	}
+	if countAfter == 0 {
+		t.Error("imported file was NOT auto-indexed — note count is still 0")
+	}
+
+	// Also verify via keyword search
+	results, err := database2.KeywordSearch([]string{"Claude", "Instructions"}, 10)
+	if err != nil {
+		t.Fatalf("KeywordSearch: %v", err)
+	}
+	found := false
+	for _, r := range results {
+		if r.Path == filepath.Join("imports", "claude-md.md") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("imported file was NOT auto-indexed — not found in keyword search results")
 	}
 }
