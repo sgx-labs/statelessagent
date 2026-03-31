@@ -23,6 +23,32 @@
 
 - **`same import` detects Claude Code memory files** — auto-scans `~/.claude/memory/` (global) and `.claude/projects/*/memory/` (project-scoped). Imports with SAME frontmatter, provenance tracking, and `trust_state: unknown`. Skips MEMORY.md index files and de-duplicates on re-import.
 - **Provenance pipeline for imported notes** — `provenance_source` and `provenance_hash` frontmatter fields are now parsed by the indexer and recorded in `note_sources`. `same health` detects when imported source files change. Absolute paths supported for external sources.
+- **Auto-index after import** — imported files are immediately searchable via keyword index without needing a separate `same reindex`.
+
+### Vault UX
+
+- **Vault feedback on every command** — prints "Using vault: <name> (<path>)" so you always know which vault is active.
+- **Ambiguity warning** — when cwd has multiple vault children, shows a clear warning with options instead of silently picking one.
+- **Single child auto-select** — if cwd isn't a vault but has exactly one child vault, auto-selects it.
+- **Global config** — `~/.config/same/config.toml` provides defaults for all vaults. Set Ollama endpoint once instead of per-vault. Per-vault config overrides global.
+- **`same config edit --global`** — edit the global config directly.
+- **`same config show` displays sources** — shows both global and vault config file paths with effective merged values.
+
+### Diagnostics & Error Handling
+
+- **Build hash in version output** — `same version` now shows `same 0.12.2+abc1234` so different builds from the same version are distinguishable.
+- **Binary shadowing detection** — `same doctor` warns when multiple `same` binaries exist in PATH with different checksums.
+- **Embedding errors logged** — embedding provider failures now print the actual error to stderr instead of silently degrading to keyword search.
+- **Graph LLM errors logged** — graph extraction initialization failures now explain why regex fallback is active.
+- **MCP JSON error handling** — 8 `json.MarshalIndent` calls now return proper error responses instead of potentially sending corrupt JSON.
+- **Resolved URL in config show** — `same config show` displays the effective Ollama URL after raw config values.
+
+### Security
+
+- **Provenance trust boundary** — `provenance_source` frontmatter is only trusted for notes in the `imports/` directory (created by `same import`). MCP `save_note` cannot write to `imports/` and cannot plant external provenance.
+- **Provenance cleanup on delete** — `DeleteByPath` now removes `note_sources` rows in the same transaction, preventing stale provenance from persisting across note replacements.
+- **Context usage path validation** — auto-injected provenance paths from `context_usage` are now validated against vault boundaries before reading or hashing.
+- **Import file permissions** — imported files use `0600` and import directories use `0700`, matching security best practices.
 
 ## v0.12.1
 
