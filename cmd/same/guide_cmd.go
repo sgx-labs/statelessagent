@@ -38,7 +38,7 @@ func runGuide() error {
 	fmt.Println()
 	fmt.Printf("  %s## SAME Memory System%s\n", cli.Bold, cli.Reset)
 	fmt.Println()
-	fmt.Println("  This project uses SAME for persistent memory (17 MCP tools).")
+	fmt.Println("  This project uses SAME for persistent memory (19 MCP tools).")
 	fmt.Println()
 	fmt.Println("  Key behaviors for AI agents:")
 	fmt.Println("  - Search results include trust_state (validated, stale, contradicted)")

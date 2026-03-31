@@ -654,7 +654,7 @@ func RunInit(opts InitOptions) error {
 			cli.Cyan, cli.Reset, cli.Dim, cli.Reset)
 	}
 	fmt.Println()
-	fmt.Printf("  Your AI agent has 17 MCP tools available automatically.\n")
+	fmt.Printf("  Your AI agent has 19 MCP tools available automatically.\n")
 	fmt.Printf("  Run %ssame demo%s to see everything in action.\n", cli.Cyan, cli.Reset)
 	fmt.Printf("\n  %sTip:%s Restart your editor (Claude Code, Cursor, etc.) to pick up the new MCP configuration.\n",
 		cli.Bold, cli.Reset)

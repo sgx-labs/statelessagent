@@ -13,7 +13,7 @@ Your AI agent forgets everything between sessions. SAME fixes that. It indexes y
 - **`same ask`** — RAG chat over your vault with source citations
 - **`same demo`** — try it interactively, creates a sandbox, cleans up after
 
-## 17 MCP Tools
+## 19 MCP Tools
 
 | Tool | Type | Description |
 |------|------|-------------|
@@ -34,6 +34,8 @@ Your AI agent forgets everything between sessions. SAME fixes that. It indexes y
 | `mem_brief` | read | Generate orientation briefing |
 | `mem_health` | read | Vault health with trust analysis |
 | `mem_forget` | write | Suppress a note from search results |
+| `mem_restore` | write | Undo mem_forget (unsuppress a note) |
+| `mem_list_suppressed` | read | List suppressed notes |
 
 ## MCP Configuration
 
@@ -78,7 +80,7 @@ same demo
 
 ## Privacy
 
-- ~12MB Go binary. SQLite + Ollama on localhost.
+- ~14MB Go binary. SQLite + Ollama on localhost.
 - Zero outbound network calls. No telemetry. No analytics. No accounts. No API keys.
 - Your notes never leave your machine.
 

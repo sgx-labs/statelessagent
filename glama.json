@@ -2,7 +2,7 @@
   "$schema": "https://glama.ai/mcp/schemas/server.json",
   "maintainers": ["sgx-labs"],
   "name": "SAME - Stateless Agent Memory Engine",
-  "description": "Agentic storage and persistent memory for AI coding agents. Trust-aware retrieval with provenance tracking, stale detection, and contradiction flagging. 17 MCP tools for semantic search, decision tracking, session handoffs, and memory integrity. Local-first SQLite + vector search. Works with Claude Code, Cursor, Windsurf, Codex CLI, Gemini CLI, and any MCP client.",
+  "description": "Agentic storage and persistent memory for AI coding agents. Trust-aware retrieval with provenance tracking, stale detection, contradiction flagging, and dual-layer fact extraction. 19 MCP tools for semantic search, decision tracking, session handoffs, and memory integrity. Streamable HTTP transport. Local-first SQLite + vector search. Works with Claude Code, Cursor, Windsurf, Codex CLI, Gemini CLI, and any MCP client.",
   "keywords": ["agentic-storage", "persistent-memory", "memory", "ai-memory", "knowledge-management", "ai-agents", "trust", "provenance", "semantic-search", "vector-search", "sqlite", "mcp", "claude-code", "cursor", "windsurf", "codex", "gemini", "obsidian", "markdown", "knowledge-base", "context", "rag", "local-first"],
   "tools": [
     {
@@ -72,6 +72,14 @@
     {
       "name": "mem_forget",
       "description": "Suppress a note from search results without deleting it"
+    },
+    {
+      "name": "mem_restore",
+      "description": "Undo mem_forget — unsuppress a previously hidden note"
+    },
+    {
+      "name": "mem_list_suppressed",
+      "description": "List all suppressed (hidden) notes in the vault"
     }
   ]
 }

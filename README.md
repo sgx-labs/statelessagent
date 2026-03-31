@@ -5,7 +5,7 @@
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](https://go.dev)
 [![Latest Release](https://img.shields.io/github/v/release/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/sgx-labs/statelessagent)](https://github.com/sgx-labs/statelessagent)
-[![MCP Tools](https://img.shields.io/badge/MCP_Tools-17-8A2BE2.svg)](#mcp-server)
+[![MCP Tools](https://img.shields.io/badge/MCP_Tools-19-8A2BE2.svg)](#mcp-server)
 [![Discord](https://img.shields.io/discord/1468523556076785757?color=5865F2&label=Discord&logo=discord&logoColor=white)](https://discord.gg/9KfTkcGs7g)
 
 **Your AI forgets everything between sessions. SAME fixes that.**
@@ -74,7 +74,11 @@ same search "authentication decision"
 
 - **Memory integrity** -- Tracks provenance (where notes came from), detects when source files change, and flags stale knowledge. Stale notes rank lower in search automatically. `same health` shows trust state across your vault.
 
-- **Works with your tools** -- 17 MCP tools for Claude Code, Cursor, Windsurf, or any MCP client. Search, save decisions, create handoffs without leaving your editor.
+- **Dual-layer memory** -- Extracts atomic facts from your notes via LLM. Facts are independently searchable and boost source notes in search results. The right answer surfaces even when the fact is buried in an unrelated conversation.
+
+- **Streamable HTTP transport** -- `same web --mcp` enables an HTTP MCP endpoint with Bearer token auth. Connect from Open WebUI, LobeChat, or any HTTP MCP client — no stdio required.
+
+- **Works with your tools** -- 19 MCP tools for Claude Code, Cursor, Windsurf, or any MCP client. Search, save decisions, create handoffs without leaving your editor.
 
 - **Safe for teams** -- Multiple AI agents on the same codebase won't step on each other. File claims, push protection, and attribution built in.
 
@@ -152,7 +156,7 @@ Add to your MCP config (`.mcp.json`, Cursor settings, etc.):
 }
 ```
 
-17 MCP tools available instantly. Works without Ollama (keyword fallback).
+19 MCP tools available instantly. Works without Ollama (keyword fallback).
 
 Switch between Claude Code and Cursor without losing context. Your memory travels with you.
 
@@ -180,6 +184,8 @@ Switch between Claude Code and Cursor without losing context. Your memory travel
 | `mem_brief` | Generate orientation briefing |
 | `mem_health` | Vault health with trust analysis |
 | `mem_forget` | Suppress a note from search results |
+| `mem_restore` | Undo mem_forget (unsuppress a note) |
+| `mem_list_suppressed` | List suppressed notes |
 | `save_kaizen` | Log improvement items with provenance |
 
 ## SeedVaults
@@ -246,6 +252,8 @@ No telemetry. No cloud. Path traversal blocked. Config files written with owner-
 | `same search --trust stale` | Filter search by trust state |
 | `same search --type decision` | Filter search by content type |
 | `same ignore` | View/manage .sameignore patterns |
+| `same facts` | View, search, and manage extracted facts |
+| `same config set <key> <value>` | Set config values from CLI |
 | `same brief --no-llm` | Structured briefing without LLM |
 | `same tips` | Best practices for vault hygiene and security |
 | `same reindex [--force]` | Rebuild search index |
@@ -321,7 +329,7 @@ Start with `same doctor` -- it runs 20+ checks and tells you what's wrong.
 | Offline | Full | Not default | With local models | Yes |
 | Cloud required | No | Default yes | No | No |
 | Telemetry | None | Default ON | Yes | None |
-| MCP tools | 17 | 9 | Client only | No |
+| MCP tools | 19 | 9 | Client only | No |
 | Memory integrity | Provenance + trust | No | No | No |
 | Knowledge graph | Built-in | Requires Neo4j | No | No |
 | Cross-tool memory | Yes | API only | No | Claude only |
