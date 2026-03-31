@@ -481,7 +481,7 @@ func runDoctor(jsonOut bool) error {
 				return "", fmt.Errorf("invalid embedding endpoint URL")
 			}
 			host := strings.TrimSpace(u.Hostname())
-			if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+			if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "host.docker.internal" {
 				return fmt.Sprintf("local (%s)", u.Host), nil
 			}
 			return fmt.Sprintf("remote (%s)", u.Host), nil

@@ -1133,7 +1133,7 @@ func probeOllama() bool {
 		return false
 	}
 	host := u.Hostname()
-	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+	if host != "localhost" && host != "127.0.0.1" && host != "::1" && host != "host.docker.internal" {
 		return false
 	}
 	client := &http.Client{Timeout: 3 * time.Second}
@@ -1506,7 +1506,7 @@ func checkOllamaWithDetection() (*ollamaDetection, error) {
 		return nil, fmt.Errorf("invalid OLLAMA_URL: %w", err)
 	}
 	host := u.Hostname()
-	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+	if host != "localhost" && host != "127.0.0.1" && host != "::1" && host != "host.docker.internal" {
 		return nil, fmt.Errorf("OLLAMA_URL must point to localhost (got %s)", host)
 	}
 

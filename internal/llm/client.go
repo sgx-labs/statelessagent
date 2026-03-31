@@ -213,7 +213,7 @@ func isLoopbackBaseURL(raw string) bool {
 		return false
 	}
 	host := strings.TrimSpace(u.Hostname())
-	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+	return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "host.docker.internal"
 }
 
 type ollamaClient struct {

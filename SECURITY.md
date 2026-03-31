@@ -42,7 +42,8 @@ SAME is designed with a local-first security model:
 - The only network calls are to Ollama (localhost) or optionally OpenAI (if configured)
 
 ### Ollama URL Validation
-- Ollama URL is validated to be localhost-only (`127.0.0.1`, `localhost`, `::1`)
+- Ollama URL is validated to be localhost-only (`127.0.0.1`, `localhost`, `::1`, `host.docker.internal`)
+- `host.docker.internal` is allowed for container environments (Docker, OrbStack, Codespaces)
 - Prevents SSRF attacks via malicious config
 
 ### Private Content Exclusion

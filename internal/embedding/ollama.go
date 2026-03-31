@@ -337,7 +337,7 @@ func validateLocalhostOnly(rawURL string) error {
 		return fmt.Errorf("invalid Ollama URL: %w", err)
 	}
 	host := u.Hostname()
-	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+	if host != "localhost" && host != "127.0.0.1" && host != "::1" && host != "host.docker.internal" {
 		return fmt.Errorf("Ollama URL must point to localhost for security, got: %s", host)
 	}
 	return nil

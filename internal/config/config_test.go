@@ -30,6 +30,8 @@ func TestOllamaURL_Localhost(t *testing.T) {
 		{"127.0.0.1", "http://127.0.0.1:11434"},
 		{"ipv6", "http://[::1]:11434"},
 		{"custom port", "http://localhost:9999"},
+		{"host.docker.internal", "http://host.docker.internal:11434"},
+		{"host.docker.internal custom port", "http://host.docker.internal:9999"},
 	}
 
 	for _, tt := range tests {
@@ -54,6 +56,7 @@ func TestOllamaURL_RejectsRemote(t *testing.T) {
 		{"remote host", "http://example.com:11434"},
 		{"remote IP", "http://192.168.1.100:11434"},
 		{"https remote", "https://ollama.example.com"},
+		{"evil host", "http://evil.example.com:11434"},
 	}
 
 	for _, tt := range tests {

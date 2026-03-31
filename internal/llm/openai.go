@@ -66,7 +66,7 @@ func newOpenAIClient(cfg openAIClientConfig) (*openAIClient, error) {
 	if provider == "openai-compatible" {
 		if u, err := url.Parse(baseURL); err == nil {
 			host := u.Hostname()
-			if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+			if host != "localhost" && host != "127.0.0.1" && host != "::1" && host != "host.docker.internal" {
 				fmt.Fprintf(os.Stderr, "same: warning: chat generation requests will be sent to remote server (%s)\n", u.Host)
 			}
 		}

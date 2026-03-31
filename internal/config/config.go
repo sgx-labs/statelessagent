@@ -1008,7 +1008,7 @@ func OllamaURL() (string, error) {
 		return "", fmt.Errorf("OLLAMA_URL must use http or https scheme, got: %s", u.Scheme)
 	}
 	host := u.Hostname()
-	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+	if host != "localhost" && host != "127.0.0.1" && host != "::1" && host != "host.docker.internal" {
 		// SECURITY: Don't leak the hostname in error message
 		return "", ErrOllamaNotLocal
 	}
