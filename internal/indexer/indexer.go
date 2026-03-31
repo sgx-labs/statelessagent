@@ -57,6 +57,7 @@ type embResult struct {
 	Embeddings [][]float32
 	Content    []byte
 	Path       string
+	Meta       NoteMeta
 	Err        error
 }
 
@@ -108,13 +109,25 @@ func ReindexWithProgress(ctx context.Context, db *store.DB, force bool, progress
 		// Regex-only graph extraction.
 	case "local-only":
 		if chatClient, err := llm.NewClientWithOptions(llm.Options{LocalOnly: true}); err == nil {
-			if model, modelErr := chatClient.PickBestModel(); modelErr == nil && model != "" {
+			model := config.ChatModel()
+			if model == "" {
+				if m, modelErr := chatClient.PickBestModel(); modelErr == nil {
+					model = m
+				}
+			}
+			if model != "" {
 				extractor.SetLLM(chatClient, model)
 			}
 		}
 	case "on":
 		if chatClient, err := llm.NewClient(); err == nil {
-			if model, modelErr := chatClient.PickBestModel(); modelErr == nil && model != "" {
+			model := config.ChatModel()
+			if model == "" {
+				if m, modelErr := chatClient.PickBestModel(); modelErr == nil {
+					model = m
+				}
+			}
+			if model != "" {
 				extractor.SetLLM(chatClient, model)
 			}
 		}
@@ -200,12 +213,13 @@ func ReindexWithProgress(ctx context.Context, db *store.DB, force bool, progress
 					continue
 				default:
 				}
-				records, embeddings, content, err := buildRecordsWithContent(w.path, w.relPath, vaultPath, embedClient, w.content)
+				records, embeddings, content, meta, err := buildRecordsWithContent(w.path, w.relPath, vaultPath, embedClient, w.content)
 				resultCh <- embResult{
 					Records:    records,
 					Embeddings: embeddings,
 					Content:    content,
 					Path:       w.relPath,
+					Meta:       meta,
 					Err:        err,
 				}
 			}
@@ -273,6 +287,7 @@ sendLoop:
 					stats.Errors++
 					continue
 				}
+				recordFrontmatterProvenance(db, result.Path, result.Meta)
 				if rootID, ok := insertedIDs[result.Path]; ok {
 					agent := ""
 					if len(result.Records) > 0 {
@@ -322,6 +337,8 @@ sendLoop:
 			stats.Errors++
 			continue
 		}
+
+		recordFrontmatterProvenance(db, result.Path, result.Meta)
 
 		// Defer graph extraction to after all embeddings are done
 		if rootID, ok := insertedIDs[result.Path]; ok {
@@ -506,7 +523,7 @@ func enrichStats(result map[string]interface{}) {
 // Deletes any existing chunks for the file's relative path, then inserts new ones.
 // This avoids the overhead of a full vault reindex when only one file changed.
 func IndexSingleFile(database *store.DB, filePath, relPath, vaultPath string, embedClient embedding.Provider) error {
-	records, embeddings, content, err := buildRecords(filePath, relPath, vaultPath, embedClient)
+	records, embeddings, content, meta, err := buildRecords(filePath, relPath, vaultPath, embedClient)
 	liteOnly := false
 	if err != nil {
 		if errors.Is(err, errEmbeddingSkipped) && len(records) > 0 {
@@ -539,6 +556,8 @@ func IndexSingleFile(database *store.DB, filePath, relPath, vaultPath string, em
 		return fmt.Errorf("insert notes: %w", err)
 	}
 
+	recordFrontmatterProvenance(database, relPath, meta)
+
 	// Graph Extraction
 	// Basic extractor without LLM for single-file update speed
 	graphDB := graph.NewDB(database.Conn())
@@ -562,7 +581,7 @@ func IndexSingleFile(database *store.DB, filePath, relPath, vaultPath string, em
 // IndexSingleFileLite indexes (or re-indexes) a single file without embeddings.
 // Used by watcher mode when provider="none" (keyword-only mode).
 func IndexSingleFileLite(database *store.DB, filePath, relPath, vaultPath string) error {
-	records, content, err := buildRecordsLite(filePath, relPath, vaultPath)
+	records, content, meta, err := buildRecordsLite(filePath, relPath, vaultPath)
 	if err != nil {
 		return fmt.Errorf("build records lite: %w", err)
 	}
@@ -578,6 +597,8 @@ func IndexSingleFileLite(database *store.DB, filePath, relPath, vaultPath string
 	if err != nil {
 		return fmt.Errorf("insert notes lite: %w", err)
 	}
+
+	recordFrontmatterProvenance(database, relPath, meta)
 
 	graphDB := graph.NewDB(database.Conn())
 	extractor := graph.NewExtractor(graphDB)
@@ -598,22 +619,22 @@ func IndexSingleFileLite(database *store.DB, filePath, relPath, vaultPath string
 // BuildRecordsForFile builds note records and embeddings for a single file.
 // Exported for use by the watcher.
 func BuildRecordsForFile(filePath, relPath, vaultPath string, embedClient embedding.Provider) ([]store.NoteRecord, [][]float32, error) {
-	recs, embs, _, err := buildRecords(filePath, relPath, vaultPath, embedClient)
+	recs, embs, _, _, err := buildRecords(filePath, relPath, vaultPath, embedClient)
 	return recs, embs, err
 }
 
-func buildRecords(filePath, relPath, vaultPath string, embedClient embedding.Provider) ([]store.NoteRecord, [][]float32, []byte, error) {
+func buildRecords(filePath, relPath, vaultPath string, embedClient embedding.Provider) ([]store.NoteRecord, [][]float32, []byte, NoteMeta, error) {
 	return buildRecordsWithContent(filePath, relPath, vaultPath, embedClient, nil)
 }
 
 // buildRecordsWithContent builds records, optionally using pre-read content to avoid a second read.
-func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient embedding.Provider, cachedContent []byte) ([]store.NoteRecord, [][]float32, []byte, error) {
+func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient embedding.Provider, cachedContent []byte) ([]store.NoteRecord, [][]float32, []byte, NoteMeta, error) {
 	content := cachedContent
 	if content == nil {
 		var err error
 		content, err = os.ReadFile(filePath)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("read file: %w", err)
+			return nil, nil, nil, NoteMeta{}, fmt.Errorf("read file: %w", err)
 		}
 	}
 
@@ -623,7 +644,7 @@ func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient em
 
 	info, err := os.Stat(filePath)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("stat file: %w", err)
+		return nil, nil, nil, NoteMeta{}, fmt.Errorf("stat file: %w", err)
 	}
 	mtime := float64(info.ModTime().Unix())
 	contentHash := sha256Hash(body)
@@ -769,10 +790,10 @@ func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient em
 				AccessCount:  0,
 			})
 		}
-		return liteRecords, nil, content, fmt.Errorf("%w: %s", errEmbeddingSkipped, relPath)
+		return liteRecords, nil, content, meta, fmt.Errorf("%w: %s", errEmbeddingSkipped, relPath)
 	}
 
-	return records, embeddings, content, nil
+	return records, embeddings, content, meta, nil
 }
 
 // WalkVault returns all markdown file paths in the vault, respecting skip dirs.
@@ -914,11 +935,40 @@ func recordDiscoveredSources(database *store.DB, notePath, vaultPath string, dis
 	}
 }
 
+// recordFrontmatterProvenance records provenance from frontmatter fields.
+// This handles imported notes whose original source is outside the vault
+// (e.g., Claude memory files at ~/.claude/memory/).
+// Unlike recordDiscoveredSources, this allows absolute paths because
+// import provenance is set by SAME's own import command, not user input.
+func recordFrontmatterProvenance(database *store.DB, notePath string, meta NoteMeta) {
+	if meta.ProvenanceSource == "" {
+		return
+	}
+
+	hash := meta.ProvenanceHash
+	if hash == "" {
+		// Try to compute hash from current file state
+		if content, err := os.ReadFile(meta.ProvenanceSource); err == nil {
+			hash = sha256Hash(string(content))
+		}
+	}
+
+	source := store.NoteSource{
+		SourcePath: meta.ProvenanceSource,
+		SourceType: "file",
+		SourceHash: hash,
+	}
+	if err := database.RecordSources(notePath, []store.NoteSource{source}); err != nil {
+		fmt.Fprintf(os.Stderr, "  [WARN] record frontmatter provenance for %s: %v\n", notePath, err)
+	}
+}
+
 // liteResult holds the result of parsing a single file for lite indexing.
 type liteResult struct {
 	Records []store.NoteRecord
 	Content []byte
 	RelPath string
+	Meta    NoteMeta
 	Err     error
 }
 
@@ -991,11 +1041,12 @@ func ReindexLite(ctx context.Context, db *store.DB, force bool, progress Progres
 					continue
 				default:
 				}
-				records, content, err := buildRecordsLite(w.path, w.relPath, vaultPath)
+				records, content, meta, err := buildRecordsLite(w.path, w.relPath, vaultPath)
 				resultCh <- liteResult{
 					Records: records,
 					Content: content,
 					RelPath: w.relPath,
+					Meta:    meta,
 					Err:     err,
 				}
 			}
@@ -1056,6 +1107,8 @@ sendLoop:
 			stats.Errors++
 			continue
 		}
+
+		recordFrontmatterProvenance(db, result.RelPath, result.Meta)
 
 		// Graph Extraction
 		if rootID, ok := insertedIDs[result.RelPath]; ok {
@@ -1285,10 +1338,10 @@ func BackfillEmbeddings(ctx context.Context, db *store.DB, embedClient embedding
 }
 
 // buildRecordsLite builds note records WITHOUT embeddings.
-func buildRecordsLite(filePath, relPath, vaultPath string) ([]store.NoteRecord, []byte, error) {
+func buildRecordsLite(filePath, relPath, vaultPath string) ([]store.NoteRecord, []byte, NoteMeta, error) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("read file: %w", err)
+		return nil, nil, NoteMeta{}, fmt.Errorf("read file: %w", err)
 	}
 
 	parsed := ParseNote(string(content))
@@ -1297,7 +1350,7 @@ func buildRecordsLite(filePath, relPath, vaultPath string) ([]store.NoteRecord, 
 
 	info, err := os.Stat(filePath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("stat file: %w", err)
+		return nil, nil, NoteMeta{}, fmt.Errorf("stat file: %w", err)
 	}
 	mtime := float64(info.ModTime().Unix())
 	contentHash := sha256Hash(body)
@@ -1358,7 +1411,7 @@ func buildRecordsLite(filePath, relPath, vaultPath string) ([]store.NoteRecord, 
 		})
 	}
 
-	return records, content, nil
+	return records, content, meta, nil
 }
 
 func saveStats(stats *Stats) {

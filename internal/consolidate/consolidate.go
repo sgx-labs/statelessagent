@@ -118,15 +118,19 @@ func (e *Engine) Run(dryRun bool) (*Result, error) {
 	// 3. For each group, call the LLM to consolidate.
 	knowledgeDir := filepath.Join(e.vaultPath, "knowledge")
 	for i, group := range groups {
+		groupStart := time.Now()
 		fmt.Fprintf(os.Stderr, "same: consolidate: processing group %d/%d (%d notes)...\n",
 			i+1, len(groups), len(group))
 
 		g, err := e.consolidateGroup(group)
+		elapsed := time.Since(groupStart)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "same: consolidate: group %d: LLM error: %v (skipping)\n", i+1, err)
+			fmt.Fprintf(os.Stderr, "same: consolidate: group %d: LLM error: %v (skipping, %.1fs)\n", i+1, err, elapsed.Seconds())
 			result.GroupsSkipped++
 			continue
 		}
+
+		fmt.Fprintf(os.Stderr, "same: consolidate: group %d/%d done (%.1fs)\n", i+1, len(groups), elapsed.Seconds())
 
 		result.NotesProcessed += len(g.SourceNotes)
 		result.FactsExtracted += len(g.Facts)

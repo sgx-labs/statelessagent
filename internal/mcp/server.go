@@ -1226,9 +1226,13 @@ func handleMemConsolidate(ctx context.Context, req *mcp.CallToolRequest, input m
 		return errorResult("Consolidation requires an LLM provider. Run 'same init' to configure one, or set SAME_CHAT_PROVIDER."), nil, nil
 	}
 
-	model, err := chat.PickBestModel()
-	if err != nil || model == "" {
-		return errorResult("No chat model available. Ensure your LLM provider has at least one model installed."), nil, nil
+	model := config.ChatModel()
+	if model == "" {
+		var modelErr error
+		model, modelErr = chat.PickBestModel()
+		if modelErr != nil || model == "" {
+			return errorResult("No chat model available. Ensure your LLM provider has at least one model installed."), nil, nil
+		}
 	}
 
 	threshold := input.Threshold
@@ -1360,9 +1364,13 @@ func handleMemBrief(ctx context.Context, req *mcp.CallToolRequest, input memBrie
 		return errorResult("Brief requires an LLM provider. Run 'same init' to configure one, or set SAME_CHAT_PROVIDER."), nil, nil
 	}
 
-	model, err := chat.PickBestModel()
-	if err != nil || model == "" {
-		return errorResult("No chat model available. Ensure your LLM provider has at least one model installed."), nil, nil
+	model := config.ChatModel()
+	if model == "" {
+		var modelErr error
+		model, modelErr = chat.PickBestModel()
+		if modelErr != nil || model == "" {
+			return errorResult("No chat model available. Ensure your LLM provider has at least one model installed."), nil, nil
+		}
 	}
 
 	prompt := buildMCPBriefPrompt(recentNotes, sessionNotes, decisionNotes, highConfNotes)

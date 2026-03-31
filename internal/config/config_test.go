@@ -437,3 +437,54 @@ func TestLoadConfig_ZeroDimensionsFallsBackToModelDefault(t *testing.T) {
 		t.Fatalf("expected OpenAI default dimensions 1536, got %d", got)
 	}
 }
+
+func TestChatModel_EnvVar(t *testing.T) {
+	t.Setenv("SAME_CHAT_MODEL", "test-model")
+	got := ChatModel()
+	if got != "test-model" {
+		t.Fatalf("expected 'test-model', got %q", got)
+	}
+}
+
+func TestChatModel_Config(t *testing.T) {
+	t.Setenv("SAME_CHAT_MODEL", "")
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".same", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("[chat]\nmodel = \"qwen2.5:7b\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VAULT_PATH", dir)
+	got := ChatModel()
+	if got != "qwen2.5:7b" {
+		t.Fatalf("expected 'qwen2.5:7b', got %q", got)
+	}
+}
+
+func TestChatModel_EnvOverridesConfig(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".same", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("[chat]\nmodel = \"qwen2.5:7b\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VAULT_PATH", dir)
+	t.Setenv("SAME_CHAT_MODEL", "override-model")
+	got := ChatModel()
+	if got != "override-model" {
+		t.Fatalf("expected 'override-model', got %q", got)
+	}
+}
+
+func TestChatModel_Empty(t *testing.T) {
+	t.Setenv("SAME_CHAT_MODEL", "")
+	t.Setenv("VAULT_PATH", t.TempDir())
+	got := ChatModel()
+	if got != "" {
+		t.Fatalf("expected empty string, got %q", got)
+	}
+}

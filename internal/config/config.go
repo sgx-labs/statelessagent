@@ -131,6 +131,7 @@ type Config struct {
 	Ollama    OllamaConfig    `toml:"ollama"`
 	Embedding EmbeddingConfig `toml:"embedding"`
 	Graph     GraphConfig     `toml:"graph"`
+	Chat      ChatConfig      `toml:"chat"`
 	Memory    MemoryConfig    `toml:"memory"`
 	Hooks     HooksConfig     `toml:"hooks"`
 	Display   DisplayConfig   `toml:"display"`
@@ -174,6 +175,11 @@ type GraphConfig struct {
 	Model   string `toml:"model"`    // optional: override model for graph LLM extraction
 }
 
+// ChatConfig holds chat/LLM model override settings.
+type ChatConfig struct {
+	Model string `toml:"model"` // optional: override chat model for consolidation, ask, brief
+}
+
 // HooksConfig controls which hooks are enabled.
 type HooksConfig struct {
 	ContextSurfacing  bool `toml:"context_surfacing"`
@@ -207,6 +213,7 @@ func DefaultConfig() *Config {
 		Graph: GraphConfig{
 			LLMMode: "off",
 		},
+		Chat: ChatConfig{},
 		Memory: MemoryConfig{
 			MaxTokenBudget:     1600,
 			MaxResults:         4,
@@ -469,6 +476,11 @@ func generateTOMLContent(vaultPath string) string {
 	b.WriteString("# model = \"llama3.2\"            # optional: override model for graph extraction\n")
 	b.WriteString("#                               # defaults to auto-detected chat model\n\n")
 
+	b.WriteString("[chat]\n")
+	b.WriteString("# model = \"qwen2.5:7b\"         # optional: override chat model for consolidation, ask, brief\n")
+	b.WriteString("#                               # defaults to auto-detected (smallest available)\n")
+	b.WriteString("#                               # or set SAME_CHAT_MODEL env var\n\n")
+
 	b.WriteString("[memory]\n")
 	b.WriteString("# Presets: same profile use precise|balanced|broad|pi\n")
 	b.WriteString("max_token_budget = 1600\n")
@@ -670,6 +682,18 @@ func GraphLLMMode() string {
 		// Fail closed for unknown values.
 		return "off"
 	}
+}
+
+// ChatModel returns the explicitly configured chat model.
+// Checked in order: SAME_CHAT_MODEL env var > [chat] model in config.
+func ChatModel() string {
+	if v := os.Getenv("SAME_CHAT_MODEL"); strings.TrimSpace(v) != "" {
+		return strings.TrimSpace(v)
+	}
+	if cfg := loadConfigSafe(); cfg != nil && strings.TrimSpace(cfg.Chat.Model) != "" {
+		return strings.TrimSpace(cfg.Chat.Model)
+	}
+	return ""
 }
 
 // GraphModel returns the explicitly configured model for graph LLM extraction,

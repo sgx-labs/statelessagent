@@ -251,7 +251,11 @@ func runStatus(jsonOut bool) error {
 		fmt.Printf("  Environment: %s container\n", ci.Type)
 	}
 	fmt.Printf("  Embedding: %s\n", summarizeRuntime(embeddingStatus))
-	fmt.Printf("  Chat:      %s\n", summarizeRuntime(chatStatus))
+	chatLine := summarizeRuntime(chatStatus)
+	if override := config.ChatModel(); override != "" {
+		chatLine += fmt.Sprintf(" (config override: %s)", override)
+	}
+	fmt.Printf("  Chat:      %s\n", chatLine)
 	graphLine := summarizeGraphRuntime(graphStatus)
 	if graphStatus.Mode == "off" && chatStatus.Status == "available" {
 		graphLine += fmt.Sprintf("  %s(run 'same graph enable' for richer extraction)%s", cli.Dim, cli.Reset)

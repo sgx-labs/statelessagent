@@ -81,19 +81,23 @@ func runConsolidate(dryRun bool, threshold float64) error {
 		embedClient = ep
 	}
 
-	// 4. Pick best model
-	model, err := chat.PickBestModel()
-	if err != nil {
-		if chat.Provider() == "ollama" {
+	// 4. Pick best model (config override > auto-detect)
+	model := config.ChatModel()
+	if model == "" {
+		var err error
+		model, err = chat.PickBestModel()
+		if err != nil {
+			if chat.Provider() == "ollama" {
+				return userError(
+					"No chat model available",
+					"Start Ollama or set SAME_CHAT_PROVIDER=openai/openai-compatible, then retry.",
+				)
+			}
 			return userError(
-				"No chat model available",
-				"Start Ollama or set SAME_CHAT_PROVIDER=openai/openai-compatible, then retry.",
+				fmt.Sprintf("Can't list models from %s provider", chat.Provider()),
+				"Check that your provider has at least one chat model installed. For Ollama: ollama pull llama3.2",
 			)
 		}
-		return userError(
-			fmt.Sprintf("Can't list models from %s provider", chat.Provider()),
-			"Check that your provider has at least one chat model installed. For Ollama: ollama pull llama3.2",
-		)
 	}
 	if model == "" {
 		return userError(
@@ -101,6 +105,7 @@ func runConsolidate(dryRun bool, threshold float64) error {
 			"Set SAME_CHAT_MODEL explicitly or install/configure at least one chat-capable model.",
 		)
 	}
+	fmt.Fprintf(os.Stderr, "same: consolidate: using model %s\n", model)
 
 	// 5. Create consolidation engine
 	vaultPath := config.VaultPath()
