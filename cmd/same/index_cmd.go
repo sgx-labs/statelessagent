@@ -15,6 +15,7 @@ import (
 
 	"github.com/sgx-labs/statelessagent/internal/cli"
 	"github.com/sgx-labs/statelessagent/internal/config"
+	"github.com/sgx-labs/statelessagent/internal/embedding"
 	"github.com/sgx-labs/statelessagent/internal/indexer"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
@@ -25,8 +26,9 @@ func reindexCmd() *cobra.Command {
 		verbose bool
 	)
 	cmd := &cobra.Command{
-		Use:   "reindex",
-		Short: "Scan your notes and rebuild the search index",
+		Use:     "reindex",
+		Aliases: []string{"index"},
+		Short:   "Scan your notes and rebuild the search index",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runReindex(force, verbose)
 		},
@@ -154,6 +156,31 @@ func runReindex(force bool, verbose bool) error {
 		return userError("No SAME vault found", "Run 'same init' first.")
 	}
 	defer db.Close()
+
+	// Early detection: check for embedding model/dimension mismatch before
+	// starting the reindex. If the model changed and --force is not set,
+	// warn and suggest --force so the user doesn't get garbage results.
+	ec := config.EmbeddingProviderConfig()
+	provCfg := embedding.ProviderConfig{
+		Provider:   ec.Provider,
+		Model:      ec.Model,
+		APIKey:     ec.APIKey,
+		BaseURL:    ec.BaseURL,
+		Dimensions: ec.Dimensions,
+		SkipRetry:  true,
+	}
+	if (provCfg.Provider == "ollama" || provCfg.Provider == "") && provCfg.BaseURL == "" {
+		if ollamaURL, urlErr := config.OllamaURL(); urlErr == nil {
+			provCfg.BaseURL = ollamaURL
+		}
+	}
+	if client, embErr := embedding.NewProvider(provCfg); embErr == nil && client != nil {
+		if mismatchErr := db.CheckEmbeddingMeta(client.Name(), client.Model(), client.Dimensions()); mismatchErr != nil {
+			if !force {
+				fmt.Fprintf(os.Stderr, "  ⚠ %v\n", mismatchErr)
+			}
+		}
+	}
 
 	// Acquire reindex lockfile to prevent concurrent runs
 	unlock, lockErr := acquireReindexLock()

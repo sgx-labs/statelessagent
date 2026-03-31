@@ -550,10 +550,22 @@ func (db *DB) HybridSearch(queryVec []float32, queryText string, opts SearchOpti
 		// When a vector result also appears in keyword results, we boost
 		// its score using the keyword signal so it ranks higher in the
 		// final sort.
+		queryLower := strings.ToLower(queryText)
 		kwPathScore := make(map[string]float64, len(kwResults))
 		for _, r := range kwResults {
 			titleLower := strings.ToLower(r.Title)
 			score := keywordTitleScore(titleLower, terms, termsSet)
+
+			// Exact query string boost: if the note text literally
+			// contains the full query, promote it (1.5x). If the title
+			// contains a query word, give a smaller boost (1.2x).
+			textLower := strings.ToLower(r.Text)
+			if len(queryLower) > 0 && strings.Contains(textLower, queryLower) {
+				score = math.Min(1.0, score*1.5)
+			} else if len(queryLower) > 0 && strings.Contains(titleLower, queryLower) {
+				score = math.Min(1.0, score*1.2)
+			}
+
 			if existing, ok := kwPathScore[r.Path]; !ok || score > existing {
 				kwPathScore[r.Path] = score
 			}
@@ -620,6 +632,14 @@ func (db *DB) HybridSearch(queryVec []float32, queryText string, opts SearchOpti
 
 			titleLower := strings.ToLower(r.Title)
 			score := keywordTitleScore(titleLower, terms, termsSet)
+
+			// Apply exact query string boost to keyword-only results.
+			textLower := strings.ToLower(r.Text)
+			if len(queryLower) > 0 && strings.Contains(textLower, queryLower) {
+				score = math.Min(1.0, score*1.5)
+			} else if len(queryLower) > 0 && strings.Contains(titleLower, queryLower) {
+				score = math.Min(1.0, score*1.2)
+			}
 
 			newKW = append(newKW, RawToSearchResult(r, score))
 		}

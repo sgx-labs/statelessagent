@@ -17,7 +17,128 @@ type Chunk struct {
 var (
 	h2Split = regexp.MustCompile(`(?m)^## `)
 	h3Split = regexp.MustCompile(`(?m)^### `)
+
+	// turnPattern matches conversational turn markers like **User:**, **Assistant:**,
+	// User:, Assistant:, Human:, AI: at the start of a line.
+	turnPattern = regexp.MustCompile(`(?m)^\*{0,2}(?:User|Assistant|Human|AI)\*{0,2}\s*:`)
 )
+
+// ShouldChunkByTurns returns true if the body contains enough conversational
+// turn markers (User:/Assistant:/Human:/AI:) to warrant turn-level chunking.
+func ShouldChunkByTurns(body string) bool {
+	return len(turnPattern.FindAllStringIndex(body, 4)) >= 3
+}
+
+// ChunkByTurns splits conversational content by User/Assistant turn pairs.
+// Each chunk contains a user message paired with its assistant response,
+// making individual conversational facts independently searchable.
+func ChunkByTurns(body string) []Chunk {
+	locs := turnPattern.FindAllStringIndex(body, -1)
+	if len(locs) == 0 {
+		return []Chunk{{Heading: "(full)", Text: body}}
+	}
+
+	// Split body into segments at each turn marker.
+	type segment struct {
+		marker string // e.g. "User", "Assistant"
+		text   string // full text including marker line
+	}
+
+	var segments []segment
+
+	// Text before the first turn marker (preamble).
+	if locs[0][0] > 0 {
+		preamble := strings.TrimSpace(body[:locs[0][0]])
+		if preamble != "" {
+			segments = append(segments, segment{marker: "_preamble", text: preamble})
+		}
+	}
+
+	for i, loc := range locs {
+		end := len(body)
+		if i+1 < len(locs) {
+			end = locs[i+1][0]
+		}
+		markerText := body[loc[0]:loc[1]]
+		// Extract the role name from the marker (e.g. "User" from "**User:**")
+		role := strings.Trim(strings.TrimRight(markerText, ": \t"), "*")
+		segText := strings.TrimSpace(body[loc[0]:end])
+		if segText != "" {
+			segments = append(segments, segment{marker: role, text: segText})
+		}
+	}
+
+	// Group into user+assistant pairs. A "user" role starts a new pair;
+	// subsequent non-user segments (assistant/AI responses) attach to it.
+	var chunks []Chunk
+	var currentPair strings.Builder
+	var currentHeading string
+	turnNum := 0
+
+	isUserRole := func(role string) bool {
+		r := strings.ToLower(role)
+		return r == "user" || r == "human"
+	}
+
+	flush := func() {
+		if currentPair.Len() > 0 {
+			heading := currentHeading
+			if heading == "" {
+				turnNum++
+				heading = fmt.Sprintf("(turn %d)", turnNum)
+			}
+			chunks = append(chunks, Chunk{
+				Heading: heading,
+				Text:    strings.TrimSpace(currentPair.String()),
+			})
+			currentPair.Reset()
+			currentHeading = ""
+		}
+	}
+
+	for _, seg := range segments {
+		if seg.marker == "_preamble" {
+			// Preamble becomes its own chunk.
+			chunks = append(chunks, Chunk{Heading: "(preamble)", Text: seg.text})
+			continue
+		}
+
+		if isUserRole(seg.marker) {
+			// Start of a new turn pair — flush previous.
+			flush()
+			currentPair.WriteString(seg.text)
+			// Extract a short heading from the user message (first line after marker).
+			lines := strings.SplitN(seg.text, "\n", 3)
+			if len(lines) >= 2 {
+				h := strings.TrimSpace(lines[1])
+				if len(h) > 80 {
+					h = h[:80]
+				}
+				currentHeading = h
+			} else {
+				// Single-line user message: use the text after the colon
+				afterColon := turnPattern.ReplaceAllString(seg.text, "")
+				h := strings.TrimSpace(afterColon)
+				if len(h) > 80 {
+					h = h[:80]
+				}
+				currentHeading = h
+			}
+		} else {
+			// Assistant/AI response — append to current pair.
+			if currentPair.Len() > 0 {
+				currentPair.WriteString("\n\n")
+			}
+			currentPair.WriteString(seg.text)
+		}
+	}
+	flush()
+
+	if len(chunks) == 0 {
+		return []Chunk{{Heading: "(full)", Text: body}}
+	}
+	return chunks
+}
 
 // ChunkByHeadings splits note body by H2 headings, with H3 sub-splitting for large sections.
 func ChunkByHeadings(body string) []Chunk {

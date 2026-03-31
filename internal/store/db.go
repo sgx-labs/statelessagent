@@ -508,12 +508,12 @@ func (db *DB) CheckEmbeddingMeta(provider, model string, dims int) error {
 
 	// Check for dimension mismatch (most critical — causes garbage results)
 	if hasDims && dims > 0 && storedDims > 0 && storedDims != dims {
-		return fmt.Errorf("embedding dimensions changed: your embedding model changed. Run 'same reindex --force' to rebuild the index")
+		return fmt.Errorf("embedding model changed (%d→%d dims). Run 'same reindex --force' to rebuild", storedDims, dims)
 	}
 
 	// Check for provider/model mismatch
 	if hasProvider && hasModel && (storedProvider != provider || storedModel != model) {
-		return fmt.Errorf("embedding model changed: your embedding model changed. Run 'same reindex --force' to rebuild the index")
+		return fmt.Errorf("embedding model changed (%s/%s→%s/%s). Run 'same reindex --force' to rebuild", storedProvider, storedModel, provider, model)
 	}
 
 	return nil
@@ -641,4 +641,35 @@ func (db *DB) SuppressNote(path string) (int64, error) {
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// UnsuppressNote clears the suppressed flag on a note, restoring it to search results.
+func (db *DB) UnsuppressNote(path string) (int64, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	res, err := db.conn.Exec("UPDATE vault_notes SET suppressed = 0 WHERE path = ?", path)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// ListSuppressed returns paths of all suppressed (forgotten) notes.
+func (db *DB) ListSuppressed() ([]string, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	rows, err := db.conn.Query("SELECT DISTINCT path FROM vault_notes WHERE suppressed = 1 ORDER BY path")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var paths []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	return paths, rows.Err()
 }

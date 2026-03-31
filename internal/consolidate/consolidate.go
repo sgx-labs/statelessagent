@@ -241,11 +241,22 @@ func writeConsolidatedNote(knowledgeDir, absPath, content string) error {
 // before writing to the vault. This prevents a compromised or prompt-injected
 // LLM from producing notes that contain instruction-override payloads.
 func sanitizeConsolidatedOutput(text string) string {
-	// Strip XML-style wrapper tags used by SAME's context system
+	// Strip XML-style wrapper tags used by SAME's context system and common
+	// LLM system-level tags that could be injected via prompt injection.
 	dangerousTags := []string{
+		// SAME internal context tags
 		"same-context", "session-bootstrap", "vault-handoff",
 		"vault-decisions", "vault-staleness", "vault-source-divergence",
-		"same-diagnostic", "same-guidance", "system", "tool_result",
+		"same-diagnostic", "same-guidance",
+		// MCP / LLM system-level tags
+		"system", "system-reminder", "system-prompt", "system_prompt",
+		"tool_result", "tool_use", "tool_call",
+		"function_call", "function_result",
+		// Agent instruction tags
+		"instructions", "assistant_instructions", "user_instructions",
+		"context", "hidden", "internal",
+		// Anthropic-specific tags
+		"antml:thinking", "antml:invoke", "antml:function_calls",
 	}
 	for _, tag := range dangerousTags {
 		text = strings.ReplaceAll(text, "<"+tag+">", "")

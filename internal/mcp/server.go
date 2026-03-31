@@ -19,6 +19,7 @@ import (
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/consolidate"
 	"github.com/sgx-labs/statelessagent/internal/embedding"
+	"github.com/sgx-labs/statelessagent/internal/guard"
 	"github.com/sgx-labs/statelessagent/internal/indexer"
 	"github.com/sgx-labs/statelessagent/internal/llm"
 	"github.com/sgx-labs/statelessagent/internal/memory"
@@ -101,6 +102,15 @@ func Serve() error {
 	embedClient, _ = embedding.NewProvider(provCfg)
 	// embedClient may be nil if Ollama is not running — search handlers
 	// fall back to FTS5/keyword search gracefully.
+
+	// Fail fast on embedding dimension mismatch — prevents garbage search
+	// results when the embedding model has changed since last reindex.
+	if embedClient != nil {
+		if mismatchErr := db.CheckEmbeddingMeta(embedClient.Name(), embedClient.Model(), embedClient.Dimensions()); mismatchErr != nil {
+			fmt.Fprintf(os.Stderr, "same: warning: %v\n", mismatchErr)
+		}
+	}
+
 	vaultRoot, _ = filepath.Abs(config.VaultPath())
 
 	server := mcp.NewServer(&mcp.Implementation{
@@ -252,9 +262,23 @@ func registerTools(server *mcp.Server) {
 	// mem_forget (autonomous memory management)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mem_forget",
-		Description: "Suppress a memory so it won't be surfaced in normal search. The note is not deleted -- it's marked as suppressed and will only appear if explicitly requested. Use this for outdated, incorrect, or irrelevant memories. This is not easily reversible: there is no mem_restore tool.\n\nArgs:\n  path: Path of the note to suppress (required)\n  reason: Why this memory is being suppressed (optional)\n  agent: Your agent identity (optional — if set, you can only suppress notes you created)\n\nReturns confirmation of suppression. (experimental)",
+		Description: "Suppress a memory so it won't be surfaced in normal search. The note is not deleted -- it's marked as suppressed and can be restored with mem_restore. Use this for outdated, incorrect, or irrelevant memories.\n\nArgs:\n  path: Path of the note to suppress (required)\n  reason: Why this memory is being suppressed (optional)\n  agent: Your agent identity (optional — if set, you can only suppress notes you created)\n\nReturns confirmation of suppression. (experimental)",
 		Annotations: writeNonDestructive,
 	}, handleMemForget)
+
+	// mem_restore (undo mem_forget)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mem_restore",
+		Description: "Restore a previously suppressed memory so it appears in search again. Reverses the effect of mem_forget.\n\nArgs:\n  path: Path of the note to restore (required)\n\nReturns confirmation of restoration.",
+		Annotations: writeNonDestructive,
+	}, handleMemRestore)
+
+	// mem_list_suppressed (show forgotten memories)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mem_list_suppressed",
+		Description: "List all memories that have been suppressed via mem_forget. Use this to see what's hidden before deciding what to restore.\n\nReturns a list of suppressed note paths.",
+		Annotations: readOnly,
+	}, handleMemListSuppressed)
 
 	// save_kaizen (continuous improvement)
 	mcp.AddTool(server, &mcp.Tool{
@@ -577,6 +601,23 @@ func handleSaveNote(ctx context.Context, req *mcp.CallToolRequest, input saveNot
 		return errorResult("Error: only .md (markdown) files can be saved via MCP."), nil, nil
 	}
 
+	// Guard check: scan content for credentials before writing.
+	// Warn (don't block) so users know they're storing sensitive data.
+	guardWarnings := guard.ScanContent(input.Content)
+	var credWarning string
+	if len(guardWarnings) > 0 {
+		var types []string
+		seen := make(map[string]bool)
+		for _, w := range guardWarnings {
+			name := w.Pattern.Name
+			if !seen[name] {
+				seen[name] = true
+				types = append(types, name)
+			}
+		}
+		credWarning = fmt.Sprintf("Warning: note contains potential credentials (%s). Consider removing before sharing.", strings.Join(types, ", "))
+	}
+
 	safePath := safeVaultPath(input.Path)
 	if safePath == "" {
 		return errorResult("Error: path must be a relative path within the vault. Cannot write to _PRIVATE/."), nil, nil
@@ -684,6 +725,9 @@ func handleSaveNote(ctx context.Context, req *mcp.CallToolRequest, input saveNot
 			}
 			message += fmt.Sprintf(" (warning: read-claims by %s on %s — check for breakage)", strings.Join(readers, ", "), relPath)
 		}
+	}
+	if credWarning != "" {
+		message += "\n" + credWarning
 	}
 	return textResult(message), nil, nil
 }
@@ -1577,9 +1621,51 @@ func handleMemForget(ctx context.Context, req *mcp.CallToolRequest, input memFor
 		message += fmt.Sprintf("\nReason: %s", input.Reason)
 	}
 	message += "\nThe note still exists on disk but will not appear in search results."
-	message += "\nNote: There is currently no mem_restore tool. To reverse this, manually set suppressed=0 in the database."
+	message += "\nTo undo, use mem_restore with the same path."
 
 	return textResult(message), nil, nil
+}
+
+// memRestoreInput is the input for the mem_restore tool.
+type memRestoreInput struct {
+	Path string `json:"path" jsonschema:"Path of the suppressed note to restore"`
+}
+
+func handleMemRestore(ctx context.Context, req *mcp.CallToolRequest, input memRestoreInput) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(input.Path) == "" {
+		return errorResult("Error: path is required."), nil, nil
+	}
+
+	affected, err := db.UnsuppressNote(input.Path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "same: mcp: mem_restore unsuppress: %v\n", err)
+		return errorResult("Error restoring note. The database may be unavailable — try again."), nil, nil
+	}
+	if affected == 0 {
+		return errorResult(fmt.Sprintf("No suppressed note found at path: %s", input.Path)), nil, nil
+	}
+
+	return textResult(fmt.Sprintf("Restored: %s (%d chunks). The note will now appear in search results.", input.Path, affected)), nil, nil
+}
+
+func handleMemListSuppressed(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
+	paths, err := db.ListSuppressed()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "same: mcp: mem_list_suppressed: %v\n", err)
+		return errorResult("Error listing suppressed notes."), nil, nil
+	}
+
+	if len(paths) == 0 {
+		return textResult("No suppressed notes found."), nil, nil
+	}
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Suppressed notes (%d):\n", len(paths)))
+	for _, p := range paths {
+		b.WriteString(fmt.Sprintf("  - %s\n", p))
+	}
+	b.WriteString("\nUse mem_restore to restore any of these notes.")
+	return textResult(b.String()), nil, nil
 }
 
 func handleSaveKaizen(ctx context.Context, req *mcp.CallToolRequest, input saveKaizenInput) (*mcp.CallToolResult, any, error) {
@@ -2193,6 +2279,20 @@ func safeVaultPath(path string) string {
 	// SECURITY: reject paths containing null bytes (can bypass C-level path checks)
 	if strings.ContainsRune(path, 0) {
 		return ""
+	}
+	// SECURITY: reject URL-encoded traversal patterns before any normalization.
+	// Catches %2e%2e%2f (../), %2e%2e/ (..) and other encoded traversal attempts.
+	lowerPath := strings.ToLower(path)
+	if strings.Contains(lowerPath, "%2e") || strings.Contains(lowerPath, "%2f") || strings.Contains(lowerPath, "%5c") || strings.Contains(lowerPath, "%00") {
+		return ""
+	}
+	// SECURITY: reject Unicode fullwidth characters that could normalize to
+	// traversal sequences. Fullwidth period (U+FF0E) and fullwidth solidus
+	// (U+FF0F) can NFKC-normalize to '.' and '/' respectively.
+	for _, r := range path {
+		if r == '\uff0e' || r == '\uff0f' || r == '\uff3c' { // fullwidth . / and \
+			return ""
+		}
 	}
 	// SECURITY: normalize backslashes before any checks so traversal patterns
 	// like "..\" are caught on all platforms.

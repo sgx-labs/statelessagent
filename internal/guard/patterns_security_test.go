@@ -179,3 +179,127 @@ func TestScanLine_ExampleEmailSuppressed(t *testing.T) {
 		t.Error("expected example.com email to be suppressed as false positive")
 	}
 }
+
+func TestCredentialPatterns_Detection(t *testing.T) {
+	creds := credentialPatterns()
+	patternMap := make(map[string]Pattern)
+	for _, p := range creds {
+		patternMap[p.Name] = p
+	}
+
+	tests := []struct {
+		patternName string
+		input       string
+		shouldMatch bool
+	}{
+		// AI APIs
+		{"anthropic_key", "sk-ant-api03-abcdefghijklmnopqrstuvwxyz", true},
+		{"openai_proj_key", "sk-proj-abcdefghij1234567890ABCD", true},
+		{"openai_svcacct_key", "sk-svcacct-abcdefghij1234567890", true},
+		{"huggingface_token", "hf_ABCDefghijklmnopqrstuvwx", true},
+		{"huggingface_token", "hf_ab", false}, // too short
+
+		// Cloud
+		{"gcp_api_key", "AIzaSyAaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPp1", true},
+		{"digitalocean_pat", "dop_v1_" + repeat64('a'), true},
+		{"digitalocean_oauth", "doo_v1_" + repeat64('b'), true},
+
+		// Git
+		{"github_pat_fine", "github_pat_11AAAAAAA0abcdefghijklmnopqrstuvwxyz", true},
+		{"gitlab_pat", "glpat-abcdefghijklmnopqrstuv", true},
+		{"gitlab_deploy", "gldt-abcdefghijklmnopqrstuv", true},
+
+		// Communications
+		{"slack_bot_token", "xoxb-1234567890-abcdefghij", true},
+		{"slack_app_token", "xapp-1-ABCDEFGHIJKLMNOPQRSTUV", true},
+		{"twilio_api_key", "SK" + repeat32('a'), true},
+		{"sendgrid_key", "SG.abcdefghijklmnopqrstuv.ABCDEFGHIJKLMNOPQRSTUV", true},
+
+		// Dev tokens
+		{"npm_token", "npm_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890", true},
+		{"pypi_token", "pypi-" + repeatN('A', 55), true},
+		{"postman_key", "PMAK-abcdef1234567890abcdef12", true},
+		{"pulumi_token", "pul-" + repeatN('a', 45), true},
+
+		// Observability
+		{"grafana_cloud_key", "glc_ABCDEFGHIJKLMNOPQRSTUVab", true},
+		{"grafana_sa_key", "glsa_ABCDEFGHIJKLMNOPQRSTUVab", true},
+		{"sentry_user_token", "sntryu_" + repeat64('a'), true},
+		{"sentry_system_token", "sntrys_" + repeat64('b'), true},
+
+		// Payment
+		{"stripe_secret", "sk_test_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij", true},
+		{"stripe_secret", "sk_live_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij", true},
+		{"stripe_restricted", "rk_test_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij", true},
+		{"shopify_pat", "shpat_" + repeat32('a'), true},
+		{"shopify_shared_secret", "shpss_" + repeat32('b'), true},
+
+		// Should NOT match
+		{"anthropic_key", "sk-regular-key-not-ant", false},
+		{"stripe_secret", "sk_staging_key", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.patternName+"_"+tt.input[:min(20, len(tt.input))], func(t *testing.T) {
+			p, ok := patternMap[tt.patternName]
+			if !ok {
+				t.Fatalf("pattern %q not found in credentialPatterns", tt.patternName)
+			}
+			matched := p.Regex.MatchString(tt.input)
+			if matched != tt.shouldMatch {
+				t.Errorf("pattern %q on %q: got match=%v, want %v", tt.patternName, tt.input, matched, tt.shouldMatch)
+			}
+		})
+	}
+}
+
+func TestAllPatterns_IncludesCredentials(t *testing.T) {
+	all := AllPatterns()
+	builtin := builtinPatterns()
+	cred := credentialPatterns()
+
+	if len(all) != len(builtin)+len(cred) {
+		t.Errorf("AllPatterns() count %d != builtin %d + cred %d", len(all), len(builtin), len(cred))
+	}
+}
+
+func TestScanContent_DetectsCredentials(t *testing.T) {
+	content := "Here is my API key: sk-ant-api03-abcdefghijklmnopqrstuvwxyz\nAnd a Stripe key: sk_test_ABCDEFGHIJKLMNOPQRSTUVWXYZab"
+	results := ScanContent(content)
+	if len(results) < 2 {
+		t.Errorf("expected at least 2 credential detections, got %d", len(results))
+	}
+}
+
+func TestScanContent_NoFalsePositives(t *testing.T) {
+	content := "This is normal text.\nNo secrets here.\nJust regular documentation."
+	results := ScanContent(content)
+	if len(results) != 0 {
+		t.Errorf("expected 0 matches for clean content, got %d", len(results))
+	}
+}
+
+// Helper to generate repeated character strings for test patterns
+func repeat32(c byte) string {
+	b := make([]byte, 32)
+	for i := range b {
+		b[i] = c
+	}
+	return string(b)
+}
+
+func repeat64(c byte) string {
+	b := make([]byte, 64)
+	for i := range b {
+		b[i] = c
+	}
+	return string(b)
+}
+
+func repeatN(c byte, n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = c
+	}
+	return string(b)
+}

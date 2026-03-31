@@ -24,6 +24,7 @@ func addCmd() *cobra.Command {
 		tags        string
 		contentType string
 		domain      string
+		sources     string
 		stdin       bool
 	)
 	cmd := &cobra.Command{
@@ -69,18 +70,29 @@ Examples:
 				}
 			}
 
-			return runAdd(text, notePath, tagList, contentType, domain)
+			var sourceList []string
+			if sources != "" {
+				for _, s := range strings.Split(sources, ",") {
+					s = strings.TrimSpace(s)
+					if s != "" {
+						sourceList = append(sourceList, s)
+					}
+				}
+			}
+
+			return runAdd(text, notePath, tagList, contentType, domain, sourceList)
 		},
 	}
 	cmd.Flags().StringVar(&notePath, "path", "", "File path within the vault (auto-generated if not set)")
 	cmd.Flags().StringVar(&tags, "tags", "", "Comma-separated tags for frontmatter")
 	cmd.Flags().StringVar(&contentType, "type", "", "Content type (decision, note, research, handoff)")
 	cmd.Flags().StringVar(&domain, "domain", "", "Domain for the note")
+	cmd.Flags().StringVar(&sources, "sources", "", "Comma-separated source file paths for provenance tracking")
 	cmd.Flags().BoolVar(&stdin, "stdin", false, "Read note text from stdin")
 	return cmd
 }
 
-func runAdd(text, notePath string, tags []string, contentType, domain string) error {
+func runAdd(text, notePath string, tags []string, contentType, domain string, sources []string) error {
 	vaultPath := config.VaultPath()
 	if vaultPath == "" {
 		return userError("No vault found", "run 'same init' first to set up your vault")
@@ -187,6 +199,15 @@ func runAdd(text, notePath string, tags []string, contentType, domain string) er
 		return nil
 	}
 
+	// Record provenance sources if provided
+	if len(sources) > 0 {
+		for _, src := range sources {
+			if srcErr := db.RecordSource(relPath, src, "file", ""); srcErr != nil {
+				fmt.Fprintf(os.Stderr, "  [WARN] failed to record source %s: %v\n", src, srcErr)
+			}
+		}
+	}
+
 	// Count chunks for the confirmation message
 	notes, _ := db.GetNoteByPath(relPath)
 	chunkCount = len(notes)
@@ -194,8 +215,12 @@ func runAdd(text, notePath string, tags []string, contentType, domain string) er
 		chunkCount = 1
 	}
 
-	fmt.Printf("  %s\u2713%s Added: %s (%d chunk%s, indexed)\n",
-		cli.Green, cli.Reset, notePath, chunkCount, pluralS(chunkCount))
+	sourceSuffix := ""
+	if len(sources) > 0 {
+		sourceSuffix = fmt.Sprintf(", %d source%s", len(sources), pluralS(len(sources)))
+	}
+	fmt.Printf("  %s\u2713%s Added: %s (%d chunk%s, indexed%s)\n",
+		cli.Green, cli.Reset, notePath, chunkCount, pluralS(chunkCount), sourceSuffix)
 	return nil
 }
 

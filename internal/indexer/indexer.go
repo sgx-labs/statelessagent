@@ -676,9 +676,28 @@ func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient em
 	reviewBy := strings.TrimSpace(meta.ReviewBy)
 	confidence := memory.ComputeConfidence(contentType, mtime, 0, reviewBy != "", "unknown")
 
-	// Determine chunks
+	// Determine chunks — try turn-level chunking first for conversational content.
 	var chunks []Chunk
-	if len(body) > config.ChunkTokenThreshold {
+	if ShouldChunkByTurns(body) {
+		turnChunks := ChunkByTurns(body)
+		headingChunks := ChunkByHeadings(body)
+		// Use whichever produces more chunks (better granularity).
+		if len(turnChunks) >= len(headingChunks) {
+			chunks = turnChunks
+		} else {
+			chunks = headingChunks
+		}
+		// Split oversized chunks further.
+		var final []Chunk
+		for _, c := range chunks {
+			if len(c.Text) > config.MaxEmbedChars {
+				final = append(final, ChunkBySize(c.Text, config.MaxEmbedChars)...)
+			} else {
+				final = append(final, c)
+			}
+		}
+		chunks = final
+	} else if len(body) > config.ChunkTokenThreshold {
 		chunks = ChunkByHeadings(body)
 		// If any chunk is still too large, split further
 		var final []Chunk
@@ -1392,7 +1411,24 @@ func buildRecordsLite(filePath, relPath, vaultPath string) ([]store.NoteRecord, 
 	confidence := memory.ComputeConfidence(contentType, mtime, 0, reviewBy != "", "unknown")
 
 	var chunks []Chunk
-	if len(body) > config.ChunkTokenThreshold {
+	if ShouldChunkByTurns(body) {
+		turnChunks := ChunkByTurns(body)
+		headingChunks := ChunkByHeadings(body)
+		if len(turnChunks) >= len(headingChunks) {
+			chunks = turnChunks
+		} else {
+			chunks = headingChunks
+		}
+		var final []Chunk
+		for _, c := range chunks {
+			if len(c.Text) > config.MaxEmbedChars {
+				final = append(final, ChunkBySize(c.Text, config.MaxEmbedChars)...)
+			} else {
+				final = append(final, c)
+			}
+		}
+		chunks = final
+	} else if len(body) > config.ChunkTokenThreshold {
 		chunks = ChunkByHeadings(body)
 		var final []Chunk
 		for _, c := range chunks {
