@@ -1727,21 +1727,3 @@ func parseBoolValue(s string) bool {
 	}
 }
 
-// ConfigFilePath returns the path to the vault config file.
-func ConfigFilePath(vaultPath string) string {
-	return filepath.Join(vaultPath, ".same", "config.toml")
-}
-
-// LoadConfigFrom loads a config from a specific path.
-func LoadConfigFrom(path string) (*Config, error) {
-	var cfg Config
-	if _, err := toml.DecodeFile(path, &cfg); err != nil {
-		return nil, err
-	}
-	return &cfg, nil
-}
-
-// DefaultConfig returns a Config with default values.
-func DefaultConfig() *Config {
-	return &Config{}
-}

@@ -528,12 +528,14 @@ func handleReindex(ctx context.Context, req *mcp.CallToolRequest, input reindexI
 			strings.Contains(errMsg, `provider is "none"`) {
 			stats, err = indexer.ReindexLite(context.Background(), db, input.Force, nil)
 			if err != nil {
-				return errorResult(fmt.Sprintf("Reindex failed (keyword-only fallback): %v", err)), nil, nil
+				fmt.Fprintf(os.Stderr, "same: mcp: reindex keyword-only fallback: %v\n", err)
+				return errorResult("Reindex failed (keyword-only fallback). Run 'same doctor' for diagnostics."), nil, nil
 			}
 			// Return stats with a note about lite mode
 			stats.Timestamp = "keyword-only (embedding unavailable)"
 		} else {
-			return errorResult(fmt.Sprintf("Reindex error: %v", err)), nil, nil
+			fmt.Fprintf(os.Stderr, "same: mcp: reindex: %v\n", err)
+			return errorResult("Reindex error. Run 'same doctor' for diagnostics."), nil, nil
 		}
 	}
 
@@ -1239,7 +1241,8 @@ func handleMemConsolidate(ctx context.Context, req *mcp.CallToolRequest, input m
 	engine := consolidate.NewEngine(db, chat, ep, model, vaultPath, threshold)
 	result, err := engine.Run(input.DryRun)
 	if err != nil {
-		return errorResult(fmt.Sprintf("Consolidation error: %v", err)), nil, nil
+		fmt.Fprintf(os.Stderr, "same: mcp: consolidation: %v\n", err)
+		return errorResult("Consolidation error. Check LLM provider connectivity and try again."), nil, nil
 	}
 
 	// Build formatted text output
@@ -1359,7 +1362,8 @@ func handleMemBrief(ctx context.Context, req *mcp.CallToolRequest, input memBrie
 	prompt := buildMCPBriefPrompt(recentNotes, sessionNotes, decisionNotes, highConfNotes)
 	answer, err := chat.Generate(model, prompt)
 	if err != nil {
-		return errorResult(fmt.Sprintf("Briefing generation failed: %v", err)), nil, nil
+		fmt.Fprintf(os.Stderr, "same: mcp: briefing generation: %v\n", err)
+		return errorResult("Briefing generation failed. Check LLM provider connectivity and try again."), nil, nil
 	}
 
 	// Add sources summary
@@ -1379,7 +1383,8 @@ func handleMemHealth(ctx context.Context, req *mcp.CallToolRequest, input emptyI
 	if err := conn.QueryRow(
 		`SELECT COUNT(*) FROM vault_notes WHERE chunk_id = 0`,
 	).Scan(&totalNotes); err != nil {
-		return errorResult(fmt.Sprintf("Error querying notes: %v", err)), nil, nil
+		fmt.Fprintf(os.Stderr, "same: mcp: mem_health query: %v\n", err)
+		return errorResult("Error querying vault health. The database may be corrupted — run 'same doctor'."), nil, nil
 	}
 
 	if totalNotes == 0 {
@@ -1558,7 +1563,8 @@ func handleMemForget(ctx context.Context, req *mcp.CallToolRequest, input memFor
 
 	affected, err := db.SuppressNote(input.Path)
 	if err != nil {
-		return errorResult(fmt.Sprintf("Error suppressing note: %v", err)), nil, nil
+		fmt.Fprintf(os.Stderr, "same: mcp: mem_forget suppress: %v\n", err)
+		return errorResult("Error suppressing note. The database may be unavailable — try again."), nil, nil
 	}
 	if affected == 0 {
 		return errorResult(fmt.Sprintf("No note found at path: %s", input.Path)), nil, nil
