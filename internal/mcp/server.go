@@ -597,6 +597,14 @@ func handleSaveNote(ctx context.Context, req *mcp.CallToolRequest, input saveNot
 	if safePath == "" {
 		return errorResult("Error: path must be a relative path within the vault. Cannot write to _PRIVATE/."), nil, nil
 	}
+	// SECURITY: Block MCP writes to imports/ — this directory is owned by
+	// `same import` and its contents are trusted for provenance tracking.
+	// Allowing MCP writes here would let agents plant provenance_source
+	// frontmatter that monitors files outside the vault.
+	cleanPath := filepath.ToSlash(filepath.Clean(input.Path))
+	if strings.HasPrefix(cleanPath, "imports/") || cleanPath == "imports" {
+		return errorResult("Error: the imports/ directory is reserved for 'same import'. Use a different path."), nil, nil
+	}
 	relPath, relErr := store.NormalizeClaimPath(input.Path)
 	if relErr != nil {
 		return errorResult("Error: path must stay within the vault. Use a relative path like 'notes/topic.md'."), nil, nil
