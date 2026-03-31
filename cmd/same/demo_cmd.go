@@ -527,6 +527,15 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 		return nil
 	}
 
+	// If the current directory already has a vault, skip the init wizard entirely.
+	cwd, _ := os.Getwd()
+	if _, err := os.Stat(filepath.Join(cwd, ".same")); err == nil {
+		fmt.Printf("  %sVault already set up in %s%s — you're good to go!\n",
+			cli.Dim, cli.ShortenHome(cwd), cli.Reset)
+		fmt.Printf("  Run %ssame search \"query\"%s to try it on your own notes.\n\n", cli.Cyan, cli.Reset)
+		return nil
+	}
+
 	fmt.Printf("  Ready to set up a vault for your project? %s(Y/n)%s ", cli.Dim, cli.Reset)
 	reader := bufio.NewReader(os.Stdin)
 	answer, _ := reader.ReadString('\n')
