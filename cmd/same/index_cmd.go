@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -54,12 +56,111 @@ func migrateCmd() *cobra.Command {
 	}
 }
 
+// reindexLockProcessExists is a variable so tests can override it.
+var reindexLockProcessExists = reindexProcessAlive
+
+func reindexProcessAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	err = proc.Signal(syscall.Signal(0))
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, os.ErrProcessDone) {
+		return false
+	}
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return errno == syscall.EPERM
+	}
+	return false
+}
+
+// acquireReindexLock creates a lockfile at .same/data/reindex.lock to prevent
+// concurrent reindex runs. Returns a cleanup function that removes the lock.
+func acquireReindexLock() (func(), error) {
+	lockPath := filepath.Join(config.DataDir(), "reindex.lock")
+
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		// If we can't create the dir, skip locking (store.Open will fail anyway)
+		return func() {}, nil
+	}
+
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		if os.IsExist(err) {
+			// Check if the lock is stale via PID
+			stale := false
+			if data, readErr := os.ReadFile(lockPath); readErr == nil {
+				fields := strings.Fields(string(data))
+				if len(fields) > 0 {
+					if pid, parseErr := strconv.Atoi(fields[0]); parseErr == nil {
+						stale = !reindexLockProcessExists(pid)
+					} else {
+						stale = true // invalid PID content
+					}
+				} else {
+					stale = true // empty file
+				}
+			} else {
+				stale = true // can't read file
+			}
+
+			if stale {
+				if rmErr := os.Remove(lockPath); rmErr != nil {
+					return nil, fmt.Errorf("remove stale reindex lockfile %s: %w", lockPath, rmErr)
+				}
+				f, err = os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+				if err != nil {
+					return nil, fmt.Errorf("Another reindex is in progress")
+				}
+			} else {
+				return nil, fmt.Errorf("Another reindex is in progress")
+			}
+		} else {
+			// Non-EEXIST error: skip locking
+			return func() {}, nil
+		}
+	}
+
+	// Write PID
+	if _, err := fmt.Fprintf(f, "%d\n", os.Getpid()); err != nil {
+		_ = f.Close()
+		_ = os.Remove(lockPath)
+		return func() {}, nil
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(lockPath)
+		return func() {}, nil
+	}
+
+	cleanup := func() {
+		if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "same: warning: failed to remove reindex lockfile %s: %v\n", lockPath, err)
+		}
+	}
+	return cleanup, nil
+}
+
 func runReindex(force bool, verbose bool) error {
 	db, err := store.Open()
 	if err != nil {
 		return userError("No SAME vault found", "Run 'same init' first.")
 	}
 	defer db.Close()
+
+	// Acquire reindex lockfile to prevent concurrent runs
+	unlock, lockErr := acquireReindexLock()
+	if lockErr != nil {
+		return lockErr
+	}
+	defer unlock()
 
 	// Set up context with signal handling for graceful cancellation
 	ctx, cancel := context.WithCancel(context.Background())
