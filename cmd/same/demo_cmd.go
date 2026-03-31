@@ -524,6 +524,15 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 		return nil
 	}
 
+	// If the current directory already has a vault, skip the init wizard entirely.
+	cwd, _ := os.Getwd()
+	if _, err := os.Stat(filepath.Join(cwd, ".same")); err == nil {
+		fmt.Printf("  %sVault already set up in %s%s — you're good to go!\n",
+			cli.Dim, cli.ShortenHome(cwd), cli.Reset)
+		fmt.Printf("  Run %ssame search \"query\"%s to try it on your own notes.\n\n", cli.Cyan, cli.Reset)
+		return nil
+	}
+
 	fmt.Printf("  Ready to set up a vault for your project? %s(Y/n)%s ", cli.Dim, cli.Reset)
 	reader := bufio.NewReader(os.Stdin)
 	answer, _ := reader.ReadString('\n')
@@ -532,7 +541,6 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 	if answer == "" || answer == "y" || answer == "yes" {
 		fmt.Println()
 		// Prompt for directory or use current
-		cwd, _ := os.Getwd()
 		fmt.Printf("  Set up SAME in %s%s%s? %s(Y/n, or enter a path)%s ",
 			cli.Bold, cli.ShortenHome(cwd), cli.Reset, cli.Dim, cli.Reset)
 		dirAnswer, _ := reader.ReadString('\n')
@@ -556,6 +564,14 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 				fmt.Printf("  Run %ssame init%s from your project directory.\n\n", cli.Cyan, cli.Reset)
 				return nil
 			}
+		}
+
+		// Skip init if target directory already has a vault
+		if _, err := os.Stat(filepath.Join(targetDir, ".same")); err == nil {
+			fmt.Printf("\n  %sVault already set up in %s%s — you're good to go!\n",
+				cli.Dim, cli.ShortenHome(targetDir), cli.Reset)
+			fmt.Printf("  Run %ssame search \"query\"%s to try it on your own notes.\n\n", cli.Cyan, cli.Reset)
+			return nil
 		}
 
 		// Warn if target is home directory

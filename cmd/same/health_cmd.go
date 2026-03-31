@@ -184,10 +184,17 @@ func runHealth() error {
 	vaultPath := config.VaultPath()
 	diverged, _ := db.CheckSourceDivergence(vaultPath)
 
-	// Update trust states based on divergence results
+	// Update trust states based on divergence results.
+	// Skip notes captured less than 5 minutes ago — brand-new notes (e.g. welcome
+	// notes from init) may reference files that don't exist yet without being
+	// genuinely stale.
+	fiveMinutesAgo := time.Now().Add(-5 * time.Minute).Unix()
 	var stalePaths, validatedPaths []string
 	divergedByNote := make(map[string]store.DivergenceResult) // first diverged source per note
 	for _, d := range diverged {
+		if d.CapturedAt > fiveMinutesAgo {
+			continue // too young to be considered stale
+		}
 		if _, seen := divergedByNote[d.NotePath]; !seen {
 			divergedByNote[d.NotePath] = d
 			stalePaths = append(stalePaths, d.NotePath)

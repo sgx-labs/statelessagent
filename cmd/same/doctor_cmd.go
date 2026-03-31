@@ -67,6 +67,38 @@ func sanitizeErrorForJSON(err error) string {
 	return msg
 }
 
+func checkBinaryShadowing() (string, error) {
+	// Find our own path
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Sprintf("binary: %s", Version), nil
+	}
+	selfReal, _ := filepath.EvalSymlinks(self)
+
+	// Find all 'same' binaries in PATH
+	pathDirs := filepath.SplitList(os.Getenv("PATH"))
+	var others []string
+	for _, dir := range pathDirs {
+		candidate := filepath.Join(dir, "same")
+		info, err := os.Stat(candidate)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		real, _ := filepath.EvalSymlinks(candidate)
+		if real != selfReal {
+			others = append(others, candidate)
+		}
+	}
+
+	result := fmt.Sprintf("binary: %s (%s)", selfReal, Version)
+	if len(others) > 0 {
+		// Other binaries in PATH are a warning, not an error — they don't
+		// prevent this binary from working correctly.
+		return fmt.Sprintf("%s\n    \u26a0 Other 'same' binaries in PATH: %s", result, strings.Join(others, ", ")), nil
+	}
+	return result, nil
+}
+
 func runDoctor(jsonOut bool) error {
 	passed := 0
 	failed := 0
@@ -158,6 +190,11 @@ func runDoctor(jsonOut bool) error {
 		cli.Header("SAME Health Check")
 		fmt.Println()
 	}
+
+	// 0. Binary shadowing
+	check("Binary", "remove duplicate 'same' binaries from PATH", func() (string, error) {
+		return checkBinaryShadowing()
+	})
 
 	// 1. Vault path
 	check("Vault path", "run 'same init' in your project, or set VAULT_PATH=<path> to point at your vault", func() (string, error) {
