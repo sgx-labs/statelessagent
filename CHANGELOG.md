@@ -6,9 +6,23 @@
 
 - **`host.docker.internal` allowed as Ollama endpoint** — container users (Docker, OrbStack, Codespaces, devcontainers) can now point SAME at the host machine's Ollama. Set `[ollama] url = "http://host.docker.internal:11434"` in `.same/config.toml`.
 
+### Chat Model Configuration
+
+- **`SAME_CHAT_MODEL` env var now works** — override the chat model for consolidation, ask, and brief commands. Previously referenced in error messages but never actually read.
+- **`[chat] model` config key** — set a persistent chat model override in `.same/config.toml`. Precedence: env var > config > auto-detect.
+- **Consolidation progress display** — shows which model is being used at start, and per-group elapsed time during processing.
+- **`same status` shows config override** — Chat line indicates when a model override is active.
+
+### Bug Fixes
+
+- **Stale note timing now shows source file modification time** — `same health` and staleness hooks previously showed "just now" for all stale notes after reindex, because they used the capture timestamp instead of the source file's mtime. Now correctly shows when the source file was actually modified. Deleted sources display "source deleted".
+- **CHANGELOG.md excluded from indexing** — added to default `.sameignore` patterns to prevent oversized chunks from changelogs.
+- **README accuracy** — corrected binary size (~12MB → ~14MB), added held-out validation context to eval metrics (93.3% Recall@5 on 30 blind test cases).
+
 ### Claude Code Memory Import
 
 - **`same import` detects Claude Code memory files** — auto-scans `~/.claude/memory/` (global) and `.claude/projects/*/memory/` (project-scoped). Imports with SAME frontmatter, provenance tracking, and `trust_state: unknown`. Skips MEMORY.md index files and de-duplicates on re-import.
+- **Provenance pipeline for imported notes** — `provenance_source` and `provenance_hash` frontmatter fields are now parsed by the indexer and recorded in `note_sources`. `same health` detects when imported source files change. Absolute paths supported for external sources.
 
 ## v0.12.1
 
