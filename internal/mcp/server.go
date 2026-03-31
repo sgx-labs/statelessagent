@@ -108,6 +108,7 @@ func Serve() error {
 	if embedClient != nil {
 		if mismatchErr := db.CheckEmbeddingMeta(embedClient.Name(), embedClient.Model(), embedClient.Dimensions()); mismatchErr != nil {
 			fmt.Fprintf(os.Stderr, "same: warning: %v\n", mismatchErr)
+			embedClient = nil
 		}
 	}
 
@@ -1999,6 +2000,12 @@ func searchWithFallback(query string, opts store.SearchOptions) ([]store.SearchR
 
 	// Try vector+keyword hybrid search first
 	var queryVec []float32
+	if embedClient != nil && db.HasVectors() {
+		if mismatchErr := db.CheckEmbeddingMeta(embedClient.Name(), embedClient.Model(), embedClient.Dimensions()); mismatchErr != nil {
+			fmt.Fprintf(os.Stderr, "same: warning: %v\n", mismatchErr)
+			embedClient = nil
+		}
+	}
 	if embedClient != nil {
 		queryVec, _ = embedClient.GetQueryEmbedding(query)
 	}

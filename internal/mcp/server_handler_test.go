@@ -794,6 +794,44 @@ func TestHandleSearchNotes_EmptyIndex(t *testing.T) {
 	}
 }
 
+func TestHandleSearchNotes_EmbeddingMismatchFallsBackToKeyword(t *testing.T) {
+	setupHandlerTest(t)
+
+	if err := db.SetEmbeddingMeta("other", "other-embed", 1024); err != nil {
+		t.Fatalf("SetEmbeddingMeta: %v", err)
+	}
+
+	vec := make([]float32, 768)
+	if err := db.InsertNote(&store.NoteRecord{
+		Path:         "notes/fallback.md",
+		Title:        "Fallback Note",
+		ChunkID:      0,
+		ChunkHeading: "(full)",
+		Text:         "keyword fallback survives embedding mismatch",
+		Modified:     float64(time.Now().Unix()),
+		ContentHash:  "fallback-hash",
+		ContentType:  "note",
+		Confidence:   0.6,
+	}, vec); err != nil {
+		t.Fatalf("InsertNote: %v", err)
+	}
+
+	result, _, err := handleSearchNotes(context.Background(), nil, searchInput{
+		Query: "keyword fallback",
+		TopK:  5,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "notes/fallback.md") {
+		t.Fatalf("expected keyword/FTS fallback result, got %q", text)
+	}
+	if embedClient != nil {
+		t.Fatal("expected mismatched embedClient to be cleared for MCP fallback")
+	}
+}
+
 // --- handleSearchNotesFiltered ---
 
 func TestHandleSearchNotesFiltered_EmbedError(t *testing.T) {
