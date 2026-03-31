@@ -401,6 +401,290 @@ func TestLoadConfig_MissingBaseURL_OpenAICompatible(t *testing.T) {
 	}
 }
 
+// --- SetConfigValue tests ---
+
+func TestConfigSet_OllamaURL(t *testing.T) {
+	vault := t.TempDir()
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+	t.Setenv("VAULT_PATH", vault)
+
+	if err := SetConfigValue("ollama.url", "http://host.docker.internal:11434", false); err != nil {
+		t.Fatalf("SetConfigValue: %v", err)
+	}
+
+	cfg, err := LoadConfigFrom(ConfigFilePath(vault))
+	if err != nil {
+		t.Fatalf("LoadConfigFrom: %v", err)
+	}
+	if cfg.Ollama.URL != "http://host.docker.internal:11434" {
+		t.Errorf("expected ollama.url = %q, got %q", "http://host.docker.internal:11434", cfg.Ollama.URL)
+	}
+}
+
+func TestConfigSet_IntegerValue(t *testing.T) {
+	vault := t.TempDir()
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+	t.Setenv("VAULT_PATH", vault)
+
+	if err := SetConfigValue("memory.max_results", "8", false); err != nil {
+		t.Fatalf("SetConfigValue: %v", err)
+	}
+
+	cfg, err := LoadConfigFrom(ConfigFilePath(vault))
+	if err != nil {
+		t.Fatalf("LoadConfigFrom: %v", err)
+	}
+	if cfg.Memory.MaxResults != 8 {
+		t.Errorf("expected memory.max_results = 8, got %d", cfg.Memory.MaxResults)
+	}
+}
+
+func TestConfigSet_FloatValue(t *testing.T) {
+	vault := t.TempDir()
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+	t.Setenv("VAULT_PATH", vault)
+
+	if err := SetConfigValue("memory.composite_threshold", "0.5", false); err != nil {
+		t.Fatalf("SetConfigValue: %v", err)
+	}
+
+	cfg, err := LoadConfigFrom(ConfigFilePath(vault))
+	if err != nil {
+		t.Fatalf("LoadConfigFrom: %v", err)
+	}
+	if cfg.Memory.CompositeThreshold != 0.5 {
+		t.Errorf("expected memory.composite_threshold = 0.5, got %v", cfg.Memory.CompositeThreshold)
+	}
+}
+
+func TestConfigSet_BoolValue(t *testing.T) {
+	vault := t.TempDir()
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+	t.Setenv("VAULT_PATH", vault)
+
+	// First set to true to ensure the file exists with a known state
+	if err := SetConfigValue("hooks.context_surfacing", "true", false); err != nil {
+		t.Fatalf("SetConfigValue (true): %v", err)
+	}
+	cfg, err := LoadConfigFrom(ConfigFilePath(vault))
+	if err != nil {
+		t.Fatalf("LoadConfigFrom: %v", err)
+	}
+	if !cfg.Hooks.ContextSurfacing {
+		t.Errorf("expected hooks.context_surfacing = true, got false")
+	}
+
+	// Now set to false
+	if err := SetConfigValue("hooks.context_surfacing", "false", false); err != nil {
+		t.Fatalf("SetConfigValue (false): %v", err)
+	}
+	cfg, err = LoadConfigFrom(ConfigFilePath(vault))
+	if err != nil {
+		t.Fatalf("LoadConfigFrom: %v", err)
+	}
+	if cfg.Hooks.ContextSurfacing {
+		t.Errorf("expected hooks.context_surfacing = false, got true")
+	}
+}
+
+func TestConfigSet_EnumValidation(t *testing.T) {
+	vault := t.TempDir()
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+	t.Setenv("VAULT_PATH", vault)
+
+	err := SetConfigValue("graph.llm_mode", "invalid", false)
+	if err == nil {
+		t.Fatal("expected error for invalid graph.llm_mode value")
+	}
+	if !strings.Contains(err.Error(), "invalid value for graph.llm_mode") {
+		t.Errorf("expected enum validation error, got: %v", err)
+	}
+
+	// Valid values should work
+	for _, mode := range []string{"off", "local-only", "on"} {
+		if err := SetConfigValue("graph.llm_mode", mode, false); err != nil {
+			t.Errorf("SetConfigValue graph.llm_mode=%q: %v", mode, err)
+		}
+	}
+}
+
+func TestConfigSet_UnknownKey(t *testing.T) {
+	vault := t.TempDir()
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+	t.Setenv("VAULT_PATH", vault)
+
+	err := SetConfigValue("nonexistent.key", "value", false)
+	if err == nil {
+		t.Fatal("expected error for unknown config key")
+	}
+	if !strings.Contains(err.Error(), "unknown config key") {
+		t.Errorf("expected 'unknown config key' error, got: %v", err)
+	}
+}
+
+func TestConfigSet_GlobalFlag(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if err := SetConfigValue("ollama.url", "http://global-host:11434", true); err != nil {
+		t.Fatalf("SetConfigValue (global): %v", err)
+	}
+
+	// Verify written to global config path, not vault config
+	globalPath := filepath.Join(home, ".config", "same", "config.toml")
+	cfg, err := LoadConfigFrom(globalPath)
+	if err != nil {
+		t.Fatalf("LoadConfigFrom global: %v", err)
+	}
+	if cfg.Ollama.URL != "http://global-host:11434" {
+		t.Errorf("expected global ollama.url = %q, got %q", "http://global-host:11434", cfg.Ollama.URL)
+	}
+}
+
+func TestConfigSet_CreatesFileIfMissing(t *testing.T) {
+	vault := t.TempDir()
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+	t.Setenv("VAULT_PATH", vault)
+
+	configPath := ConfigFilePath(vault)
+	// Ensure no config file exists
+	if _, err := os.Stat(configPath); err == nil {
+		t.Fatal("config file should not exist before test")
+	}
+
+	if err := SetConfigValue("ollama.url", "http://new-host:11434", false); err != nil {
+		t.Fatalf("SetConfigValue: %v", err)
+	}
+
+	// Verify file was created
+	info, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatalf("config file should exist after SetConfigValue: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("expected file permissions 0600, got %o", info.Mode().Perm())
+	}
+}
+
+func TestConfigSet_PreservesExistingValues(t *testing.T) {
+	vault := t.TempDir()
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+	t.Setenv("VAULT_PATH", vault)
+
+	// Set first value
+	if err := SetConfigValue("ollama.url", "http://first:11434", false); err != nil {
+		t.Fatalf("SetConfigValue (first): %v", err)
+	}
+
+	// Set a different value
+	if err := SetConfigValue("memory.max_results", "10", false); err != nil {
+		t.Fatalf("SetConfigValue (second): %v", err)
+	}
+
+	// Verify first value is still present
+	cfg, err := LoadConfigFrom(ConfigFilePath(vault))
+	if err != nil {
+		t.Fatalf("LoadConfigFrom: %v", err)
+	}
+	if cfg.Ollama.URL != "http://first:11434" {
+		t.Errorf("expected ollama.url preserved as %q, got %q", "http://first:11434", cfg.Ollama.URL)
+	}
+	if cfg.Memory.MaxResults != 10 {
+		t.Errorf("expected memory.max_results = 10, got %d", cfg.Memory.MaxResults)
+	}
+}
+
+func TestConfigSet_InvalidKeyFormat(t *testing.T) {
+	err := SetConfigValue("noperiod", "value", false)
+	if err == nil {
+		t.Fatal("expected error for key without period")
+	}
+	if !strings.Contains(err.Error(), "invalid key format") {
+		t.Errorf("expected 'invalid key format' error, got: %v", err)
+	}
+}
+
+func TestConfigSet_DisplayModeValidation(t *testing.T) {
+	vault := t.TempDir()
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+	t.Setenv("VAULT_PATH", vault)
+
+	err := SetConfigValue("display.mode", "invalid", false)
+	if err == nil {
+		t.Fatal("expected error for invalid display.mode value")
+	}
+	if !strings.Contains(err.Error(), "invalid value for display.mode") {
+		t.Errorf("expected display mode validation error, got: %v", err)
+	}
+}
+
+func TestConfigSet_InvalidIntegerValue(t *testing.T) {
+	vault := t.TempDir()
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+	t.Setenv("VAULT_PATH", vault)
+
+	err := SetConfigValue("memory.max_results", "notanumber", false)
+	if err == nil {
+		t.Fatal("expected error for non-integer value")
+	}
+	if !strings.Contains(err.Error(), "invalid integer") {
+		t.Errorf("expected 'invalid integer' error, got: %v", err)
+	}
+}
+
+func TestConfigSet_InvalidFloatValue(t *testing.T) {
+	vault := t.TempDir()
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+	t.Setenv("VAULT_PATH", vault)
+
+	err := SetConfigValue("memory.distance_threshold", "notafloat", false)
+	if err == nil {
+		t.Fatal("expected error for non-float value")
+	}
+	if !strings.Contains(err.Error(), "invalid float") {
+		t.Errorf("expected 'invalid float' error, got: %v", err)
+	}
+}
+
+func TestConfigSet_TypoSuggestion(t *testing.T) {
+	vault := t.TempDir()
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+	t.Setenv("VAULT_PATH", vault)
+
+	// "budget" is in configSuggestions and maps to "max_token_budget"
+	err := SetConfigValue("memory.budget", "value", false)
+	if err == nil {
+		t.Fatal("expected error for typo key")
+	}
+	if !strings.Contains(err.Error(), "did you mean") {
+		t.Errorf("expected typo suggestion, got: %v", err)
+	}
+}
+
 func TestLoadConfig_ZeroDimensionsFallsBackToModelDefault(t *testing.T) {
 	vault := t.TempDir()
 	oldOverride := VaultOverride

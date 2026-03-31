@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1402,6 +1403,164 @@ func SetEmbeddingModel(vaultPath, model string) error {
 		return fmt.Errorf("create config directory: %w", err)
 	}
 	return os.WriteFile(cfgPath, buf.Bytes(), 0o600)
+}
+
+// GlobalConfigPath returns the path to the global config file (~/.config/same/config.toml).
+func GlobalConfigPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "same", "config.toml")
+}
+
+// SetConfigValue sets a configuration value using dot notation (section.key).
+// If global is true, writes to ~/.config/same/config.toml; otherwise writes
+// to the current vault's .same/config.toml.
+func SetConfigValue(key, value string, global bool) error {
+	parts := strings.SplitN(key, ".", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid key format %q — use section.key (e.g., ollama.url)", key)
+	}
+	section, field := parts[0], parts[1]
+
+	// Determine config file path
+	var cfgPath string
+	if global {
+		cfgPath = GlobalConfigPath()
+	} else {
+		vp := VaultPath()
+		if vp == "" {
+			return ErrNoVault
+		}
+		cfgPath = ConfigFilePath(vp)
+	}
+
+	// Load existing config from the target file
+	cfg, err := LoadConfigFrom(cfgPath)
+	if err != nil {
+		cfg = DefaultConfig()
+	}
+
+	// Set the value using a switch on section+field
+	if err := setField(cfg, section, field, value); err != nil {
+		return err
+	}
+
+	// Encode and write
+	var buf bytes.Buffer
+	encoder := toml.NewEncoder(&buf)
+	if err := encoder.Encode(cfg); err != nil {
+		return fmt.Errorf("encode config: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+	return os.WriteFile(cfgPath, buf.Bytes(), 0o600)
+}
+
+// setField maps dot-notation keys to Config struct fields.
+func setField(cfg *Config, section, field, value string) error {
+	key := section + "." + field
+	switch key {
+	// Ollama
+	case "ollama.url":
+		cfg.Ollama.URL = value
+	case "ollama.model":
+		cfg.Ollama.Model = value
+
+	// Embedding
+	case "embedding.provider":
+		cfg.Embedding.Provider = value
+	case "embedding.model":
+		cfg.Embedding.Model = value
+	case "embedding.api_key":
+		cfg.Embedding.APIKey = value
+	case "embedding.base_url":
+		cfg.Embedding.BaseURL = value
+	case "embedding.dimensions":
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer for %s: %w", key, err)
+		}
+		cfg.Embedding.Dimensions = n
+
+	// Graph
+	case "graph.llm_mode":
+		valid := map[string]bool{"off": true, "local-only": true, "on": true}
+		if !valid[value] {
+			return fmt.Errorf("invalid value for graph.llm_mode: %q (use off, local-only, or on)", value)
+		}
+		cfg.Graph.LLMMode = value
+	case "graph.model":
+		cfg.Graph.Model = value
+
+	// Memory
+	case "memory.max_token_budget":
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer for %s: %w", key, err)
+		}
+		cfg.Memory.MaxTokenBudget = n
+	case "memory.max_results":
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer for %s: %w", key, err)
+		}
+		cfg.Memory.MaxResults = n
+	case "memory.distance_threshold":
+		f, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid float for %s: %w", key, err)
+		}
+		cfg.Memory.DistanceThreshold = f
+	case "memory.composite_threshold":
+		f, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid float for %s: %w", key, err)
+		}
+		cfg.Memory.CompositeThreshold = f
+
+	// Hooks
+	case "hooks.context_surfacing":
+		cfg.Hooks.ContextSurfacing = parseBoolValue(value)
+	case "hooks.decision_extractor":
+		cfg.Hooks.DecisionExtractor = parseBoolValue(value)
+	case "hooks.handoff_generator":
+		cfg.Hooks.HandoffGenerator = parseBoolValue(value)
+	case "hooks.staleness_check":
+		cfg.Hooks.StalenessCheck = parseBoolValue(value)
+
+	// Display
+	case "display.mode":
+		valid := map[string]bool{"full": true, "compact": true, "quiet": true}
+		if !valid[value] {
+			return fmt.Errorf("invalid value for display.mode: %q (use full, compact, or quiet)", value)
+		}
+		cfg.Display.Mode = value
+
+	// Vault
+	case "vault.path":
+		cfg.Vault.Path = value
+	case "vault.handoff_dir":
+		cfg.Vault.HandoffDir = value
+
+	default:
+		// Check for typos using configSuggestions
+		if suggestion, ok := configSuggestions[field]; ok {
+			return fmt.Errorf("unknown config key %q — did you mean %q?", key, section+"."+suggestion)
+		}
+		return fmt.Errorf("unknown config key %q — run 'same config show' to see available keys", key)
+	}
+	return nil
+}
+
+// parseBoolValue parses a string as a boolean value. Accepts true/false/yes/no/on/off/1/0.
+func parseBoolValue(s string) bool {
+	switch strings.ToLower(s) {
+	case "true", "yes", "on", "1":
+		return true
+	default:
+		return false
+	}
 }
 
 // VerboseEnabled returns true when verbose monitoring is active.
