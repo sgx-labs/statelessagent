@@ -229,9 +229,9 @@ func TestCredentialPatterns_Detection(t *testing.T) {
 		{"sentry_system_token", "sntrys_" + repeat64('b'), true},
 
 		// Payment
-		{"stripe_secret", "sk_test_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij", true},
-		{"stripe_secret", "sk_live_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij", true},
-		{"stripe_restricted", "rk_test_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij", true},
+		{"stripe_secret", "sk_test_" + repeat32('X') + "abcdefghij", true},
+		{"stripe_secret", "sk_live_" + repeat32('Y') + "abcdefghij", true},
+		{"stripe_restricted", "rk_test_" + repeat32('Z') + "abcdefghij", true},
 		{"shopify_pat", "shpat_" + repeat32('a'), true},
 		{"shopify_shared_secret", "shpss_" + repeat32('b'), true},
 
