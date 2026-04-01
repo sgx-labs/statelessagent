@@ -817,29 +817,6 @@ func offerSeedInstall(opts InitOptions) bool {
 }
 
 // showSeedIntro displays the seed vaults section during init.
-// seedCategoryOf maps seed names to display categories.
-var seedCategoryOf = map[string]string{
-	"claude-code-power-user":          "Developer Tools",
-	"ai-agent-architecture":           "Developer Tools",
-	"security-audit-framework":        "Developer Tools",
-	"devops-runbooks":                 "Developer Tools",
-	"api-design-patterns":             "Developer Tools",
-	"typescript-fullstack-patterns":   "Developer Tools",
-	"devcontainer-quickstart":         "Developer Tools",
-	"indie-hacker-playbook":           "Career & Business",
-	"open-source-launch-kit":          "Career & Business",
-	"freelancer-business-kit":         "Career & Business",
-	"resume-interview-prep":           "Career & Business",
-	"engineering-management-playbook": "Career & Business",
-	"personal-productivity-os":        "Personal & Life",
-	"home-chef-essentials":            "Personal & Life",
-	"fitness-and-wellness":            "Personal & Life",
-	"same-getting-started":            "Getting Started",
-	"technical-writing-toolkit":       "Getting Started",
-}
-
-// seedCategoryOrder controls the display order of categories.
-var seedCategoryOrder = []string{"Developer Tools", "Career & Business", "Personal & Life", "Getting Started"}
 
 // printSeedsByCategory displays featured/essential seeds first, then a hint to browse the rest.
 func printSeedsByCategory(seeds []seed.Seed) {
@@ -1485,10 +1462,6 @@ func detectOllamaModels(ollamaURL string) *ollamaDetection {
 }
 
 // checkOllama verifies Ollama is running and has the required model.
-func checkOllama() error {
-	_, err := checkOllamaWithDetection()
-	return err
-}
 
 // checkOllamaWithDetection verifies Ollama is running, detects available models,
 // and ensures at least one embedding model is available. Returns the detection

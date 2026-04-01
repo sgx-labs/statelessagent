@@ -90,8 +90,8 @@ func TestAcquireReindexLock_Basic(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected second acquireReindexLock to fail")
 	}
-	if !strings.Contains(err.Error(), "Another reindex is in progress") {
-		t.Fatalf("expected 'Another reindex is in progress', got: %v", err)
+	if !strings.Contains(err.Error(), "another reindex is in progress") {
+		t.Fatalf("expected 'another reindex is in progress', got: %v", err)
 	}
 
 	// After cleanup, lock should be removed
@@ -145,8 +145,8 @@ func TestAcquireReindexLock_LivePID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected live PID lockfile to block acquisition")
 	}
-	if !strings.Contains(err.Error(), "Another reindex is in progress") {
-		t.Fatalf("expected 'Another reindex is in progress', got: %v", err)
+	if !strings.Contains(err.Error(), "another reindex is in progress") {
+		t.Fatalf("expected 'another reindex is in progress', got: %v", err)
 	}
 }
 

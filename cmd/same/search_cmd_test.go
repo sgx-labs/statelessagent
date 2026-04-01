@@ -85,30 +85,6 @@ func captureCommandStdout(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
-func captureCommandStderr(t *testing.T, fn func()) string {
-	t.Helper()
-	old := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
-	}
-	os.Stderr = w
-	defer func() {
-		os.Stderr = old
-	}()
-
-	fn()
-
-	if err := w.Close(); err != nil {
-		t.Fatalf("close writer: %v", err)
-	}
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, r); err != nil {
-		t.Fatalf("io.Copy: %v", err)
-	}
-	return buf.String()
-}
-
 func TestRunSearch_EmptyQuery(t *testing.T) {
 	if err := runSearch("", 5, "", "", "", nil, false, false); err == nil {
 		t.Fatal("expected error for empty query")

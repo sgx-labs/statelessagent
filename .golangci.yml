@@ -35,7 +35,7 @@ linters:
         text: "ST1005:"
       - linters:
           - staticcheck
-        text: "QF1003:|QF1001:|S1039:|S1016:"
+        text: "QF1003:|QF1001:|QF1002:|S1039:|S1016:|SA9003:"
       - linters:
           - ineffassign
         path: _test\.go

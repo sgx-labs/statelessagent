@@ -502,10 +502,7 @@ func isMeaningfulFilePath(path string) bool {
 			return false
 		}
 	}
-	if strings.HasSuffix(path, "~") {
-		return false
-	}
-	return true
+	return !strings.HasSuffix(path, "~")
 }
 
 // --- Legacy API (kept for MCP create_handoff compatibility) ---
