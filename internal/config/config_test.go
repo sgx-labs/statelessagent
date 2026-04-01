@@ -516,8 +516,11 @@ func TestDefaultVaultPath_SingleChildVault(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chdir(oldWd) })
 
 	got := defaultVaultPath()
-	if got != child {
-		t.Errorf("expected single child vault %q, got %q", child, got)
+	// Resolve symlinks for macOS /var → /private/var comparison
+	resolvedChild, _ := filepath.EvalSymlinks(child)
+	resolvedGot, _ := filepath.EvalSymlinks(got)
+	if resolvedGot != resolvedChild {
+		t.Errorf("expected single child vault %q, got %q", resolvedChild, resolvedGot)
 	}
 }
 
