@@ -123,10 +123,10 @@ func acquireReindexLock() (func(), error) {
 				}
 				f, err = os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 				if err != nil {
-					return nil, fmt.Errorf("Another reindex is in progress")
+					return nil, fmt.Errorf("another reindex is in progress")
 				}
 			} else {
-				return nil, fmt.Errorf("Another reindex is in progress")
+				return nil, fmt.Errorf("another reindex is in progress")
 			}
 		} else {
 			// Non-EEXIST error: skip locking

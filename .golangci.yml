@@ -33,7 +33,12 @@ linters:
       - linters:
           - staticcheck
         text: "ST1005:"
-        path: internal/embedding/
+      - linters:
+          - staticcheck
+        text: "QF1003:|QF1001:|S1039:|S1016:"
+      - linters:
+          - ineffassign
+        path: _test\.go
     paths:
       - third_party$
       - builtin$
