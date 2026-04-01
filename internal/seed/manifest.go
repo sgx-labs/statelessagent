@@ -24,12 +24,12 @@ const (
 
 // Manifest is the top-level seed registry structure.
 type Manifest struct {
-	SchemaVersion    int    `json:"schema_version"`
-	InstallEngine    string `json:"install_engine,omitempty"`
-	InstallCommand   string `json:"install_command,omitempty"`
-	SeedInstallPat   string `json:"seed_install_pattern,omitempty"`
-	Website          string `json:"website,omitempty"`
-	Seeds            []Seed `json:"seeds"`
+	SchemaVersion  int    `json:"schema_version"`
+	InstallEngine  string `json:"install_engine,omitempty"`
+	InstallCommand string `json:"install_command,omitempty"`
+	SeedInstallPat string `json:"seed_install_pattern,omitempty"`
+	Website        string `json:"website,omitempty"`
+	Seeds          []Seed `json:"seeds"`
 }
 
 // Seed describes a single installable seed vault.

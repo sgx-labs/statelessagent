@@ -22,11 +22,11 @@ const (
 
 // OllamaProvider generates embeddings via a local Ollama instance.
 type OllamaProvider struct {
-	httpClient  *http.Client
-	baseURL     string
-	model       string
-	dims        int
-	skipRetry   bool // when true, fail immediately on network errors instead of retrying
+	httpClient *http.Client
+	baseURL    string
+	model      string
+	dims       int
+	skipRetry  bool // when true, fail immediately on network errors instead of retrying
 }
 
 // newOllamaProvider creates an Ollama embedding provider.

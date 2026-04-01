@@ -547,9 +547,9 @@ func TestGetContradictionSummary(t *testing.T) {
 		{"notes/b.md", "contradicted", "factual"},
 		{"notes/c.md", "contradicted", "preference"},
 		{"notes/d.md", "contradicted", "context"},
-		{"notes/e.md", "contradicted", ""},  // untyped
-		{"notes/f.md", "validated", ""},      // not contradicted
-		{"notes/g.md", "unknown", ""},        // not contradicted
+		{"notes/e.md", "contradicted", ""}, // untyped
+		{"notes/f.md", "validated", ""},    // not contradicted
+		{"notes/g.md", "unknown", ""},      // not contradicted
 	}
 	for _, n := range notes {
 		_, err := db.conn.Exec(

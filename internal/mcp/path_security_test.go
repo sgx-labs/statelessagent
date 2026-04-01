@@ -54,14 +54,14 @@ func TestSafeVaultPath_URLEncodedTraversal(t *testing.T) {
 	setupTestVault(t)
 
 	tests := []string{
-		"notes/%2e%2e%2fsecret.md",       // URL-encoded ../
-		"%2e%2e/secret.md",               // URL-encoded ..
-		"notes/%2e%2e/secret.md",         // URL-encoded .. in path
-		"notes/..%2fsecret.md",           // mixed encoded traversal
-		"notes%2f..%2f..%2fsecret.md",    // fully encoded traversal
-		"%2Fetc%2Fpasswd",                // URL-encoded absolute path
-		"notes/%5c..%5c..%5csecret.md",   // URL-encoded backslash traversal
-		"notes/%00evil.md",               // URL-encoded null byte
+		"notes/%2e%2e%2fsecret.md",     // URL-encoded ../
+		"%2e%2e/secret.md",             // URL-encoded ..
+		"notes/%2e%2e/secret.md",       // URL-encoded .. in path
+		"notes/..%2fsecret.md",         // mixed encoded traversal
+		"notes%2f..%2f..%2fsecret.md",  // fully encoded traversal
+		"%2Fetc%2Fpasswd",              // URL-encoded absolute path
+		"notes/%5c..%5c..%5csecret.md", // URL-encoded backslash traversal
+		"notes/%00evil.md",             // URL-encoded null byte
 	}
 
 	for _, input := range tests {
@@ -77,7 +77,7 @@ func TestSafeVaultPath_UnicodeFullwidthTraversal(t *testing.T) {
 	setupTestVault(t)
 
 	tests := []string{
-		"notes/\uff0e\uff0e/secret.md",     // fullwidth period: .. in fullwidth
+		"notes/\uff0e\uff0e/secret.md",      // fullwidth period: .. in fullwidth
 		"notes/\uff0e\uff0e\uff0fsecret.md", // fullwidth ../
 		"\uff0e\uff0e/secret.md",            // fullwidth .. at start
 	}

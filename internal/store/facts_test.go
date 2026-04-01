@@ -251,7 +251,7 @@ func TestBoostFromFacts(t *testing.T) {
 
 	// Insert a fact for arch.md
 	if err := db.InsertFact(&FactRecord{
-		FactText: "The team uses PostgreSQL for production databases",
+		FactText:   "The team uses PostgreSQL for production databases",
 		SourcePath: "arch.md", ChunkID: 0, Confidence: 0.95,
 	}, makeVec(0.5)); err != nil {
 		t.Fatalf("InsertFact: %v", err)

@@ -22,15 +22,15 @@ import (
 
 // scaleConfig controls the scale test parameters.
 type scaleConfig struct {
-	TotalNotes       int
-	NotePct          float64 // 0.60
-	DecisionPct      float64 // 0.20
-	HandoffPct       float64 // 0.10
-	ResearchPct      float64 // 0.10
-	StalePct         float64 // fraction of notes marked stale
-	ContradictedPct  float64 // fraction marked contradicted
-	FTSQueryCount    int     // number of FTS5 search queries to average
-	MetaQueryCount   int     // number of metadata filter queries to average
+	TotalNotes      int
+	NotePct         float64 // 0.60
+	DecisionPct     float64 // 0.20
+	HandoffPct      float64 // 0.10
+	ResearchPct     float64 // 0.10
+	StalePct        float64 // fraction of notes marked stale
+	ContradictedPct float64 // fraction marked contradicted
+	FTSQueryCount   int     // number of FTS5 search queries to average
+	MetaQueryCount  int     // number of metadata filter queries to average
 }
 
 func defaultScaleConfig() scaleConfig {
@@ -49,23 +49,23 @@ func defaultScaleConfig() scaleConfig {
 
 // scaleResults holds all timing and count data for JSON output.
 type scaleResults struct {
-	Timestamp         string  `json:"timestamp"`
-	TotalNotes        int     `json:"total_notes"`
-	TotalChunks       int     `json:"total_chunks"`
-	IndexTimeMs       int64   `json:"index_time_ms"`
-	SearchAvgMs       float64 `json:"search_avg_ms"`
-	SearchMode        string  `json:"search_mode"`
-	MetaFilterAvgMs   float64 `json:"meta_filter_avg_ms"`
-	NoteCountMs       float64 `json:"note_count_ms"`
-	ChunkCountMs      float64 `json:"chunk_count_ms"`
-	GraphStatsMs      float64 `json:"graph_stats_ms"`
-	MemBeforeMB       float64 `json:"mem_before_mb"`
-	MemAfterMB        float64 `json:"mem_after_mb"`
-	MemDeltaMB        float64 `json:"mem_delta_mb"`
-	GraphNodes        int     `json:"graph_nodes"`
-	GraphEdges        int     `json:"graph_edges"`
-	SearchQueryCount  int     `json:"search_query_count"`
-	MetaFilterCount   int     `json:"meta_filter_query_count"`
+	Timestamp        string  `json:"timestamp"`
+	TotalNotes       int     `json:"total_notes"`
+	TotalChunks      int     `json:"total_chunks"`
+	IndexTimeMs      int64   `json:"index_time_ms"`
+	SearchAvgMs      float64 `json:"search_avg_ms"`
+	SearchMode       string  `json:"search_mode"`
+	MetaFilterAvgMs  float64 `json:"meta_filter_avg_ms"`
+	NoteCountMs      float64 `json:"note_count_ms"`
+	ChunkCountMs     float64 `json:"chunk_count_ms"`
+	GraphStatsMs     float64 `json:"graph_stats_ms"`
+	MemBeforeMB      float64 `json:"mem_before_mb"`
+	MemAfterMB       float64 `json:"mem_after_mb"`
+	MemDeltaMB       float64 `json:"mem_delta_mb"`
+	GraphNodes       int     `json:"graph_nodes"`
+	GraphEdges       int     `json:"graph_edges"`
+	SearchQueryCount int     `json:"search_query_count"`
+	MetaFilterCount  int     `json:"meta_filter_query_count"`
 }
 
 // TestScale generates 10K synthetic notes, indexes them (FTS5-only),
@@ -283,23 +283,23 @@ func TestScale(t *testing.T) {
 	}
 
 	results := scaleResults{
-		Timestamp:       time.Now().Format(time.RFC3339),
-		TotalNotes:      noteCount,
-		TotalChunks:     chunkCount,
-		IndexTimeMs:     indexDuration.Milliseconds(),
-		SearchAvgMs:     avgSearchMs,
-		SearchMode:      searchMode,
-		MetaFilterAvgMs: avgMetaMs,
-		NoteCountMs:     ncMs,
-		ChunkCountMs:    ccMs,
-		GraphStatsMs:    gsMs,
-		MemBeforeMB:     memBeforeMB,
-		MemAfterMB:      memAfterMB,
-		MemDeltaMB:      memDeltaMB,
-		GraphNodes:      graphNodes,
-		GraphEdges:      graphEdges,
+		Timestamp:        time.Now().Format(time.RFC3339),
+		TotalNotes:       noteCount,
+		TotalChunks:      chunkCount,
+		IndexTimeMs:      indexDuration.Milliseconds(),
+		SearchAvgMs:      avgSearchMs,
+		SearchMode:       searchMode,
+		MetaFilterAvgMs:  avgMetaMs,
+		NoteCountMs:      ncMs,
+		ChunkCountMs:     ccMs,
+		GraphStatsMs:     gsMs,
+		MemBeforeMB:      memBeforeMB,
+		MemAfterMB:       memAfterMB,
+		MemDeltaMB:       memDeltaMB,
+		GraphNodes:       graphNodes,
+		GraphEdges:       graphEdges,
 		SearchQueryCount: cfg.FTSQueryCount,
-		MetaFilterCount: cfg.MetaQueryCount,
+		MetaFilterCount:  cfg.MetaQueryCount,
 	}
 
 	// --- Save results JSON ---
@@ -606,18 +606,18 @@ func generateNotes(cfg scaleConfig) []store.NoteRecord {
 		}
 
 		rec := store.NoteRecord{
-			Path:        path,
-			Title:       title,
-			Tags:        string(tagsJSON),
-			Domain:      domain,
-			Workstream:  workstream,
-			ChunkID:     0,
+			Path:         path,
+			Title:        title,
+			Tags:         string(tagsJSON),
+			Domain:       domain,
+			Workstream:   workstream,
+			ChunkID:      0,
 			ChunkHeading: "(full)",
-			Text:        title + "\n\n" + body,
-			Modified:    modified,
-			ContentHash: hash,
-			ContentType: ct,
-			Confidence:  confidence,
+			Text:         title + "\n\n" + body,
+			Modified:     modified,
+			ContentHash:  hash,
+			ContentType:  ct,
+			Confidence:   confidence,
 		}
 		records = append(records, rec)
 	}

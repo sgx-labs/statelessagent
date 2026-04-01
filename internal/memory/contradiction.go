@@ -35,12 +35,12 @@ type ContradictionResult struct {
 // This is a simplified version of SearchResult for use in contradiction detection,
 // so we don't couple to the store package.
 type ContradictionCandidate struct {
-	Path    string
-	Text    string
-	Score   float64 // similarity score (0-1, higher = more similar)
-	Title   string
-	Tags    string
-	Domain  string
+	Path   string
+	Text   string
+	Score  float64 // similarity score (0-1, higher = more similar)
+	Title  string
+	Tags   string
+	Domain string
 }
 
 // --- Negation / temporal / preference signal patterns ---

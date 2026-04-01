@@ -503,8 +503,8 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 				if m, _ := c.PickBestModel(); m != "" {
 					fmt.Printf("\n  %sTip:%s %s'same graph enable'%s unlocks richer knowledge graph extraction.\n",
 						cli.Bold, cli.Reset, cli.Cyan, cli.Reset)
-				fmt.Printf("        Works best with 7B+ models. Run %s'same tips'%s for model guidance.\n",
-					cli.Cyan, cli.Reset)
+					fmt.Printf("        Works best with 7B+ models. Run %s'same tips'%s for model guidance.\n",
+						cli.Cyan, cli.Reset)
 				}
 			}
 		}

@@ -274,16 +274,16 @@ type MetadataQueryHints struct {
 // trustStateKeywords maps query keywords to the trust_state they imply.
 // Longer phrases are checked first via iteration.
 var trustStateKeywords = map[string]string{
-	"stale":        "stale",
-	"stale notes":  "stale",
-	"stale doc":    "stale",
-	"outdated":     "stale",
-	"contradicted": "contradicted",
-	"contradiction":"contradicted",
-	"validated":    "validated",
-	"verified":     "validated",
-	"superseded":   "stale",
-	"deprecated":   "stale",
+	"stale":         "stale",
+	"stale notes":   "stale",
+	"stale doc":     "stale",
+	"outdated":      "stale",
+	"contradicted":  "contradicted",
+	"contradiction": "contradicted",
+	"validated":     "validated",
+	"verified":      "validated",
+	"superseded":    "stale",
+	"deprecated":    "stale",
 }
 
 // lowConfidenceKeywords signal the user is asking about unreliable/uncertain content.

@@ -40,23 +40,23 @@ type testCase struct {
 
 // evalResult records the outcome of a single test case.
 type evalResult struct {
-	ID             int     `json:"id"`
-	Query          string  `json:"query"`
-	Category       string  `json:"category"`
-	Status         string  `json:"status"` // "PASS" or "FAIL"
-	NoteRank       int     `json:"note_rank"`
-	TermsFound     int     `json:"terms_found"`
-	TermsTotal     int     `json:"terms_total"`
-	ReciprocalRank float64 `json:"reciprocal_rank"`
+	ID             int      `json:"id"`
+	Query          string   `json:"query"`
+	Category       string   `json:"category"`
+	Status         string   `json:"status"` // "PASS" or "FAIL"
+	NoteRank       int      `json:"note_rank"`
+	TermsFound     int      `json:"terms_found"`
+	TermsTotal     int      `json:"terms_total"`
+	ReciprocalRank float64  `json:"reciprocal_rank"`
 	ResultPaths    []string `json:"result_paths"`
 }
 
 // categoryStats holds aggregate metrics per category.
 type categoryStats struct {
-	Total    int
-	Pass     int
-	Fail     int
-	SumRR    float64
+	Total int
+	Pass  int
+	Fail  int
+	SumRR float64
 }
 
 // TestRetrievalEval runs the full retrieval evaluation suite using SAME's
@@ -187,11 +187,11 @@ func TestRetrievalEval(t *testing.T) {
 		"timestamp": time.Now().Format(time.RFC3339),
 		"mode":      "keyword-only (no embeddings)",
 		"summary": map[string]interface{}{
-			"total":          total,
-			"pass":           totalPass,
-			"fail":           totalFail,
+			"total":           total,
+			"pass":            totalPass,
+			"fail":            totalFail,
 			"recall_at_5_pct": math.Round(recall*10) / 10,
-			"mrr":            math.Round(mrr*10000) / 10000,
+			"mrr":             math.Round(mrr*10000) / 10000,
 		},
 		"categories": catSummary,
 		"details":    results,

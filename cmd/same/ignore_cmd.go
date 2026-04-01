@@ -95,7 +95,7 @@ func runIgnoreReset() error {
 		fmt.Printf("This will overwrite %s with defaults.\n", sameignorePath)
 		fmt.Print("Continue? [y/N] ")
 		var response string
-		fmt.Scanln(&response)
+		_, _ = fmt.Scanln(&response)
 		if response != "y" && response != "Y" && response != "yes" {
 			fmt.Println("Canceled.")
 			return nil

@@ -219,31 +219,31 @@ func TestDetectContradictions_MultipleContradictions(t *testing.T) {
 
 func TestClassifyContradiction(t *testing.T) {
 	tests := []struct {
-		name       string
-		oldContent string
-		newContent string
-		wantType   ContradictionType
+		name        string
+		oldContent  string
+		newContent  string
+		wantType    ContradictionType
 		wantMinConf float64
 	}{
 		{
-			name:       "factual negation",
-			oldContent: "The deadline is March 15.",
-			newContent: "The deadline has changed to April 30. No longer March 15.",
-			wantType:   ContradictionFactual,
+			name:        "factual negation",
+			oldContent:  "The deadline is March 15.",
+			newContent:  "The deadline has changed to April 30. No longer March 15.",
+			wantType:    ContradictionFactual,
 			wantMinConf: 0.3,
 		},
 		{
-			name:       "preference switch",
-			oldContent: "We use React for the frontend.",
-			newContent: "We decided to use Vue instead. We prefer Vue for this project.",
-			wantType:   ContradictionPreference,
+			name:        "preference switch",
+			oldContent:  "We use React for the frontend.",
+			newContent:  "We decided to use Vue instead. We prefer Vue for this project.",
+			wantType:    ContradictionPreference,
 			wantMinConf: 0.3,
 		},
 		{
-			name:       "context dependent",
-			oldContent: "Database is PostgreSQL.",
-			newContent: "In this project, we use SQLite specifically for embedded scenarios.",
-			wantType:   ContradictionContext,
+			name:        "context dependent",
+			oldContent:  "Database is PostgreSQL.",
+			newContent:  "In this project, we use SQLite specifically for embedded scenarios.",
+			wantType:    ContradictionContext,
 			wantMinConf: 0.3,
 		},
 	}

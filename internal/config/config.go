@@ -194,7 +194,7 @@ type HooksConfig struct {
 	HandoffGenerator  bool `toml:"handoff_generator"`
 	StalenessCheck    bool `toml:"staleness_check"`
 	HandoffMaxAgeDays int  `toml:"handoff_max_age_days"` // Max age in days for loading handoffs (default 2)
-	TimeInjection     bool `toml:"time_injection"`        // Inject current time into context (default true)
+	TimeInjection     bool `toml:"time_injection"`       // Inject current time into context (default true)
 }
 
 // DisplayConfig controls visual output settings.
@@ -1778,4 +1778,3 @@ func parseBoolValue(s string) bool {
 		return false
 	}
 }
-

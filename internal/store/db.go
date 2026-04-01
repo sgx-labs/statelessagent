@@ -271,15 +271,15 @@ func (db *DB) migrate() error {
 		version int
 		fn      func() error
 	}{
-		{1, db.migrateV1}, // establishes version tracking baseline
-		{2, db.migrateV2}, // FTS5 full-text search table
-		{3, db.migrateV3}, // session recovery tracking
-		{4, db.migrateV4}, // agent attribution metadata
-		{5, db.migrateV5}, // multi-agent claims table
-		{6, db.migrateV6}, // knowledge graph tables
-		{7, db.migrateV7}, // hook activity logging metadata
-		{8, db.migrateV8}, // suppressed column for mem_forget
-		{9, db.migrateV9},  // provenance tracking (note_sources + trust_state)
+		{1, db.migrateV1},   // establishes version tracking baseline
+		{2, db.migrateV2},   // FTS5 full-text search table
+		{3, db.migrateV3},   // session recovery tracking
+		{4, db.migrateV4},   // agent attribution metadata
+		{5, db.migrateV5},   // multi-agent claims table
+		{6, db.migrateV6},   // knowledge graph tables
+		{7, db.migrateV7},   // hook activity logging metadata
+		{8, db.migrateV8},   // suppressed column for mem_forget
+		{9, db.migrateV9},   // provenance tracking (note_sources + trust_state)
 		{10, db.migrateV10}, // contradiction detail tracking
 		{11, db.migrateV11}, // atomic facts table for dual-layer memory
 	}
