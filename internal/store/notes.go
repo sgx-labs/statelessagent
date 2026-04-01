@@ -344,6 +344,15 @@ func (db *DB) DeleteByPath(path string) error {
 		return fmt.Errorf("delete notes: %w", err)
 	}
 
+	// Clean up provenance sources — prevents stale external monitoring
+	// when an imported note is deleted or replaced at the same path.
+	if _, err := tx.Exec("DELETE FROM note_sources WHERE note_path = ?", path); err != nil {
+		// note_sources table may not exist in older schemas — non-fatal
+		if !isNoSuchTableErr(err) {
+			return fmt.Errorf("delete provenance sources: %w", err)
+		}
+	}
+
 	return tx.Commit()
 }
 

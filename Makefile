@@ -1,6 +1,6 @@
 BINARY_NAME := same
 BUILD_DIR := build
-VERSION := 0.12.1
+VERSION := 0.12.5
 COMMIT := $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo "unknown")
 LDFLAGS := -ldflags "-s -w -X main.Version=$(VERSION) -X main.CommitHash=$(COMMIT)"
 

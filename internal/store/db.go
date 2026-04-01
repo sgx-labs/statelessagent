@@ -21,7 +21,7 @@ type DB struct {
 	ftsAvailable bool       // true if FTS5 module is available
 }
 
-const maxSchemaVersion = 10
+const maxSchemaVersion = 11
 
 // Open opens or creates the database at the configured path.
 func Open() (*DB, error) {
@@ -281,6 +281,7 @@ func (db *DB) migrate() error {
 		{8, db.migrateV8}, // suppressed column for mem_forget
 		{9, db.migrateV9},  // provenance tracking (note_sources + trust_state)
 		{10, db.migrateV10}, // contradiction detail tracking
+		{11, db.migrateV11}, // atomic facts table for dual-layer memory
 	}
 	for _, m := range versionedMigrations {
 		if currentVersion < m.version {
@@ -508,12 +509,12 @@ func (db *DB) CheckEmbeddingMeta(provider, model string, dims int) error {
 
 	// Check for dimension mismatch (most critical — causes garbage results)
 	if hasDims && dims > 0 && storedDims > 0 && storedDims != dims {
-		return fmt.Errorf("embedding dimensions changed: your embedding model changed. Run 'same reindex --force' to rebuild the index")
+		return fmt.Errorf("embedding model changed (%d→%d dims). Run 'same reindex --force' to rebuild", storedDims, dims)
 	}
 
 	// Check for provider/model mismatch
 	if hasProvider && hasModel && (storedProvider != provider || storedModel != model) {
-		return fmt.Errorf("embedding model changed: your embedding model changed. Run 'same reindex --force' to rebuild the index")
+		return fmt.Errorf("embedding model changed (%s/%s→%s/%s). Run 'same reindex --force' to rebuild", storedProvider, storedModel, provider, model)
 	}
 
 	return nil
@@ -641,4 +642,61 @@ func (db *DB) SuppressNote(path string) (int64, error) {
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// UnsuppressNote clears the suppressed flag on a note, restoring it to search results.
+func (db *DB) UnsuppressNote(path string) (int64, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	res, err := db.conn.Exec("UPDATE vault_notes SET suppressed = 0 WHERE path = ?", path)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// migrateV11 creates the facts table and vector index for dual-layer memory.
+// Facts are atomic knowledge entries extracted from source chunks, providing
+// a precision search layer linked back to full chunks for recall.
+func (db *DB) migrateV11() error {
+	if _, err := db.conn.Exec(`CREATE TABLE IF NOT EXISTS facts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		fact_text TEXT NOT NULL,
+		source_path TEXT NOT NULL,
+		chunk_id INTEGER NOT NULL DEFAULT 0,
+		confidence REAL NOT NULL DEFAULT 0.6,
+		created_at INTEGER NOT NULL DEFAULT (unixepoch())
+	)`); err != nil {
+		return fmt.Errorf("create facts table: %w", err)
+	}
+	if _, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_facts_source_path ON facts(source_path)`); err != nil {
+		return err
+	}
+
+	// Vector table for fact embeddings — same dimensions as vault_notes_vec.
+	_, err := db.conn.Exec(fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS facts_vec USING vec0(
+		fact_id INTEGER PRIMARY KEY,
+		embedding float[%d]
+	)`, config.EmbeddingDim()))
+	return err
+}
+
+// ListSuppressed returns paths of all suppressed (forgotten) notes.
+func (db *DB) ListSuppressed() ([]string, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	rows, err := db.conn.Query("SELECT DISTINCT path FROM vault_notes WHERE suppressed = 1 ORDER BY path")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var paths []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	return paths, rows.Err()
 }

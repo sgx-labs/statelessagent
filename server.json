@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.sgx-labs/same",
   "title": "SAME - Stateless Agent Memory Engine",
-  "description": "Agentic storage for AI coding agents. Trust-aware memory with provenance. 17 MCP tools.",
-  "version": "0.12.1",
+  "description": "Agentic storage for AI coding agents. Trust-aware memory with provenance, fact extraction, and Streamable HTTP transport. 19 MCP tools.",
+  "version": "0.12.5",
   "websiteUrl": "https://statelessagent.com",
   "repository": {
     "url": "https://github.com/sgx-labs/statelessagent",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@sgx-labs/same",
-      "version": "0.12.1",
+      "version": "0.12.5",
       "transport": {
         "type": "stdio"
       },

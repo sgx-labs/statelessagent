@@ -92,8 +92,8 @@ func checkBinaryShadowing() (string, error) {
 
 	result := fmt.Sprintf("binary: %s (%s+%s)", selfReal, Version, CommitHash)
 	if len(others) > 0 {
-		return "", fmt.Errorf("%s\n    ⚠ Other 'same' binaries found in PATH:\n    %s\n    These may shadow this binary — remove or update them",
-			result, strings.Join(others, "\n    "))
+		result += fmt.Sprintf("\n    ⚠ Other 'same' binaries in PATH: %s — consider removing them",
+			strings.Join(others, ", "))
 	}
 	return result, nil
 }

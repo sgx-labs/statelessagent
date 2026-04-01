@@ -57,7 +57,7 @@ func SetupMCP(vaultPath string) error {
 		return fmt.Errorf("write .mcp.json: %w", err)
 	}
 
-	fmt.Println("  → .mcp.json (MCP server registered with 17 tools)")
+	fmt.Println("  → .mcp.json (MCP server registered with 19 tools)")
 	fmt.Println()
 	fmt.Println("  Available tools:")
 	tools := []struct{ name, desc string }{
@@ -78,6 +78,8 @@ func SetupMCP(vaultPath string) error {
 		{"mem_brief", "Generate orientation briefing"},
 		{"mem_health", "Vault health with trust analysis"},
 		{"mem_forget", "Suppress a note from search results"},
+		{"mem_restore", "Undo mem_forget (unsuppress a note)"},
+		{"mem_list_suppressed", "List suppressed notes"},
 	}
 	for _, t := range tools {
 		fmt.Printf("    %-24s %s\n", t.name, t.desc)

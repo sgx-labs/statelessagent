@@ -155,6 +155,7 @@ func reindexFiles(db *store.DB, paths []string, vaultPath string) {
 		APIKey:     ec.APIKey,
 		BaseURL:    ec.BaseURL,
 		Dimensions: ec.Dimensions,
+		SkipRetry:  !config.IsEmbeddingProviderExplicit(),
 	}
 	// For ollama provider, use the legacy [ollama] URL if no base_url is set.
 	if (provCfg.Provider == "ollama" || provCfg.Provider == "") && provCfg.BaseURL == "" {

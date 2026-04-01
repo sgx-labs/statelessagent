@@ -550,10 +550,22 @@ func (db *DB) HybridSearch(queryVec []float32, queryText string, opts SearchOpti
 		// When a vector result also appears in keyword results, we boost
 		// its score using the keyword signal so it ranks higher in the
 		// final sort.
+		queryLower := strings.ToLower(queryText)
 		kwPathScore := make(map[string]float64, len(kwResults))
 		for _, r := range kwResults {
 			titleLower := strings.ToLower(r.Title)
 			score := keywordTitleScore(titleLower, terms, termsSet)
+
+			// Exact query string boost: if the note text literally
+			// contains the full query, promote it (1.5x). If the title
+			// contains a query word, give a smaller boost (1.2x).
+			textLower := strings.ToLower(r.Text)
+			if len(queryLower) > 0 && strings.Contains(textLower, queryLower) {
+				score = math.Min(1.0, score*1.5)
+			} else if len(queryLower) > 0 && strings.Contains(titleLower, queryLower) {
+				score = math.Min(1.0, score*1.2)
+			}
+
 			if existing, ok := kwPathScore[r.Path]; !ok || score > existing {
 				kwPathScore[r.Path] = score
 			}
@@ -565,7 +577,7 @@ func (db *DB) HybridSearch(queryVec []float32, queryText string, opts SearchOpti
 		// and cause regressions when boosted.
 		for i, r := range merged {
 			if kwScore, ok := kwPathScore[r.Path]; ok && kwScore >= 0.7 {
-				merged[i].Score = round3(r.Score + 0.5*kwScore)
+				merged[i].Score = round3(math.Min(1.0, r.Score+0.5*kwScore))
 			}
 		}
 
@@ -620,6 +632,14 @@ func (db *DB) HybridSearch(queryVec []float32, queryText string, opts SearchOpti
 
 			titleLower := strings.ToLower(r.Title)
 			score := keywordTitleScore(titleLower, terms, termsSet)
+
+			// Apply exact query string boost to keyword-only results.
+			textLower := strings.ToLower(r.Text)
+			if len(queryLower) > 0 && strings.Contains(textLower, queryLower) {
+				score = math.Min(1.0, score*1.5)
+			} else if len(queryLower) > 0 && strings.Contains(titleLower, queryLower) {
+				score = math.Min(1.0, score*1.2)
+			}
 
 			newKW = append(newKW, RawToSearchResult(r, score))
 		}
@@ -688,7 +708,129 @@ func (db *DB) HybridSearch(queryVec []float32, queryText string, opts SearchOpti
 		merged = ApplyQueryTypeBoosts(merged, opts.QueryTypeBoosts)
 	}
 
+	// 11. Fact-boosted search: if facts exist, search facts_vec and boost
+	// results whose source notes have matching facts. Facts provide precision
+	// (atomic knowledge) while notes provide recall (full context).
+	if db.HasFacts() && queryVec != nil {
+		merged = db.boostFromFacts(queryVec, merged, opts.TopK)
+	}
+
 	return merged, nil
+}
+
+// boostFromFacts searches the facts_vec table and boosts search results
+// whose source notes have matching facts. If a fact's source note is already
+// in results, its score gets a small boost. If not, the note is added with
+// a fact-derived score. The fact text is included in the snippet for context.
+func (db *DB) boostFromFacts(queryVec []float32, results []SearchResult, topK int) []SearchResult {
+	factResults, err := db.SearchFacts(queryVec, 20)
+	if err != nil || len(factResults) == 0 {
+		return results
+	}
+
+	// Build path -> best fact mapping (highest confidence, lowest distance)
+	type factHit struct {
+		text       string
+		distance   float64
+		confidence float64
+	}
+	factHits := make(map[string]factHit)
+	for _, fr := range factResults {
+		existing, ok := factHits[fr.SourcePath]
+		if !ok || fr.Distance < existing.distance {
+			factHits[fr.SourcePath] = factHit{
+				text:       fr.FactText,
+				distance:   fr.Distance,
+				confidence: fr.Confidence,
+			}
+		}
+	}
+
+	// Boost existing results that have matching facts
+	boosted := make(map[string]bool)
+	for i, r := range results {
+		if fh, ok := factHits[r.Path]; ok {
+			// Small additive boost: 0.05-0.15 based on fact confidence
+			boost := 0.05 + (fh.confidence * 0.10)
+			results[i].Score = round3(math.Min(1.0, r.Score+boost))
+			boosted[r.Path] = true
+		}
+	}
+
+	// Add notes from fact hits that aren't already in results
+	if len(results) < topK {
+		for path, fh := range factHits {
+			if boosted[path] {
+				continue
+			}
+			if len(results) >= topK {
+				break
+			}
+
+			// Look up the note's root chunk for display
+			note, err := db.getNoteRootByPath(path)
+			if err != nil || note == nil {
+				continue
+			}
+
+			// Score based on fact distance (same absolute scoring as VectorSearch)
+			const absDistCeiling = 20.0
+			absScore := 1.0 - (fh.distance / absDistCeiling)
+			if absScore < 0 {
+				absScore = 0
+			}
+			// Scale down slightly — fact-only results rank below direct matches
+			score := absScore * 0.85
+
+			snippet := "Fact: " + fh.text
+			if len(snippet) > 500 {
+				snippet = snippet[:500]
+			}
+
+			results = append(results, SearchResult{
+				Path:        note.Path,
+				Title:       note.Title,
+				Score:       round3(score),
+				Snippet:     snippet,
+				Domain:      note.Domain,
+				Workstream:  note.Workstream,
+				Agent:       note.Agent,
+				Tags:        note.Tags,
+				ContentType: note.ContentType,
+				Confidence:  round3(note.Confidence),
+				TrustState:  note.TrustState,
+			})
+		}
+
+		// Re-sort after adding fact-derived results
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].Score > results[j].Score
+		})
+	}
+
+	return results
+}
+
+// getNoteRootByPath returns the root chunk (chunk_id=0) for a given path.
+func (db *DB) getNoteRootByPath(path string) (*RawSearchResult, error) {
+	var r RawSearchResult
+	err := db.conn.QueryRow(`
+		SELECT n.id, n.path, n.title, n.chunk_heading, n.text,
+			n.domain, n.workstream, COALESCE(n.agent, ''), n.tags,
+			n.content_type, n.confidence, n.modified, n.access_count,
+			COALESCE(n.trust_state, 'unknown')
+		FROM vault_notes n
+		WHERE n.path = ? AND n.chunk_id = 0
+		LIMIT 1`, path).Scan(
+		&r.NoteID, &r.Path, &r.Title, &r.Heading, &r.Text,
+		&r.Domain, &r.Workstream, &r.Agent, &r.Tags,
+		&r.ContentType, &r.Confidence, &r.Modified, &r.AccessCount,
+		&r.TrustState,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
 }
 
 // ApplyQueryTypeBoosts applies content-type score multipliers to search results

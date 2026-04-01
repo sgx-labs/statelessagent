@@ -112,16 +112,15 @@ func TestDoctor_BinaryShadowing(t *testing.T) {
 	origPath := os.Getenv("PATH")
 	t.Setenv("PATH", tmpDir+string(os.PathListSeparator)+origPath)
 
-	_, err := checkBinaryShadowing()
-	if err == nil {
-		t.Fatal("expected shadowing warning, got nil error")
+	result, err := checkBinaryShadowing()
+	if err != nil {
+		t.Fatalf("expected no error (warnings are in result string), got: %v", err)
 	}
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "Other 'same' binaries found in PATH") {
-		t.Fatalf("expected shadowing warning message, got: %q", errMsg)
+	if !strings.Contains(result, "Other 'same' binaries in PATH") {
+		t.Fatalf("expected shadowing warning in result, got: %q", result)
 	}
-	if !strings.Contains(errMsg, tmpDir) {
-		t.Fatalf("expected shadowing path to include temp dir %q, got: %q", tmpDir, errMsg)
+	if !strings.Contains(result, tmpDir) {
+		t.Fatalf("expected shadowing path to include temp dir %q, got: %q", tmpDir, result)
 	}
 }
 

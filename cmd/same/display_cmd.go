@@ -23,6 +23,12 @@ Modes:
   quiet    Don't show anything
 
 Example: same display compact`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			current := config.DisplayMode()
+			fmt.Printf("  Current display mode: %s%s%s\n", cli.Bold, current, cli.Reset)
+			fmt.Printf("\n  Change with: %ssame display full|compact|quiet%s\n", cli.Dim, cli.Reset)
+			return nil
+		},
 	}
 
 	cmd.AddCommand(&cobra.Command{

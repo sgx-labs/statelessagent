@@ -3,6 +3,7 @@ package store
 import (
 	"math"
 	"math/rand"
+	"strings"
 	"testing"
 )
 
@@ -442,10 +443,10 @@ func TestSchemaVersion(t *testing.T) {
 	}
 	defer db.Close()
 
-	// After migrate(), version should be 10 (through contradiction detail migration).
+	// After migrate(), version should be 11 (through facts table migration).
 	v := db.SchemaVersion()
-	if v != 10 {
-		t.Errorf("expected schema version 10, got %d", v)
+	if v != 11 {
+		t.Errorf("expected schema version 11, got %d", v)
 	}
 }
 
@@ -520,6 +521,41 @@ func TestEmbeddingMetaGuardPartialMeta(t *testing.T) {
 	// Mismatched dims: should error
 	if err := db.CheckEmbeddingMeta("openai", "text-embedding-3-large", 1024); err == nil {
 		t.Error("expected error for dimension mismatch with partial meta")
+	}
+}
+
+func TestEmbeddingMetaGuardErrorMessages(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	if err := db.SetEmbeddingMeta("ollama", "nomic-embed-text", 768); err != nil {
+		t.Fatalf("SetEmbeddingMeta: %v", err)
+	}
+
+	// Dimension mismatch error should include both old and new dims
+	err = db.CheckEmbeddingMeta("ollama", "nomic-embed-text", 1024)
+	if err == nil {
+		t.Fatal("expected error for dimension mismatch")
+	}
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "768") || !strings.Contains(errMsg, "1024") {
+		t.Errorf("error should include both dimension values, got: %s", errMsg)
+	}
+	if !strings.Contains(errMsg, "same reindex --force") {
+		t.Errorf("error should suggest 'same reindex --force', got: %s", errMsg)
+	}
+
+	// Provider/model mismatch error should include provider/model names
+	err = db.CheckEmbeddingMeta("openai", "text-embedding-3-small", 768)
+	if err == nil {
+		t.Fatal("expected error for provider mismatch")
+	}
+	errMsg = err.Error()
+	if !strings.Contains(errMsg, "ollama") || !strings.Contains(errMsg, "openai") {
+		t.Errorf("error should include both provider names, got: %s", errMsg)
 	}
 }
 
@@ -1579,6 +1615,93 @@ func TestUnembeddedNoteCount(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("expected 1, got %d", count)
+	}
+}
+
+func TestUnsuppressNote(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	note := &NoteRecord{
+		Path: "notes/test.md", Title: "Test Note",
+		Tags: "[]", ChunkID: 0, ChunkHeading: "(full)",
+		Text: "Test content", Modified: 1700000000,
+		ContentHash: "h1", ContentType: "note", Confidence: 0.5,
+	}
+	vec := make([]float32, 768)
+	if err := db.InsertNote(note, vec); err != nil {
+		t.Fatalf("InsertNote: %v", err)
+	}
+
+	// Suppress
+	affected, err := db.SuppressNote("notes/test.md")
+	if err != nil {
+		t.Fatalf("SuppressNote: %v", err)
+	}
+	if affected == 0 {
+		t.Error("expected affected > 0")
+	}
+
+	// Verify it's suppressed
+	suppressed, err := db.ListSuppressed()
+	if err != nil {
+		t.Fatalf("ListSuppressed: %v", err)
+	}
+	if len(suppressed) != 1 || suppressed[0] != "notes/test.md" {
+		t.Errorf("expected [notes/test.md], got %v", suppressed)
+	}
+
+	// Unsuppress
+	affected, err = db.UnsuppressNote("notes/test.md")
+	if err != nil {
+		t.Fatalf("UnsuppressNote: %v", err)
+	}
+	if affected == 0 {
+		t.Error("expected affected > 0 after unsuppress")
+	}
+
+	// Verify it's no longer suppressed
+	suppressed, err = db.ListSuppressed()
+	if err != nil {
+		t.Fatalf("ListSuppressed after unsuppress: %v", err)
+	}
+	if len(suppressed) != 0 {
+		t.Errorf("expected no suppressed notes after unsuppress, got %v", suppressed)
+	}
+}
+
+func TestListSuppressed_Empty(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	paths, err := db.ListSuppressed()
+	if err != nil {
+		t.Fatalf("ListSuppressed: %v", err)
+	}
+	if len(paths) != 0 {
+		t.Errorf("expected empty list, got %v", paths)
+	}
+}
+
+func TestUnsuppressNote_NonExistent(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	affected, err := db.UnsuppressNote("nonexistent.md")
+	if err != nil {
+		t.Fatalf("UnsuppressNote: %v", err)
+	}
+	if affected != 0 {
+		t.Errorf("expected 0 affected for non-existent note, got %d", affected)
 	}
 }
 

@@ -201,3 +201,37 @@ func TestConsolidate_ShowsGroupTiming(t *testing.T) {
 		t.Fatalf("expected stderr timing to end with 's)', got:\n%s", output)
 	}
 }
+
+func TestSanitizeConsolidatedOutput_ExpandedTagCoverage(t *testing.T) {
+	// All dangerous tags that should be stripped
+	dangerousTags := []string{
+		"system-reminder", "system-prompt", "system_prompt",
+		"tool_use", "tool_call",
+		"function_call", "function_result",
+		"instructions", "assistant_instructions", "user_instructions",
+		"context", "hidden", "internal",
+		"antml:thinking", "antml:invoke", "antml:function_calls",
+	}
+
+	for _, tag := range dangerousTags {
+		t.Run(tag, func(t *testing.T) {
+			input := "<" + tag + ">injected payload</" + tag + ">"
+			got := sanitizeConsolidatedOutput(input)
+			if strings.Contains(got, "<"+tag+">") || strings.Contains(got, "</"+tag+">") {
+				t.Errorf("tag <%s> should be stripped, got: %q", tag, got)
+			}
+			// The content between tags should be preserved (tags stripped, content kept)
+			if !strings.Contains(got, "injected payload") {
+				t.Errorf("content between tags should be kept, got: %q", got)
+			}
+		})
+	}
+}
+
+func TestSanitizeConsolidatedOutput_PreservesNormalMarkdown(t *testing.T) {
+	input := "## Normal Heading\n\nThis is **bold** and `code`.\n\n- list item 1\n- list item 2\n"
+	got := sanitizeConsolidatedOutput(input)
+	if got != input {
+		t.Errorf("sanitizer should not modify normal markdown, got:\n%s", got)
+	}
+}

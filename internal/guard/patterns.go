@@ -25,6 +25,12 @@ const (
 	CatAPIKey     Category = "pii_api_key"
 	CatAWSKey     Category = "pii_aws_key"
 	CatPrivateKey Category = "pii_private_key"
+	CatCloudCred  Category = "cloud_credential"
+	CatGitToken   Category = "git_token"
+	CatPayment    Category = "payment_credential"
+	CatComms      Category = "comms_credential"
+	CatDevToken   Category = "dev_token"
+	CatObserve    Category = "observability_credential"
 	CatHardBlock  Category = "hard_blocklist"
 	CatSoftBlock  Category = "soft_blocklist"
 	CatPathBlock  Category = "path_violation"
@@ -108,6 +114,98 @@ func builtinPatterns() []Pattern {
 			Regex:    regexp.MustCompile(`\bxox[bpsar]-[a-zA-Z0-9\-]{10,}\b`),
 		},
 	}
+}
+
+// credentialPatterns returns compiled patterns for API keys, tokens, and secrets
+// across major providers. These complement the builtinPatterns which cover
+// general PII. High-confidence patterns only — each targets a specific,
+// well-defined prefix or format to minimize false positives.
+func credentialPatterns() []Pattern {
+	return []Pattern{
+		// AI API keys
+		{Name: "anthropic_key", Tier: TierHard, Category: CatAPIKey,
+			Regex: regexp.MustCompile(`\bsk-ant-[a-zA-Z0-9_\-]{20,}\b`)},
+		{Name: "openai_proj_key", Tier: TierHard, Category: CatAPIKey,
+			Regex: regexp.MustCompile(`\bsk-proj-[a-zA-Z0-9_\-]{20,}\b`)},
+		{Name: "openai_svcacct_key", Tier: TierHard, Category: CatAPIKey,
+			Regex: regexp.MustCompile(`\bsk-svcacct-[a-zA-Z0-9_\-]{20,}\b`)},
+		{Name: "huggingface_token", Tier: TierHard, Category: CatAPIKey,
+			Regex: regexp.MustCompile(`\bhf_[a-zA-Z0-9]{20,}\b`)},
+
+		// Cloud provider credentials
+		{Name: "gcp_api_key", Tier: TierHard, Category: CatCloudCred,
+			Regex: regexp.MustCompile(`\bAIza[0-9A-Za-z_\-]{35}\b`)},
+		{Name: "digitalocean_pat", Tier: TierHard, Category: CatCloudCred,
+			Regex: regexp.MustCompile(`\bdop_v1_[a-f0-9]{64}\b`)},
+		{Name: "digitalocean_oauth", Tier: TierHard, Category: CatCloudCred,
+			Regex: regexp.MustCompile(`\bdoo_v1_[a-f0-9]{64}\b`)},
+
+		// Git platform tokens
+		{Name: "github_pat_fine", Tier: TierHard, Category: CatGitToken,
+			Regex: regexp.MustCompile(`\bgithub_pat_[a-zA-Z0-9_]{22,}\b`)},
+		{Name: "gitlab_pat", Tier: TierHard, Category: CatGitToken,
+			Regex: regexp.MustCompile(`\bglpat-[a-zA-Z0-9_\-]{20,}\b`)},
+		{Name: "gitlab_deploy", Tier: TierHard, Category: CatGitToken,
+			Regex: regexp.MustCompile(`\bgldt-[a-zA-Z0-9_\-]{20,}\b`)},
+
+		// Communication platform tokens
+		{Name: "slack_bot_token", Tier: TierHard, Category: CatComms,
+			Regex: regexp.MustCompile(`\bxoxb-[0-9]{10,}-[a-zA-Z0-9\-]+\b`)},
+		{Name: "slack_app_token", Tier: TierHard, Category: CatComms,
+			Regex: regexp.MustCompile(`\bxapp-[0-9]-[a-zA-Z0-9\-]{20,}\b`)},
+		{Name: "twilio_api_key", Tier: TierHard, Category: CatComms,
+			Regex: regexp.MustCompile(`\bSK[a-f0-9]{32}\b`)},
+		{Name: "sendgrid_key", Tier: TierHard, Category: CatComms,
+			Regex: regexp.MustCompile(`\bSG\.[a-zA-Z0-9_\-]{22,}\.[a-zA-Z0-9_\-]{20,}\b`)},
+
+		// Developer tokens
+		{Name: "npm_token", Tier: TierHard, Category: CatDevToken,
+			Regex: regexp.MustCompile(`\bnpm_[a-zA-Z0-9]{36,}\b`)},
+		{Name: "pypi_token", Tier: TierHard, Category: CatDevToken,
+			Regex: regexp.MustCompile(`\bpypi-[a-zA-Z0-9_\-]{50,}\b`)},
+		{Name: "postman_key", Tier: TierHard, Category: CatDevToken,
+			Regex: regexp.MustCompile(`\bPMAK-[a-f0-9]{24,}\b`)},
+		{Name: "pulumi_token", Tier: TierHard, Category: CatDevToken,
+			Regex: regexp.MustCompile(`\bpul-[a-f0-9]{40,}\b`)},
+
+		// Observability
+		{Name: "grafana_cloud_key", Tier: TierHard, Category: CatObserve,
+			Regex: regexp.MustCompile(`\bglc_[a-zA-Z0-9_\-]{20,}\b`)},
+		{Name: "grafana_sa_key", Tier: TierHard, Category: CatObserve,
+			Regex: regexp.MustCompile(`\bglsa_[a-zA-Z0-9_\-]{20,}\b`)},
+		{Name: "sentry_user_token", Tier: TierHard, Category: CatObserve,
+			Regex: regexp.MustCompile(`\bsntryu_[a-f0-9]{64}\b`)},
+		{Name: "sentry_system_token", Tier: TierHard, Category: CatObserve,
+			Regex: regexp.MustCompile(`\bsntrys_[a-f0-9]{64}\b`)},
+
+		// Payment
+		{Name: "stripe_secret", Tier: TierHard, Category: CatPayment,
+			Regex: regexp.MustCompile(`\bsk_(?:test|live)_[a-zA-Z0-9]{20,}\b`)},
+		{Name: "stripe_restricted", Tier: TierHard, Category: CatPayment,
+			Regex: regexp.MustCompile(`\brk_(?:test|live)_[a-zA-Z0-9]{20,}\b`)},
+		{Name: "shopify_pat", Tier: TierHard, Category: CatPayment,
+			Regex: regexp.MustCompile(`\bshpat_[a-f0-9]{32,}\b`)},
+		{Name: "shopify_shared_secret", Tier: TierHard, Category: CatPayment,
+			Regex: regexp.MustCompile(`\bshpss_[a-f0-9]{32,}\b`)},
+	}
+}
+
+// AllPatterns returns the complete set of patterns — both PII and credential.
+func AllPatterns() []Pattern {
+	return append(builtinPatterns(), credentialPatterns()...)
+}
+
+// ScanContent checks text content against all patterns (PII + credentials).
+// Returns results for each match found. Used by MCP save_note to warn on
+// credential content.
+func ScanContent(content string) []ScanLineResult {
+	patterns := AllPatterns()
+	var results []ScanLineResult
+	for _, line := range strings.Split(content, "\n") {
+		lineResults := scanLine(line, "", patterns)
+		results = append(results, lineResults...)
+	}
+	return results
 }
 
 // FilterByConfig returns only the patterns whose internal names appear in the enabled set.

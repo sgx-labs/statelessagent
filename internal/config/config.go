@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -135,6 +136,12 @@ type Config struct {
 	Memory    MemoryConfig    `toml:"memory"`
 	Hooks     HooksConfig     `toml:"hooks"`
 	Display   DisplayConfig   `toml:"display"`
+	Auth      AuthConfig      `toml:"auth"`
+}
+
+// AuthConfig holds authentication settings for remote access.
+type AuthConfig struct {
+	Token string `toml:"token"` // Bearer token for Streamable HTTP MCP endpoint
 }
 
 // VaultConfig holds vault-related settings.
@@ -305,6 +312,10 @@ func LoadConfig() (*Config, error) {
 	}
 	if v := os.Getenv("SAME_GRAPH_LLM"); v != "" {
 		cfg.Graph.LLMMode = v
+	}
+	// Auth token override
+	if v := os.Getenv("SAME_MCP_TOKEN"); v != "" {
+		cfg.Auth.Token = v
 	}
 	// Also check OPENAI_API_KEY as a convenience fallback
 	if cfg.Embedding.APIKey == "" && (cfg.Embedding.Provider == "openai" || cfg.Embedding.Provider == "openai-compatible") {
@@ -633,6 +644,46 @@ func MemoryMaxTokenBudget() int {
 		return cfg.Memory.MaxTokenBudget
 	}
 	return 1600
+}
+
+// AuthToken returns the configured Bearer auth token for MCP HTTP access.
+// Checks SAME_MCP_TOKEN env var first, then config file auth.token.
+func AuthToken() string {
+	if v := os.Getenv("SAME_MCP_TOKEN"); v != "" {
+		return v
+	}
+	if cfg := loadConfigSafe(); cfg != nil && cfg.Auth.Token != "" {
+		return cfg.Auth.Token
+	}
+	return ""
+}
+
+// IsEmbeddingProviderExplicit returns true when the user has explicitly
+// configured an embedding provider via env var or config file. Returns false
+// when no provider has been set and the system would default to "ollama".
+// This is used to gate connection retries: when the provider was not
+// explicitly configured, retries are skipped to avoid slow fallback delays.
+func IsEmbeddingProviderExplicit() bool {
+	// Env var explicitly set — the user chose a provider.
+	if os.Getenv("SAME_EMBED_PROVIDER") != "" {
+		return true
+	}
+	// Config file has a non-empty provider — the user chose it during init.
+	if cfg := loadConfigSafe(); cfg != nil {
+		// loadConfigSafe loads via LoadConfig which starts from DefaultConfig().
+		// DefaultConfig sets Embedding.Provider = "ollama". After TOML decode,
+		// if the user never wrote [embedding] provider = "...", the field stays
+		// "ollama" (from defaults). We check whether the provider differs from
+		// the default OR if the config file exists and contains an [embedding]
+		// section. Since we can't easily distinguish "default" from "explicitly
+		// set to ollama", we check whether a config file exists at all. If a
+		// config file exists, the user ran 'same init' which writes the provider
+		// explicitly, so we treat it as explicit.
+		if findConfigFile() != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // EmbeddingProvider returns the configured embedding provider name.
@@ -1142,8 +1193,8 @@ func RegistryPath() string {
 	return filepath.Join(home, ".config", "same", "vaults.json")
 }
 
-// LoadRegistry loads or creates the vault registry.
-// Stale entries (paths that no longer exist on disk) are pruned automatically.
+// LoadRegistry loads or creates the vault registry. Read-only — does not
+// modify the file on disk. Use PruneRegistry for explicit cleanup.
 func LoadRegistry() *VaultRegistry {
 	data, err := os.ReadFile(RegistryPath())
 	if err != nil {
@@ -1156,8 +1207,14 @@ func LoadRegistry() *VaultRegistry {
 	if reg.Vaults == nil {
 		reg.Vaults = make(map[string]string)
 	}
+	return &reg
+}
 
-	// Prune stale entries whose paths no longer exist on disk.
+// PruneRegistry removes stale entries (paths that no longer exist on disk)
+// from the vault registry and saves. Call from explicit vault management
+// commands, not from every registry load.
+func PruneRegistry() {
+	reg := LoadRegistry()
 	changed := false
 	for alias, path := range reg.Vaults {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -1174,8 +1231,6 @@ func LoadRegistry() *VaultRegistry {
 	if changed {
 		_ = reg.Save()
 	}
-
-	return &reg
 }
 
 // NameForPath returns the registry alias for a given vault path.
@@ -1590,3 +1645,137 @@ func saveUserConfig(cfg userConfig) error {
 	}
 	return os.WriteFile(path, data, 0o600)
 }
+
+// SetConfigValue sets a config value using dot notation (e.g., "ollama.url").
+// When global is true, writes to GlobalConfigPath; otherwise writes to vault config.
+func SetConfigValue(key, value string, global bool) error {
+	parts := strings.SplitN(key, ".", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid key format %q — use section.key (e.g., ollama.url)", key)
+	}
+	section, field := parts[0], parts[1]
+
+	var cfgPath string
+	if global {
+		cfgPath = GlobalConfigPath()
+	} else {
+		vp := VaultPath()
+		if vp == "" {
+			return ErrNoVault
+		}
+		cfgPath = ConfigFilePath(vp)
+	}
+
+	cfg, err := LoadConfigFrom(cfgPath)
+	if err != nil {
+		cfg = DefaultConfig()
+	}
+
+	if err := setField(cfg, section, field, value); err != nil {
+		return err
+	}
+
+	var buf bytes.Buffer
+	encoder := toml.NewEncoder(&buf)
+	if err := encoder.Encode(cfg); err != nil {
+		return fmt.Errorf("encode config: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(cfgPath), 0o700); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+	return os.WriteFile(cfgPath, buf.Bytes(), 0o600)
+}
+
+// setField maps dot-notation keys to Config struct fields.
+func setField(cfg *Config, section, field, value string) error {
+	key := section + "." + field
+	switch key {
+	case "ollama.url":
+		cfg.Ollama.URL = value
+	case "ollama.model":
+		cfg.Ollama.Model = value
+	case "embedding.provider":
+		cfg.Embedding.Provider = value
+	case "embedding.model":
+		cfg.Embedding.Model = value
+	case "embedding.api_key":
+		cfg.Embedding.APIKey = value
+	case "embedding.base_url":
+		cfg.Embedding.BaseURL = value
+	case "embedding.dimensions":
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer for %s: %w", key, err)
+		}
+		cfg.Embedding.Dimensions = n
+	case "chat.model":
+		cfg.Chat.Model = value
+	case "graph.llm_mode":
+		valid := map[string]bool{"off": true, "local-only": true, "on": true}
+		if !valid[value] {
+			return fmt.Errorf("invalid value for graph.llm_mode: %q (use off, local-only, or on)", value)
+		}
+		cfg.Graph.LLMMode = value
+	case "graph.model":
+		cfg.Graph.Model = value
+	case "memory.max_token_budget":
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer for %s: %w", key, err)
+		}
+		cfg.Memory.MaxTokenBudget = n
+	case "memory.max_results":
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer for %s: %w", key, err)
+		}
+		cfg.Memory.MaxResults = n
+	case "memory.distance_threshold":
+		f, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid float for %s: %w", key, err)
+		}
+		cfg.Memory.DistanceThreshold = f
+	case "memory.composite_threshold":
+		f, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid float for %s: %w", key, err)
+		}
+		cfg.Memory.CompositeThreshold = f
+	case "hooks.context_surfacing":
+		cfg.Hooks.ContextSurfacing = parseBoolValue(value)
+	case "hooks.decision_extractor":
+		cfg.Hooks.DecisionExtractor = parseBoolValue(value)
+	case "hooks.handoff_generator":
+		cfg.Hooks.HandoffGenerator = parseBoolValue(value)
+	case "hooks.staleness_check":
+		cfg.Hooks.StalenessCheck = parseBoolValue(value)
+	case "display.mode":
+		valid := map[string]bool{"full": true, "compact": true, "quiet": true}
+		if !valid[value] {
+			return fmt.Errorf("invalid value for display.mode: %q (use full, compact, or quiet)", value)
+		}
+		cfg.Display.Mode = value
+	case "vault.path":
+		cfg.Vault.Path = value
+	case "vault.handoff_dir":
+		cfg.Vault.HandoffDir = value
+	case "auth.token":
+		cfg.Auth.Token = value
+	default:
+		return fmt.Errorf("unknown config key %q — run 'same config show' to see available keys", key)
+	}
+	return nil
+}
+
+// parseBoolValue parses a boolean string value (true/false/yes/no/on/off/1/0).
+func parseBoolValue(s string) bool {
+	switch strings.ToLower(s) {
+	case "true", "yes", "on", "1":
+		return true
+	default:
+		return false
+	}
+}
+

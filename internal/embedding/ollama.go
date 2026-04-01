@@ -22,10 +22,11 @@ const (
 
 // OllamaProvider generates embeddings via a local Ollama instance.
 type OllamaProvider struct {
-	httpClient *http.Client
-	baseURL    string
-	model      string
-	dims       int
+	httpClient  *http.Client
+	baseURL     string
+	model       string
+	dims        int
+	skipRetry   bool // when true, fail immediately on network errors instead of retrying
 }
 
 // newOllamaProvider creates an Ollama embedding provider.
@@ -56,6 +57,7 @@ func newOllamaProvider(cfg ProviderConfig) (*OllamaProvider, error) {
 		baseURL:    baseURL,
 		model:      model,
 		dims:       dims,
+		skipRetry:  cfg.SkipRetry,
 	}, nil
 }
 
@@ -152,8 +154,15 @@ func (p *OllamaProvider) getEmbeddingWithDepth(text string, purpose string, dept
 	}
 	prompt := prefix + ": " + text
 
+	// When skipRetry is set, only attempt once. This avoids 6-second retry
+	// delays when Ollama is unreachable and was not explicitly configured.
+	maxAttempts := ollamaMaxRetries
+	if p.skipRetry {
+		maxAttempts = 1
+	}
+
 	var lastErr error
-	for attempt := 0; attempt < ollamaMaxRetries; attempt++ {
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if attempt > 0 {
 			delay := time.Duration(attempt) * ollamaRetryBase
 			reason := ""
@@ -161,7 +170,7 @@ func (p *OllamaProvider) getEmbeddingWithDepth(text string, purpose string, dept
 				reason = fmt.Sprintf(" [%s]", he.Reason)
 			}
 			fmt.Fprintf(os.Stderr, "same: ollama request failed%s, retrying in %s... (attempt %d/%d)\n",
-				reason, delay, attempt+1, ollamaMaxRetries)
+				reason, delay, attempt+1, maxAttempts)
 			time.Sleep(delay)
 		}
 
@@ -186,7 +195,7 @@ func (p *OllamaProvider) getEmbeddingWithDepth(text string, purpose string, dept
 
 		lastErr = err
 	}
-	return nil, humanizeHTTPError(fmt.Errorf("ollama request failed after %d attempts: %w", ollamaMaxRetries, lastErr))
+	return nil, humanizeHTTPError(fmt.Errorf("ollama request failed after %d attempts: %w", maxAttempts, lastErr))
 }
 
 // doBatchEmbedRequest sends a batch of texts to the /api/embed endpoint.
@@ -261,9 +270,16 @@ func (p *OllamaProvider) GetDocumentEmbeddings(texts []string) ([][]float32, err
 		}
 		batch := prefixed[start:end]
 
+		// Gate retries on provider config — skip retry delays when Ollama
+		// was not explicitly configured by the user.
+		maxAttempts := ollamaMaxRetries
+		if p.skipRetry {
+			maxAttempts = 1
+		}
+
 		var lastErr error
 		var results [][]float32
-		for attempt := 0; attempt < ollamaMaxRetries; attempt++ {
+		for attempt := 0; attempt < maxAttempts; attempt++ {
 			if attempt > 0 {
 				delay := time.Duration(attempt) * ollamaRetryBase
 				reason := ""
@@ -271,7 +287,7 @@ func (p *OllamaProvider) GetDocumentEmbeddings(texts []string) ([][]float32, err
 					reason = fmt.Sprintf(" [%s]", he.Reason)
 				}
 				fmt.Fprintf(os.Stderr, "same: ollama batch request failed%s, retrying in %s... (attempt %d/%d)\n",
-					reason, delay, attempt+1, ollamaMaxRetries)
+					reason, delay, attempt+1, maxAttempts)
 				time.Sleep(delay)
 			}
 
@@ -288,7 +304,7 @@ func (p *OllamaProvider) GetDocumentEmbeddings(texts []string) ([][]float32, err
 			results = nil
 		}
 		if results == nil {
-			return nil, humanizeHTTPError(fmt.Errorf("ollama batch request failed after %d attempts: %w", ollamaMaxRetries, lastErr))
+			return nil, humanizeHTTPError(fmt.Errorf("ollama batch request failed after %d attempts: %w", maxAttempts, lastErr))
 		}
 
 		allEmbeddings = append(allEmbeddings, results...)

@@ -19,6 +19,7 @@ import (
 	"github.com/sgx-labs/statelessagent/internal/config"
 	"github.com/sgx-labs/statelessagent/internal/consolidate"
 	"github.com/sgx-labs/statelessagent/internal/embedding"
+	"github.com/sgx-labs/statelessagent/internal/guard"
 	"github.com/sgx-labs/statelessagent/internal/indexer"
 	"github.com/sgx-labs/statelessagent/internal/llm"
 	"github.com/sgx-labs/statelessagent/internal/memory"
@@ -70,17 +71,18 @@ func checkWriteRateLimit() bool {
 // Version is set by the caller (main) before calling Serve.
 var Version = "dev"
 
-// Serve starts the MCP server on stdio.
-func Serve() error {
-	var err error
+// InitGlobals opens the vault database and initializes the package-level
+// embedding client and vault root. Call once before using NewMCPServer.
+// The caller is responsible for closing the returned *store.DB when done.
+func InitGlobals() (*store.DB, error) {
 	// Propagate config-driven noise paths to the store package for ranking filters.
 	store.NoisePaths = config.NoisePaths()
 
+	var err error
 	db, err = store.Open()
 	if err != nil {
-		return fmt.Errorf("SAME vault not initialized. Run 'same init' in your project directory first. (details: %v)", err)
+		return nil, fmt.Errorf("SAME vault not initialized. Run 'same init' in your project directory first. (details: %v)", err)
 	}
-	defer db.Close()
 
 	ec := config.EmbeddingProviderConfig()
 	provCfg := embedding.ProviderConfig{
@@ -89,6 +91,7 @@ func Serve() error {
 		APIKey:     ec.APIKey,
 		BaseURL:    ec.BaseURL,
 		Dimensions: ec.Dimensions,
+		SkipRetry:  !config.IsEmbeddingProviderExplicit(),
 	}
 	// For ollama provider, use the legacy [ollama] URL if no base_url is set
 	if (provCfg.Provider == "ollama" || provCfg.Provider == "") && provCfg.BaseURL == "" {
@@ -97,21 +100,48 @@ func Serve() error {
 			provCfg.BaseURL = ollamaURL
 		}
 	}
-	var embedErr error
-	embedClient, embedErr = embedding.NewProvider(provCfg)
-	if embedErr != nil {
-		fmt.Fprintf(os.Stderr, "same: mcp: embedding unavailable: %v (keyword fallback active)\n", embedErr)
-	}
+	embedClient, _ = embedding.NewProvider(provCfg)
 	// embedClient may be nil if Ollama is not running — search handlers
 	// fall back to FTS5/keyword search gracefully.
+
+	// Fail fast on embedding dimension mismatch — prevents garbage search
+	// results when the embedding model has changed since last reindex.
+	if embedClient != nil {
+		if mismatchErr := db.CheckEmbeddingMeta(embedClient.Name(), embedClient.Model(), embedClient.Dimensions()); mismatchErr != nil {
+			fmt.Fprintf(os.Stderr, "same: warning: %v\n", mismatchErr)
+			embedClient = nil
+		}
+	}
+
 	vaultRoot, _ = filepath.Abs(config.VaultPath())
 
+	return db, nil
+}
+
+// NewMCPServer creates a configured MCP server with all SAME tools registered.
+// The caller must call initGlobals() first to initialize the database and
+// embedding client. This allows the same server to be used with different
+// transports (stdio, Streamable HTTP).
+func NewMCPServer() *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "same",
 		Version: Version,
 	}, nil)
 
 	registerTools(server)
+
+	return server
+}
+
+// Serve starts the MCP server on stdio.
+func Serve() error {
+	openedDB, err := InitGlobals()
+	if err != nil {
+		return err
+	}
+	defer openedDB.Close()
+
+	server := NewMCPServer()
 
 	return server.Run(context.Background(), &mcp.StdioTransport{})
 }
@@ -127,6 +157,7 @@ func refreshEmbedClient() {
 		APIKey:     ec.APIKey,
 		BaseURL:    ec.BaseURL,
 		Dimensions: ec.Dimensions,
+		SkipRetry:  !config.IsEmbeddingProviderExplicit(),
 	}
 	if (provCfg.Provider == "ollama" || provCfg.Provider == "") && provCfg.BaseURL == "" {
 		ollamaURL, urlErr := config.OllamaURL()
@@ -136,8 +167,6 @@ func refreshEmbedClient() {
 	}
 	if client, err := embedding.NewProvider(provCfg); err == nil {
 		embedClient = client
-	} else {
-		fmt.Fprintf(os.Stderr, "same: mcp: embedding refresh failed: %v (keeping previous)\n", err)
 	}
 }
 
@@ -256,9 +285,23 @@ func registerTools(server *mcp.Server) {
 	// mem_forget (autonomous memory management)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "mem_forget",
-		Description: "Suppress a memory so it won't be surfaced in normal search. The note is not deleted -- it's marked as suppressed and will only appear if explicitly requested. Use this for outdated, incorrect, or irrelevant memories. This is not easily reversible: there is no mem_restore tool.\n\nArgs:\n  path: Path of the note to suppress (required)\n  reason: Why this memory is being suppressed (optional)\n\nReturns confirmation of suppression. (experimental)",
+		Description: "Suppress a memory so it won't be surfaced in normal search. The note is not deleted -- it's marked as suppressed and can be restored with mem_restore. Use this for outdated, incorrect, or irrelevant memories.\n\nArgs:\n  path: Path of the note to suppress (required)\n  reason: Why this memory is being suppressed (optional)\n  agent: Your agent identity (optional — if set, you can only suppress notes you created)\n\nReturns confirmation of suppression. (experimental)",
 		Annotations: writeNonDestructive,
 	}, handleMemForget)
+
+	// mem_restore (undo mem_forget)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mem_restore",
+		Description: "Restore a previously suppressed memory so it appears in search again. Reverses the effect of mem_forget.\n\nArgs:\n  path: Path of the note to restore (required)\n\nReturns confirmation of restoration.",
+		Annotations: writeNonDestructive,
+	}, handleMemRestore)
+
+	// mem_list_suppressed (show forgotten memories)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "mem_list_suppressed",
+		Description: "List all memories that have been suppressed via mem_forget. Use this to see what's hidden before deciding what to restore.\n\nReturns a list of suppressed note paths.",
+		Annotations: readOnly,
+	}, handleMemListSuppressed)
 
 	// save_kaizen (continuous improvement)
 	mcp.AddTool(server, &mcp.Tool{
@@ -345,6 +388,7 @@ type memBriefInput struct {
 type memForgetInput struct {
 	Path   string `json:"path" jsonschema:"Path of the note to suppress"`
 	Reason string `json:"reason,omitempty" jsonschema:"Why this memory is being suppressed"`
+	Agent  string `json:"agent,omitempty" jsonschema:"Agent identity — if set, only notes created by this agent can be suppressed"`
 }
 
 type saveKaizenInput struct {
@@ -379,10 +423,7 @@ func handleSearchNotes(ctx context.Context, req *mcp.CallToolRequest, input sear
 	// Reconsolidation: increment access counts for surfaced notes (fire-and-forget).
 	incrementAccessCounts(results)
 
-	data, jsonErr := json.MarshalIndent(results, "", "  ")
-	if jsonErr != nil {
-		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
-	}
+	data, _ := json.MarshalIndent(results, "", "  ")
 	return textResult(string(data)), nil, nil
 }
 
@@ -432,10 +473,7 @@ func handleSearchNotesFiltered(ctx context.Context, req *mcp.CallToolRequest, in
 	// Reconsolidation: increment access counts for surfaced notes (fire-and-forget).
 	incrementAccessCounts(results)
 
-	data, jsonErr := json.MarshalIndent(results, "", "  ")
-	if jsonErr != nil {
-		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
-	}
+	data, _ := json.MarshalIndent(results, "", "  ")
 	return textResult(string(data)), nil, nil
 }
 
@@ -508,10 +546,7 @@ func handleFindSimilar(ctx context.Context, req *mcp.CallToolRequest, input simi
 	// Reconsolidation: increment access counts for surfaced notes (fire-and-forget).
 	incrementAccessCounts(results)
 
-	data, jsonErr := json.MarshalIndent(results, "", "  ")
-	if jsonErr != nil {
-		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
-	}
+	data, _ := json.MarshalIndent(results, "", "  ")
 	return textResult(string(data)), nil, nil
 }
 
@@ -542,12 +577,14 @@ func handleReindex(ctx context.Context, req *mcp.CallToolRequest, input reindexI
 			strings.Contains(errMsg, `provider is "none"`) {
 			stats, err = indexer.ReindexLite(context.Background(), db, input.Force, nil)
 			if err != nil {
-				return errorResult(fmt.Sprintf("Reindex failed (keyword-only fallback): %v", err)), nil, nil
+				fmt.Fprintf(os.Stderr, "same: mcp: reindex keyword-only fallback: %v\n", err)
+				return errorResult("Reindex failed (keyword-only fallback). Run 'same doctor' for diagnostics."), nil, nil
 			}
 			// Return stats with a note about lite mode
 			stats.Timestamp = "keyword-only (embedding unavailable)"
 		} else {
-			return errorResult(fmt.Sprintf("Reindex error: %v", err)), nil, nil
+			fmt.Fprintf(os.Stderr, "same: mcp: reindex: %v\n", err)
+			return errorResult("Reindex error. Run 'same doctor' for diagnostics."), nil, nil
 		}
 	}
 
@@ -555,19 +592,13 @@ func handleReindex(ctx context.Context, req *mcp.CallToolRequest, input reindexI
 	// current model/dimensions after a model change + reindex.
 	refreshEmbedClient()
 
-	data, jsonErr := json.MarshalIndent(stats, "", "  ")
-	if jsonErr != nil {
-		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
-	}
+	data, _ := json.MarshalIndent(stats, "", "  ")
 	return textResult(string(data)), nil, nil
 }
 
 func handleIndexStats(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
 	stats := indexer.GetStats(db)
-	data, jsonErr := json.MarshalIndent(stats, "", "  ")
-	if jsonErr != nil {
-		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
-	}
+	data, _ := json.MarshalIndent(stats, "", "  ")
 	return textResult(string(data)), nil, nil
 }
 
@@ -593,6 +624,23 @@ func handleSaveNote(ctx context.Context, req *mcp.CallToolRequest, input saveNot
 		return errorResult("Error: only .md (markdown) files can be saved via MCP."), nil, nil
 	}
 
+	// Guard check: scan content for credentials before writing.
+	// Warn (don't block) so users know they're storing sensitive data.
+	guardWarnings := guard.ScanContent(input.Content)
+	var credWarning string
+	if len(guardWarnings) > 0 {
+		var types []string
+		seen := make(map[string]bool)
+		for _, w := range guardWarnings {
+			name := w.Pattern.Name
+			if !seen[name] {
+				seen[name] = true
+				types = append(types, name)
+			}
+		}
+		credWarning = fmt.Sprintf("Warning: note contains potential credentials (%s). Consider removing before sharing.", strings.Join(types, ", "))
+	}
+
 	safePath := safeVaultPath(input.Path)
 	if safePath == "" {
 		return errorResult("Error: path must be a relative path within the vault. Cannot write to _PRIVATE/."), nil, nil
@@ -600,6 +648,13 @@ func handleSaveNote(ctx context.Context, req *mcp.CallToolRequest, input saveNot
 	relPath, relErr := store.NormalizeClaimPath(input.Path)
 	if relErr != nil {
 		return errorResult("Error: path must stay within the vault. Use a relative path like 'notes/topic.md'."), nil, nil
+	}
+	if firstSegment, _, found := strings.Cut(relPath, "/"); found {
+		if strings.EqualFold(firstSegment, "imports") {
+			return errorResult("Error: save_note cannot write to imports/. Use same import for imported content."), nil, nil
+		}
+	} else if strings.EqualFold(relPath, "imports") {
+		return errorResult("Error: save_note cannot write to imports/. Use same import for imported content."), nil, nil
 	}
 	if !checkWriteRateLimit() {
 		return errorResult("Error: too many write operations. Try again in a minute."), nil, nil
@@ -701,6 +756,9 @@ func handleSaveNote(ctx context.Context, req *mcp.CallToolRequest, input saveNot
 			message += fmt.Sprintf(" (warning: read-claims by %s on %s — check for breakage)", strings.Join(readers, ", "), relPath)
 		}
 	}
+	if credWarning != "" {
+		message += "\n" + credWarning
+	}
 	return textResult(message), nil, nil
 }
 
@@ -744,21 +802,8 @@ func recordProvenanceSources(notePath string, explicitSources []string) {
 			if seen[p] || p == notePath {
 				continue
 			}
-			// SECURITY: validate auto-injected path stays inside vault
-			clean := filepath.ToSlash(filepath.Clean(p))
-			if strings.HasPrefix(clean, "..") || filepath.IsAbs(clean) || strings.Contains(clean, "\x00") {
-				continue
-			}
-			fullPath := filepath.Join(vaultRoot, p)
-			// Check resolved path doesn't escape vault via symlinks
-			realPath, evalErr := filepath.EvalSymlinks(fullPath)
-			if evalErr == nil {
-				realVault, _ := filepath.EvalSymlinks(vaultRoot)
-				if !strings.HasPrefix(realPath, realVault+string(filepath.Separator)) && realPath != realVault {
-					continue
-				}
-			}
 			hash := ""
+			fullPath := filepath.Join(vaultRoot, p)
 			if content, err := os.ReadFile(fullPath); err == nil {
 				h := sha256.Sum256(content)
 				hash = fmt.Sprintf("%x", h)
@@ -927,15 +972,11 @@ func handleSaveDecision(ctx context.Context, req *mcp.CallToolRequest, input sav
 	if !checkWriteRateLimit() {
 		return errorResult("Error: too many write operations. Try again in a minute."), nil, nil
 	}
+	// Only set file-level agent frontmatter when creating a new file.
+	// On append, each decision entry carries its own inline **Agent:** attribution,
+	// so we must NOT rewrite file-level agent (which would reattribute prior entries).
 	if agent != "" {
-		if existing, readErr := os.ReadFile(safePath); readErr == nil {
-			updated := upsertAgentFrontmatter(string(existing), agent)
-			if updated != string(existing) {
-				if writeErr := os.WriteFile(safePath, []byte(updated), 0o600); writeErr != nil {
-					return errorResult("Error: could not update decision log metadata. Check file permissions."), nil, nil
-				}
-			}
-		} else if os.IsNotExist(readErr) {
+		if _, readErr := os.ReadFile(safePath); os.IsNotExist(readErr) {
 			initial := upsertAgentFrontmatter("", agent)
 			if writeErr := os.WriteFile(safePath, []byte(initial), 0o600); writeErr != nil {
 				return errorResult("Error: could not initialize decision log metadata. Check vault permissions."), nil, nil
@@ -1060,21 +1101,12 @@ func handleRecentActivity(ctx context.Context, req *mcp.CallToolRequest, input r
 		})
 	}
 
-	data, jsonErr := json.MarshalIndent(entries, "", "  ")
-	if jsonErr != nil {
-		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
-	}
+	data, _ := json.MarshalIndent(entries, "", "  ")
 	return textResult(string(data)), nil, nil
 }
 
 func handleGetSessionContext(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
 	result := map[string]any{}
-
-	// Inject current time so agents know the wall clock
-	if cfg, err := config.LoadConfig(); err == nil && cfg.Hooks.TimeInjection {
-		now := time.Now()
-		result["current_time"] = now.Format("2006-01-02 15:04 MST (Monday)")
-	}
 
 	// Pinned notes
 	pinned, err := db.GetPinnedNotes()
@@ -1154,10 +1186,7 @@ func handleGetSessionContext(ctx context.Context, req *mcp.CallToolRequest, inpu
 	stats := indexer.GetStats(db)
 	result["stats"] = stats
 
-	data, jsonErr := json.MarshalIndent(result, "", "  ")
-	if jsonErr != nil {
-		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
-	}
+	data, _ := json.MarshalIndent(result, "", "  ")
 	return textResult(string(data)), nil, nil
 }
 
@@ -1210,11 +1239,7 @@ func handleSearchAcrossVaults(ctx context.Context, req *mcp.CallToolRequest, inp
 	// Try to get query embedding
 	var queryVec []float32
 	if embedClient != nil {
-		var queryErr error
-		queryVec, queryErr = embedClient.GetQueryEmbedding(input.Query)
-		if queryErr != nil {
-			fmt.Fprintf(os.Stderr, "same: mcp: query embedding failed: %v (keyword fallback)\n", queryErr)
-		}
+		queryVec, _ = embedClient.GetQueryEmbedding(input.Query)
 	}
 
 	results, err := store.FederatedSearch(vaultDBPaths, queryVec, input.Query, store.SearchOptions{TopK: topK})
@@ -1249,10 +1274,7 @@ func handleSearchAcrossVaults(ctx context.Context, req *mcp.CallToolRequest, inp
 		_ = db.IncrementAccessCount(localPaths)
 	}
 
-	data, jsonErr := json.MarshalIndent(results, "", "  ")
-	if jsonErr != nil {
-		return errorResult(fmt.Sprintf("internal error: %v", jsonErr)), nil, nil
-	}
+	data, _ := json.MarshalIndent(results, "", "  ")
 	return textResult(string(data)), nil, nil
 }
 
@@ -1273,13 +1295,9 @@ func handleMemConsolidate(ctx context.Context, req *mcp.CallToolRequest, input m
 		return errorResult("Consolidation requires an LLM provider. Run 'same init' to configure one, or set SAME_CHAT_PROVIDER."), nil, nil
 	}
 
-	model := config.ChatModel()
-	if model == "" {
-		var modelErr error
-		model, modelErr = chat.PickBestModel()
-		if modelErr != nil || model == "" {
-			return errorResult("No chat model available. Ensure your LLM provider has at least one model installed."), nil, nil
-		}
+	model, err := chat.PickBestModel()
+	if err != nil || model == "" {
+		return errorResult("No chat model available. Ensure your LLM provider has at least one model installed."), nil, nil
 	}
 
 	threshold := input.Threshold
@@ -1299,7 +1317,8 @@ func handleMemConsolidate(ctx context.Context, req *mcp.CallToolRequest, input m
 	engine := consolidate.NewEngine(db, chat, ep, model, vaultPath, threshold)
 	result, err := engine.Run(input.DryRun)
 	if err != nil {
-		return errorResult(fmt.Sprintf("Consolidation error: %v", err)), nil, nil
+		fmt.Fprintf(os.Stderr, "same: mcp: consolidation: %v\n", err)
+		return errorResult("Consolidation error. Check LLM provider connectivity and try again."), nil, nil
 	}
 
 	// Build formatted text output
@@ -1411,19 +1430,16 @@ func handleMemBrief(ctx context.Context, req *mcp.CallToolRequest, input memBrie
 		return errorResult("Brief requires an LLM provider. Run 'same init' to configure one, or set SAME_CHAT_PROVIDER."), nil, nil
 	}
 
-	model := config.ChatModel()
-	if model == "" {
-		var modelErr error
-		model, modelErr = chat.PickBestModel()
-		if modelErr != nil || model == "" {
-			return errorResult("No chat model available. Ensure your LLM provider has at least one model installed."), nil, nil
-		}
+	model, err := chat.PickBestModel()
+	if err != nil || model == "" {
+		return errorResult("No chat model available. Ensure your LLM provider has at least one model installed."), nil, nil
 	}
 
 	prompt := buildMCPBriefPrompt(recentNotes, sessionNotes, decisionNotes, highConfNotes)
 	answer, err := chat.Generate(model, prompt)
 	if err != nil {
-		return errorResult(fmt.Sprintf("Briefing generation failed: %v", err)), nil, nil
+		fmt.Fprintf(os.Stderr, "same: mcp: briefing generation: %v\n", err)
+		return errorResult("Briefing generation failed. Check LLM provider connectivity and try again."), nil, nil
 	}
 
 	// Add sources summary
@@ -1443,7 +1459,8 @@ func handleMemHealth(ctx context.Context, req *mcp.CallToolRequest, input emptyI
 	if err := conn.QueryRow(
 		`SELECT COUNT(*) FROM vault_notes WHERE chunk_id = 0`,
 	).Scan(&totalNotes); err != nil {
-		return errorResult(fmt.Sprintf("Error querying notes: %v", err)), nil, nil
+		fmt.Fprintf(os.Stderr, "same: mcp: mem_health query: %v\n", err)
+		return errorResult("Error querying vault health. The database may be corrupted — run 'same doctor'."), nil, nil
 	}
 
 	if totalNotes == 0 {
@@ -1605,9 +1622,25 @@ func handleMemForget(ctx context.Context, req *mcp.CallToolRequest, input memFor
 		return errorResult(fmt.Sprintf("No note found at path: %s", input.Path)), nil, nil
 	}
 
+	// Agent ownership check: if caller identifies as an agent, they can only
+	// suppress notes they created. Vault owners (no agent param) can suppress anything.
+	callerAgent, agentErr := normalizeAgent(input.Agent)
+	if agentErr != nil {
+		return errorResult("Error: invalid agent value. Use 1-128 visible characters without newlines."), nil, nil
+	}
+	if callerAgent != "" {
+		noteAgent := notes[0].Agent
+		if noteAgent != "" && noteAgent != callerAgent {
+			return errorResult(fmt.Sprintf(
+				"Error: cannot suppress a note created by agent %q. "+
+					"Only the creating agent or vault owner can suppress notes.", noteAgent)), nil, nil
+		}
+	}
+
 	affected, err := db.SuppressNote(input.Path)
 	if err != nil {
-		return errorResult(fmt.Sprintf("Error suppressing note: %v", err)), nil, nil
+		fmt.Fprintf(os.Stderr, "same: mcp: mem_forget suppress: %v\n", err)
+		return errorResult("Error suppressing note. The database may be unavailable — try again."), nil, nil
 	}
 	if affected == 0 {
 		return errorResult(fmt.Sprintf("No note found at path: %s", input.Path)), nil, nil
@@ -1618,9 +1651,51 @@ func handleMemForget(ctx context.Context, req *mcp.CallToolRequest, input memFor
 		message += fmt.Sprintf("\nReason: %s", input.Reason)
 	}
 	message += "\nThe note still exists on disk but will not appear in search results."
-	message += "\nNote: There is currently no mem_restore tool. To reverse this, manually set suppressed=0 in the database."
+	message += "\nTo undo, use mem_restore with the same path."
 
 	return textResult(message), nil, nil
+}
+
+// memRestoreInput is the input for the mem_restore tool.
+type memRestoreInput struct {
+	Path string `json:"path" jsonschema:"Path of the suppressed note to restore"`
+}
+
+func handleMemRestore(ctx context.Context, req *mcp.CallToolRequest, input memRestoreInput) (*mcp.CallToolResult, any, error) {
+	if strings.TrimSpace(input.Path) == "" {
+		return errorResult("Error: path is required."), nil, nil
+	}
+
+	affected, err := db.UnsuppressNote(input.Path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "same: mcp: mem_restore unsuppress: %v\n", err)
+		return errorResult("Error restoring note. The database may be unavailable — try again."), nil, nil
+	}
+	if affected == 0 {
+		return errorResult(fmt.Sprintf("No suppressed note found at path: %s", input.Path)), nil, nil
+	}
+
+	return textResult(fmt.Sprintf("Restored: %s (%d chunks). The note will now appear in search results.", input.Path, affected)), nil, nil
+}
+
+func handleMemListSuppressed(ctx context.Context, req *mcp.CallToolRequest, input emptyInput) (*mcp.CallToolResult, any, error) {
+	paths, err := db.ListSuppressed()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "same: mcp: mem_list_suppressed: %v\n", err)
+		return errorResult("Error listing suppressed notes."), nil, nil
+	}
+
+	if len(paths) == 0 {
+		return textResult("No suppressed notes found."), nil, nil
+	}
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Suppressed notes (%d):\n", len(paths)))
+	for _, p := range paths {
+		b.WriteString(fmt.Sprintf("  - %s\n", p))
+	}
+	b.WriteString("\nUse mem_restore to restore any of these notes.")
+	return textResult(b.String()), nil, nil
 }
 
 func handleSaveKaizen(ctx context.Context, req *mcp.CallToolRequest, input saveKaizenInput) (*mcp.CallToolResult, any, error) {
@@ -1947,12 +2022,14 @@ func searchWithFallback(query string, opts store.SearchOptions) ([]store.SearchR
 
 	// Try vector+keyword hybrid search first
 	var queryVec []float32
-	if embedClient != nil {
-		var queryErr error
-		queryVec, queryErr = embedClient.GetQueryEmbedding(query)
-		if queryErr != nil {
-			fmt.Fprintf(os.Stderr, "same: mcp: query embedding failed: %v (keyword fallback)\n", queryErr)
+	if embedClient != nil && db.HasVectors() {
+		if mismatchErr := db.CheckEmbeddingMeta(embedClient.Name(), embedClient.Model(), embedClient.Dimensions()); mismatchErr != nil {
+			fmt.Fprintf(os.Stderr, "same: warning: %v\n", mismatchErr)
+			embedClient = nil
 		}
+	}
+	if embedClient != nil {
+		queryVec, _ = embedClient.GetQueryEmbedding(query)
 	}
 
 	var results []store.SearchResult
@@ -2238,6 +2315,20 @@ func safeVaultPath(path string) string {
 	// SECURITY: reject paths containing null bytes (can bypass C-level path checks)
 	if strings.ContainsRune(path, 0) {
 		return ""
+	}
+	// SECURITY: reject URL-encoded traversal patterns before any normalization.
+	// Catches %2e%2e%2f (../), %2e%2e/ (..) and other encoded traversal attempts.
+	lowerPath := strings.ToLower(path)
+	if strings.Contains(lowerPath, "%2e") || strings.Contains(lowerPath, "%2f") || strings.Contains(lowerPath, "%5c") || strings.Contains(lowerPath, "%00") {
+		return ""
+	}
+	// SECURITY: reject Unicode fullwidth characters that could normalize to
+	// traversal sequences. Fullwidth period (U+FF0E) and fullwidth solidus
+	// (U+FF0F) can NFKC-normalize to '.' and '/' respectively.
+	for _, r := range path {
+		if r == '\uff0e' || r == '\uff0f' || r == '\uff3c' { // fullwidth . / and \
+			return ""
+		}
 	}
 	// SECURITY: normalize backslashes before any checks so traversal patterns
 	// like "..\" are caught on all platforms.

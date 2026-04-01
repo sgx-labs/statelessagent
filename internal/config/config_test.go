@@ -735,10 +735,17 @@ func TestRegistryCleanup_RemovesStale(t *testing.T) {
 	data, _ := json.MarshalIndent(reg, "", "  ")
 	os.WriteFile(filepath.Join(regDir, "vaults.json"), data, 0o600)
 
-	// Load registry — should prune the stale entry
+	// LoadRegistry should NOT prune (read-only)
 	loaded := LoadRegistry()
-	if _, ok := loaded.Vaults["stale_vault"]; ok {
-		t.Error("expected stale vault entry to be removed")
+	if _, ok := loaded.Vaults["stale_vault"]; !ok {
+		t.Error("expected stale vault entry to be preserved by read-only LoadRegistry")
+	}
+
+	// PruneRegistry should remove the stale entry
+	PruneRegistry()
+	pruned := LoadRegistry()
+	if _, ok := pruned.Vaults["stale_vault"]; ok {
+		t.Error("expected stale vault entry to be removed by PruneRegistry")
 	}
 }
 
@@ -761,9 +768,17 @@ func TestRegistryCleanup_ClearsStaleDefault(t *testing.T) {
 	data, _ := json.MarshalIndent(reg, "", "  ")
 	os.WriteFile(filepath.Join(regDir, "vaults.json"), data, 0o600)
 
+	// LoadRegistry should NOT clear stale default (read-only)
 	loaded := LoadRegistry()
-	if loaded.Default != "" {
-		t.Errorf("expected stale default to be cleared, got %q", loaded.Default)
+	if loaded.Default == "" {
+		t.Error("expected stale default to be preserved by read-only LoadRegistry")
+	}
+
+	// PruneRegistry should clear it
+	PruneRegistry()
+	pruned := LoadRegistry()
+	if pruned.Default != "" {
+		t.Errorf("expected stale default to be cleared by PruneRegistry, got %q", pruned.Default)
 	}
 	// Valid vault should still be present
 	if _, ok := loaded.Vaults["valid_vault"]; !ok {
@@ -799,5 +814,228 @@ func TestGlobalConfigPath(t *testing.T) {
 	expected := filepath.Join(home, ".config", "same", "config.toml")
 	if got != expected {
 		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+// --- SetConfigValue tests ---
+
+// setupTestVault creates an isolated vault directory with proper env/override setup.
+// Returns the vault path.
+func setupTestVault(t *testing.T) string {
+	t.Helper()
+	vault := t.TempDir()
+	oldOverride := VaultOverride
+	VaultOverride = vault
+	t.Cleanup(func() { VaultOverride = oldOverride })
+	t.Setenv("VAULT_PATH", vault)
+	// Clear embedding env vars to avoid interference
+	t.Setenv("SAME_EMBED_PROVIDER", "")
+	t.Setenv("SAME_EMBED_MODEL", "")
+	t.Setenv("SAME_EMBED_BASE_URL", "")
+	t.Setenv("SAME_EMBED_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OLLAMA_URL", "")
+	t.Setenv("SAME_GRAPH_LLM", "")
+	return vault
+}
+
+func TestConfigSet_OllamaURL(t *testing.T) {
+	vault := setupTestVault(t)
+
+	if err := SetConfigValue("ollama.url", "http://localhost:9999", false); err != nil {
+		t.Fatalf("SetConfigValue: %v", err)
+	}
+
+	cfg, err := LoadConfigFrom(ConfigFilePath(vault))
+	if err != nil {
+		t.Fatalf("LoadConfigFrom: %v", err)
+	}
+	if cfg.Ollama.URL != "http://localhost:9999" {
+		t.Errorf("ollama.url = %q, want %q", cfg.Ollama.URL, "http://localhost:9999")
+	}
+}
+
+func TestConfigSet_IntegerValue(t *testing.T) {
+	vault := setupTestVault(t)
+
+	if err := SetConfigValue("memory.max_results", "8", false); err != nil {
+		t.Fatalf("SetConfigValue: %v", err)
+	}
+
+	cfg, err := LoadConfigFrom(ConfigFilePath(vault))
+	if err != nil {
+		t.Fatalf("LoadConfigFrom: %v", err)
+	}
+	if cfg.Memory.MaxResults != 8 {
+		t.Errorf("memory.max_results = %d, want 8", cfg.Memory.MaxResults)
+	}
+}
+
+func TestConfigSet_FloatValue(t *testing.T) {
+	vault := setupTestVault(t)
+
+	if err := SetConfigValue("memory.composite_threshold", "0.5", false); err != nil {
+		t.Fatalf("SetConfigValue: %v", err)
+	}
+
+	cfg, err := LoadConfigFrom(ConfigFilePath(vault))
+	if err != nil {
+		t.Fatalf("LoadConfigFrom: %v", err)
+	}
+	if cfg.Memory.CompositeThreshold != 0.5 {
+		t.Errorf("memory.composite_threshold = %v, want 0.5", cfg.Memory.CompositeThreshold)
+	}
+}
+
+func TestConfigSet_BoolValue(t *testing.T) {
+	vault := setupTestVault(t)
+
+	if err := SetConfigValue("hooks.context_surfacing", "false", false); err != nil {
+		t.Fatalf("SetConfigValue: %v", err)
+	}
+
+	cfg, err := LoadConfigFrom(ConfigFilePath(vault))
+	if err != nil {
+		t.Fatalf("LoadConfigFrom: %v", err)
+	}
+	if cfg.Hooks.ContextSurfacing != false {
+		t.Errorf("hooks.context_surfacing = %v, want false", cfg.Hooks.ContextSurfacing)
+	}
+}
+
+func TestConfigSet_EnumValidation(t *testing.T) {
+	_ = setupTestVault(t)
+
+	err := SetConfigValue("graph.llm_mode", "invalid", false)
+	if err == nil {
+		t.Fatal("expected error for invalid enum value, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid value") {
+		t.Errorf("expected 'invalid value' in error, got: %v", err)
+	}
+}
+
+func TestConfigSet_UnknownKey(t *testing.T) {
+	_ = setupTestVault(t)
+
+	err := SetConfigValue("nonexistent.key", "value", false)
+	if err == nil {
+		t.Fatal("expected error for unknown key, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown config key") {
+		t.Errorf("expected 'unknown config key' in error, got: %v", err)
+	}
+}
+
+func TestConfigSet_GlobalFlag(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	if err := SetConfigValue("ollama.url", "http://localhost:7777", true); err != nil {
+		t.Fatalf("SetConfigValue(global): %v", err)
+	}
+
+	cfg, err := LoadConfigFrom(GlobalConfigPath())
+	if err != nil {
+		t.Fatalf("LoadConfigFrom(global): %v", err)
+	}
+	if cfg.Ollama.URL != "http://localhost:7777" {
+		t.Errorf("global ollama.url = %q, want %q", cfg.Ollama.URL, "http://localhost:7777")
+	}
+}
+
+func TestConfigSet_CreatesFileIfMissing(t *testing.T) {
+	vault := setupTestVault(t)
+	configPath := ConfigFilePath(vault)
+
+	// Verify config file does not exist yet
+	if _, err := os.Stat(configPath); err == nil {
+		t.Fatal("config file should not exist before SetConfigValue")
+	}
+
+	if err := SetConfigValue("ollama.url", "http://localhost:5555", false); err != nil {
+		t.Fatalf("SetConfigValue: %v", err)
+	}
+
+	// Verify file was created
+	info, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatalf("config file not created: %v", err)
+	}
+
+	// Check permissions (0600)
+	perm := info.Mode().Perm()
+	if perm != 0o600 {
+		t.Errorf("config file permissions = %o, want 0600", perm)
+	}
+}
+
+func TestConfigSet_AuthToken(t *testing.T) {
+	vault := setupTestVault(t)
+
+	if err := SetConfigValue("auth.token", "my-secret-token", false); err != nil {
+		t.Fatalf("SetConfigValue: %v", err)
+	}
+
+	cfg, err := LoadConfigFrom(ConfigFilePath(vault))
+	if err != nil {
+		t.Fatalf("LoadConfigFrom: %v", err)
+	}
+	if cfg.Auth.Token != "my-secret-token" {
+		t.Errorf("auth.token = %q, want %q", cfg.Auth.Token, "my-secret-token")
+	}
+}
+
+func TestAuthToken_EnvOverrides(t *testing.T) {
+	vault := setupTestVault(t)
+
+	// Set a token in config
+	if err := SetConfigValue("auth.token", "config-token", false); err != nil {
+		t.Fatalf("SetConfigValue: %v", err)
+	}
+
+	// Verify config value loads
+	cfg, err := LoadConfigFrom(ConfigFilePath(vault))
+	if err != nil {
+		t.Fatalf("LoadConfigFrom: %v", err)
+	}
+	if cfg.Auth.Token != "config-token" {
+		t.Errorf("auth.token from config = %q, want %q", cfg.Auth.Token, "config-token")
+	}
+
+	// Env var should override
+	t.Setenv("SAME_MCP_TOKEN", "env-token")
+	cfg2, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg2.Auth.Token != "env-token" {
+		t.Errorf("auth.token with env override = %q, want %q", cfg2.Auth.Token, "env-token")
+	}
+}
+
+func TestConfigSet_PreservesExistingValues(t *testing.T) {
+	vault := setupTestVault(t)
+
+	// Set first value
+	if err := SetConfigValue("ollama.url", "http://localhost:1111", false); err != nil {
+		t.Fatalf("SetConfigValue(1): %v", err)
+	}
+
+	// Set a different value
+	if err := SetConfigValue("memory.max_results", "10", false); err != nil {
+		t.Fatalf("SetConfigValue(2): %v", err)
+	}
+
+	// Both values should persist
+	cfg, err := LoadConfigFrom(ConfigFilePath(vault))
+	if err != nil {
+		t.Fatalf("LoadConfigFrom: %v", err)
+	}
+	if cfg.Ollama.URL != "http://localhost:1111" {
+		t.Errorf("ollama.url = %q, want %q", cfg.Ollama.URL, "http://localhost:1111")
+	}
+	if cfg.Memory.MaxResults != 10 {
+		t.Errorf("memory.max_results = %d, want 10", cfg.Memory.MaxResults)
 	}
 }

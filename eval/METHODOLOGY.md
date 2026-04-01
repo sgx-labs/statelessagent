@@ -135,6 +135,42 @@ Produce comparable scores against published results from other systems (Mem0, Le
 
 ---
 
+## Tier 4: LongMemEval (External Benchmark)
+
+**Dataset:** `xiaowu0162/longmemeval-cleaned` on HuggingFace (500 questions, 3 variants)
+**Adapter:** `eval/longmemeval/run_bench.py`
+**Paper:** ICLR 2025, arXiv:2410.10813
+
+### Purpose
+Evaluate SAME's ability to retrieve relevant information from realistic multi-session chat histories. Tests five core long-term memory abilities: information extraction, multi-session reasoning, temporal reasoning, knowledge updates, and abstention.
+
+### Question Types
+| Type | Count | Tests |
+|------|-------|-------|
+| multi-session | 133 | Cross-session synthesis |
+| temporal-reasoning | 133 | Time-aware retrieval |
+| knowledge-update | 78 | Handling contradictions |
+| single-session-user | 70 | User fact extraction |
+| single-session-assistant | 56 | Assistant response recall |
+| single-session-preference | 30 | Preference inference |
+
+### Scientific Integrity Constraints
+- **MUST NOT** tune SAME retrieval parameters for this benchmark
+- **MUST NOT** add SAME-specific metadata (tags, domain, content_type) to session notes
+- **MUST NOT** use oracle data (answer, answer_session_ids, has_answer) during retrieval
+- **MUST** report all questions — no filtering or cherry-picking
+- **MUST** use `same init --yes` defaults for all retrieval settings
+- **MUST** label results with variant (s/m/oracle) and methodology
+- **MAY** run `--verify-no-leakage` to confirm oracle isolation
+
+### Data Hygiene
+- Dataset is downloaded from HuggingFace on first run (cached in `eval/longmemeval/data/`)
+- Data directory is .gitignored — no benchmark data in the repository
+- Sessions are converted to plain markdown with minimal frontmatter (title + date only)
+- Oracle fields are stripped during session conversion and used only for scoring
+
+---
+
 ## Metrics
 
 All tiers use the same metrics:

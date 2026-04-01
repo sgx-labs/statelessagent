@@ -18,15 +18,16 @@ import (
 
 func searchCmd() *cobra.Command {
 	var (
-		topK        int
-		domain      string
-		trustState  string
-		contentType string
-		tag         string
-		jsonOut     bool
-		verbose     bool
-		allVaults   bool
-		vaults      string
+		topK            int
+		domain          string
+		trustState      string
+		contentType     string
+		contentTypeAlts string
+		tag             string
+		jsonOut         bool
+		verbose         bool
+		allVaults       bool
+		vaults          string
 	)
 	cmd := &cobra.Command{
 		Use:     "search [query]",
@@ -46,6 +47,10 @@ Examples:
   same search --vaults dev,marketing "launch timeline"`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// --content-type is an alias for --type
+			if contentType == "" && contentTypeAlts != "" {
+				contentType = contentTypeAlts
+			}
 			query := strings.Join(args, " ")
 			var tags []string
 			if tag != "" {
@@ -66,6 +71,7 @@ Examples:
 	cmd.Flags().StringVar(&domain, "domain", "", "Filter by domain")
 	cmd.Flags().StringVarP(&trustState, "trust", "t", "", "Filter by trust state (validated, stale, contradicted, unknown)")
 	cmd.Flags().StringVar(&contentType, "type", "", "Filter by content type (decision, handoff, note, research)")
+	cmd.Flags().StringVar(&contentTypeAlts, "content-type", "", "Filter by content type (alias for --type)")
 	cmd.Flags().StringVar(&tag, "tag", "", "Filter by tag (comma-separated for multiple)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Output as JSON")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show raw scores for debugging")
@@ -122,7 +128,7 @@ func runSearch(query string, topK int, domain string, trustState string, content
 			}
 		}
 		if !jsonOut && len(results) > 0 {
-			fmt.Printf("  %s(keyword search — configure embeddings for semantic search: ollama/openai/openai-compatible)%s\n", cli.Dim, cli.Reset)
+			fmt.Printf("  %sUsing keyword search (no embedding provider configured). For semantic search: `same config set embedding.provider ollama` then `same reindex`%s\n", cli.Dim, cli.Reset)
 			if _, probeErr := newEmbedProvider(); probeErr == nil {
 				fmt.Printf("  %sTip: Embedding provider detected! Run %ssame reindex%s to upgrade to semantic search.%s\n",
 					cli.Dim, cli.Bold, cli.Reset+cli.Dim, cli.Reset)
@@ -362,7 +368,7 @@ func runFederatedSearch(query string, topK int, domain string, trustState string
 	}
 
 	if queryVec == nil {
-		fmt.Printf("  %s(keyword search — configure embeddings for semantic search: ollama/openai/openai-compatible)%s\n", cli.Dim, cli.Reset)
+		fmt.Printf("  %sUsing keyword search (no embedding provider configured). For semantic search: `same config set embedding.provider ollama` then `same reindex`%s\n", cli.Dim, cli.Reset)
 	}
 
 	for i, r := range results {

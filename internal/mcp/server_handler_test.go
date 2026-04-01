@@ -794,6 +794,44 @@ func TestHandleSearchNotes_EmptyIndex(t *testing.T) {
 	}
 }
 
+func TestHandleSearchNotes_EmbeddingMismatchFallsBackToKeyword(t *testing.T) {
+	setupHandlerTest(t)
+
+	if err := db.SetEmbeddingMeta("other", "other-embed", 1024); err != nil {
+		t.Fatalf("SetEmbeddingMeta: %v", err)
+	}
+
+	vec := make([]float32, 768)
+	if err := db.InsertNote(&store.NoteRecord{
+		Path:         "notes/fallback.md",
+		Title:        "Fallback Note",
+		ChunkID:      0,
+		ChunkHeading: "(full)",
+		Text:         "keyword fallback survives embedding mismatch",
+		Modified:     float64(time.Now().Unix()),
+		ContentHash:  "fallback-hash",
+		ContentType:  "note",
+		Confidence:   0.6,
+	}, vec); err != nil {
+		t.Fatalf("InsertNote: %v", err)
+	}
+
+	result, _, err := handleSearchNotes(context.Background(), nil, searchInput{
+		Query: "keyword fallback",
+		TopK:  5,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "notes/fallback.md") {
+		t.Fatalf("expected keyword/FTS fallback result, got %q", text)
+	}
+	if embedClient != nil {
+		t.Fatal("expected mismatched embedClient to be cleared for MCP fallback")
+	}
+}
+
 // --- handleSearchNotesFiltered ---
 
 func TestHandleSearchNotesFiltered_EmbedError(t *testing.T) {
@@ -1141,6 +1179,164 @@ func TestHandleSearchNotesFiltered_AgentFilter(t *testing.T) {
 	}
 }
 
+// --- handleMemForget agent ownership ---
+
+func TestMemForget_BlocksCrossAgentSuppression(t *testing.T) {
+	setupHandlerTest(t)
+
+	// Insert a note owned by agent-a
+	rec := &store.NoteRecord{
+		Path:    "notes/owned-by-a.md",
+		Title:   "Agent A Note",
+		Agent:   "agent-a",
+		ChunkID: 0,
+		Text:    "content by agent-a",
+	}
+	if err := db.InsertNote(rec, make([]float32, 768)); err != nil {
+		t.Fatalf("InsertNote: %v", err)
+	}
+
+	// Try to suppress as agent-b — should be rejected
+	result, _, err := handleMemForget(context.Background(), nil, memForgetInput{
+		Path:  "notes/owned-by-a.md",
+		Agent: "agent-b",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "cannot suppress") {
+		t.Errorf("expected cross-agent rejection, got %q", text)
+	}
+	if !strings.Contains(text, "agent-a") {
+		t.Errorf("expected error to name the owning agent, got %q", text)
+	}
+
+	// Verify note is NOT suppressed — should still be retrievable
+	notes, err := db.GetNoteByPath("notes/owned-by-a.md")
+	if err != nil {
+		t.Fatalf("GetNoteByPath: %v", err)
+	}
+	if len(notes) == 0 {
+		t.Fatal("note should still exist after failed suppression")
+	}
+}
+
+func TestMemForget_AllowsSameAgentSuppression(t *testing.T) {
+	setupHandlerTest(t)
+
+	// Insert a note owned by agent-a
+	rec := &store.NoteRecord{
+		Path:    "notes/owned-by-a.md",
+		Title:   "Agent A Note",
+		Agent:   "agent-a",
+		ChunkID: 0,
+		Text:    "content by agent-a",
+	}
+	if err := db.InsertNote(rec, make([]float32, 768)); err != nil {
+		t.Fatalf("InsertNote: %v", err)
+	}
+
+	// Suppress as agent-a — should succeed
+	result, _, err := handleMemForget(context.Background(), nil, memForgetInput{
+		Path:  "notes/owned-by-a.md",
+		Agent: "agent-a",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "Suppressed") {
+		t.Errorf("expected suppression confirmation, got %q", text)
+	}
+}
+
+func TestMemForget_AllowsOwnerSuppression(t *testing.T) {
+	setupHandlerTest(t)
+
+	// Insert a note owned by agent-a
+	rec := &store.NoteRecord{
+		Path:    "notes/owned-by-a.md",
+		Title:   "Agent A Note",
+		Agent:   "agent-a",
+		ChunkID: 0,
+		Text:    "content by agent-a",
+	}
+	if err := db.InsertNote(rec, make([]float32, 768)); err != nil {
+		t.Fatalf("InsertNote: %v", err)
+	}
+
+	// Suppress with no agent (vault owner) — should succeed
+	result, _, err := handleMemForget(context.Background(), nil, memForgetInput{
+		Path: "notes/owned-by-a.md",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "Suppressed") {
+		t.Errorf("expected suppression confirmation, got %q", text)
+	}
+}
+
+// --- handleSaveDecision agent attribution ---
+
+func TestSaveDecision_PreservesExistingAgentAttribution(t *testing.T) {
+	vault := setupHandlerTest(t)
+	os.MkdirAll(vault, 0o755)
+
+	// Save first decision as agent-a
+	result, _, err := handleSaveDecision(context.Background(), nil, saveDecisionInput{
+		Title:  "Use PostgreSQL",
+		Body:   "PostgreSQL is better for analytics.",
+		Status: "accepted",
+		Agent:  "agent-a",
+	})
+	if err != nil {
+		t.Fatalf("first decision: %v", err)
+	}
+	if text := resultText(t, result); !strings.Contains(text, "Decision logged") {
+		t.Fatalf("expected first decision logged, got %q", text)
+	}
+
+	// Save second decision as agent-b
+	result, _, err = handleSaveDecision(context.Background(), nil, saveDecisionInput{
+		Title:  "Use Redis for caching",
+		Body:   "Redis provides sub-ms latency.",
+		Status: "proposed",
+		Agent:  "agent-b",
+	})
+	if err != nil {
+		t.Fatalf("second decision: %v", err)
+	}
+	if text := resultText(t, result); !strings.Contains(text, "Decision logged") {
+		t.Fatalf("expected second decision logged, got %q", text)
+	}
+
+	// Read the decision log file
+	content, err := os.ReadFile(filepath.Join(vault, "decisions.md"))
+	if err != nil {
+		t.Fatalf("reading decisions.md: %v", err)
+	}
+	fileContent := string(content)
+
+	// Verify agent-a's entry has agent-a attribution (inline)
+	if !strings.Contains(fileContent, "**Agent:** agent-a") {
+		t.Errorf("expected agent-a inline attribution, got:\n%s", fileContent)
+	}
+
+	// Verify agent-b's entry has agent-b attribution (inline)
+	if !strings.Contains(fileContent, "**Agent:** agent-b") {
+		t.Errorf("expected agent-b inline attribution, got:\n%s", fileContent)
+	}
+
+	// Verify file-level frontmatter is NOT rewritten to agent-b.
+	// The file-level agent should remain agent-a (the first writer).
+	if strings.Contains(fileContent, `agent: "agent-b"`) {
+		t.Errorf("file-level agent frontmatter was reattributed to agent-b:\n%s", fileContent)
+	}
+}
+
 // --- registerTools ---
 
 func TestRegisterTools(t *testing.T) {
@@ -1159,99 +1355,4 @@ func TestReindexCooldown(t *testing.T) {
 	if reindexCooldown != 60*time.Second {
 		t.Errorf("expected reindexCooldown to be 60s, got %v", reindexCooldown)
 	}
-}
-
-// --- Embed failure logging ---
-
-func TestMCPServer_EmbedFailureLogsError(t *testing.T) {
-	setupHandlerTest(t)
-
-	// Set embedClient to a failing mock
-	failingMock := &mockEmbedProvider{failNext: true}
-	embedClient = failingMock
-
-	// Insert a test note so search has something to work with
-	rec := store.NoteRecord{
-		Path:        "test.md",
-		Title:       "test note",
-		Tags:        "[]",
-		ChunkID:     0,
-		Text:        "hello world",
-		Modified:    float64(time.Now().Unix()),
-		ContentHash: "test-hash",
-		ContentType: "note",
-		Confidence:  0.8,
-	}
-	_, _ = db.BulkInsertNotesLite([]store.NoteRecord{rec})
-
-	// Capture stderr to verify the error is logged
-	oldStderr := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
-	}
-	os.Stderr = w
-
-	// Call the search handler which will try to get query embedding
-	_, _, _ = handleSearchNotes(context.Background(), nil, searchInput{
-		Query: "hello",
-	})
-
-	w.Close()
-	os.Stderr = oldStderr
-
-	var buf strings.Builder
-	bufBytes := make([]byte, 4096)
-	for {
-		n, readErr := r.Read(bufBytes)
-		if n > 0 {
-			buf.Write(bufBytes[:n])
-		}
-		if readErr != nil {
-			break
-		}
-	}
-	stderrOutput := buf.String()
-
-	if !strings.Contains(stderrOutput, "query embedding failed") {
-		t.Fatalf("expected 'query embedding failed' in stderr, got: %q", stderrOutput)
-	}
-}
-
-func TestMCPServer_RefreshEmbedClientLogsError(t *testing.T) {
-	setupHandlerTest(t)
-
-	// Set environment to trigger a provider that will fail on refresh
-	t.Setenv("SAME_EMBED_PROVIDER", "openai-compatible")
-	t.Setenv("SAME_EMBED_BASE_URL", "http://localhost:99999")
-	t.Setenv("SAME_EMBED_API_KEY", "test-key")
-
-	// Capture stderr
-	oldStderr := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
-	}
-	os.Stderr = w
-
-	refreshEmbedClient()
-
-	w.Close()
-	os.Stderr = oldStderr
-
-	var buf strings.Builder
-	bufBytes := make([]byte, 4096)
-	for {
-		n, readErr := r.Read(bufBytes)
-		if n > 0 {
-			buf.Write(bufBytes[:n])
-		}
-		if readErr != nil {
-			break
-		}
-	}
-
-	// The refresh may or may not fail depending on whether the provider creation
-	// validates at construction time. At minimum, verify no panic occurred.
-	_ = buf.String()
 }

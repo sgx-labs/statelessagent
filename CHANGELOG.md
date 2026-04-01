@@ -1,28 +1,105 @@
 # Changelog
 
-## v0.12.2
+## v0.12.5
+
+### Dual-Layer Memory
+
+- **Atomic fact extraction** — `same reindex --extract-facts` extracts searchable facts from notes via LLM. Facts are independently searchable and boost source notes in search results. The right answer surfaces even when the fact is buried in an unrelated conversation.
+- **`same facts` command** — view, search, and manage extracted facts.
+- **Fact-boosted search** — hybrid search now includes fact matching as an additional signal.
+
+### Streamable HTTP MCP Transport
+
+- **`same web --mcp` enables HTTP MCP endpoint** — MCP clients can connect over HTTP instead of stdio. Bearer token authentication. Ready-to-copy config snippets for Claude Code and Cursor.
+- **Unlocks Open WebUI and LobeChat** — previously blocked by stdio-only transport.
+
+### Retrieval Quality
+
+- **Turn-level chunking** — conversational content (User/Assistant patterns) is now chunked by turn-pair instead of by heading, making individual facts in chat logs independently searchable.
+- **Keyword boost in hybrid search** — literal text matches get a 1.5x score boost, preventing strong keyword matches from being buried by semantically similar but wrong results.
+
+### CLI Configuration
+
+- **`same config set`** — set config values from CLI using dot notation: `same config set ollama.url http://host.docker.internal:11434`.
+- **Global config** — `~/.config/same/config.toml` applies to all vaults. Set Ollama endpoint once.
+- **`same config edit --global`** — edit global config directly.
+
+### New MCP Tools
+
+- **`mem_restore`** — undo `mem_forget` (unsuppress a previously hidden note).
+- **`mem_list_suppressed`** — show all suppressed notes in the vault.
+
+### CLI Improvements
+
+- **`same index` aliased to `same reindex`** — one canonical command.
+- **`--content-type`, `--relationship`, `--direction` flag aliases** — clearer naming.
+- **`--sources` flag on `same add`** — CLI provenance tracking.
+- **`same display` shows current mode** — no-arg invocation prints state.
+- **Improved search fallback messaging** — actionable instructions when using keyword mode.
+- **Ollama retry gating** — prevents redundant retries when Ollama is unavailable.
 
 ### Container Support
 
-- **`host.docker.internal` allowed as Ollama endpoint** — container users (Docker, OrbStack, Codespaces, devcontainers) can now point SAME at the host machine's Ollama. Set `[ollama] url = "http://host.docker.internal:11434"` in `.same/config.toml`.
+- **`host.docker.internal` allowed as Ollama endpoint** — container users (Docker, OrbStack, Codespaces, devcontainers) can now point SAME at the host machine's Ollama.
 
 ### Chat Model Configuration
 
-- **`SAME_CHAT_MODEL` env var now works** — override the chat model for consolidation, ask, and brief commands. Previously referenced in error messages but never actually read.
+- **`SAME_CHAT_MODEL` env var now works** — override the chat model for consolidation, ask, and brief commands.
 - **`[chat] model` config key** — set a persistent chat model override in `.same/config.toml`. Precedence: env var > config > auto-detect.
 - **Consolidation progress display** — shows which model is being used at start, and per-group elapsed time during processing.
-- **`same status` shows config override** — Chat line indicates when a model override is active.
-
-### Bug Fixes
-
-- **Stale note timing now shows source file modification time** — `same health` and staleness hooks previously showed "just now" for all stale notes after reindex, because they used the capture timestamp instead of the source file's mtime. Now correctly shows when the source file was actually modified. Deleted sources display "source deleted".
-- **CHANGELOG.md excluded from indexing** — added to default `.sameignore` patterns to prevent oversized chunks from changelogs.
-- **README accuracy** — corrected binary size (~12MB → ~14MB), added held-out validation context to eval metrics (93.3% Recall@5 on 30 blind test cases).
 
 ### Claude Code Memory Import
 
 - **`same import` detects Claude Code memory files** — auto-scans `~/.claude/memory/` (global) and `.claude/projects/*/memory/` (project-scoped). Imports with SAME frontmatter, provenance tracking, and `trust_state: unknown`. Skips MEMORY.md index files and de-duplicates on re-import.
-- **Provenance pipeline for imported notes** — `provenance_source` and `provenance_hash` frontmatter fields are now parsed by the indexer and recorded in `note_sources`. `same health` detects when imported source files change. Absolute paths supported for external sources.
+- **Provenance pipeline for imported notes** — `provenance_source` and `provenance_hash` frontmatter fields are now parsed by the indexer and recorded in `note_sources`.
+- **Auto-index after import** — imported files are immediately searchable via keyword index without needing a separate `same reindex`.
+
+### Vault UX
+
+- **Vault feedback on every command** — prints "Using vault: <name> (<path>)" so you always know which vault is active.
+- **Ambiguity warning** — when cwd has multiple vault children, shows a clear warning with options instead of silently picking one.
+- **Single child auto-select** — if cwd isn't a vault but has exactly one child vault, auto-selects it.
+- **`same config show` displays sources** — shows both global and vault config file paths with effective merged values.
+
+### Diagnostics & Error Handling
+
+- **Build hash in version output** — `same version` now shows `same 0.12.5+abc1234` so different builds from the same version are distinguishable.
+- **Binary shadowing detection** — `same doctor` warns when multiple `same` binaries exist in PATH with different checksums.
+- **Embedding errors logged** — embedding provider failures now print the actual error to stderr instead of silently degrading to keyword search.
+- **Graph LLM errors logged** — graph extraction initialization failures now explain why regex fallback is active.
+- **MCP JSON error handling** — 8 `json.MarshalIndent` calls now return proper error responses instead of potentially sending corrupt JSON.
+- **Resolved URL in config show** — `same config show` displays the effective Ollama URL after raw config values.
+- **Reindex lockfile** — prevents concurrent `same reindex` runs from overloading Ollama. Stale locks from dead processes are automatically reclaimed.
+- **Demo improvements** — clearer demo flow and error handling.
+- **Health grace period** — avoids false positives on recently indexed vaults.
+- **Doctor warning improvements** — clearer messaging for common issues.
+
+### Security
+
+- **Provenance trust boundary** — `provenance_source` frontmatter is only trusted for notes in the `imports/` directory (created by `same import`). MCP `save_note` cannot write to `imports/` and cannot plant external provenance.
+- **Agent ownership on mem_forget** — when called with an agent parameter, only the creating agent can suppress a note. Vault owner (no agent) can still suppress anything.
+- **Context usage path validation** — auto-injected provenance paths from `context_usage` are now validated against vault boundaries before reading or hashing.
+- **Import file permissions** — imported files use `0600` and import directories use `0700`.
+- **Provenance cleanup on delete** — `DeleteByPath` now removes `note_sources` rows in the same transaction, preventing stale provenance from persisting across note replacements.
+- **28 credential detection patterns** — AI APIs, cloud providers, git tokens, payment keys, observability tools.
+- **Guard on MCP save_note** — warns on detected credentials before write.
+- **Path validation hardening** — URL-encoded traversal, Unicode fullwidth, and symlink escape detection.
+- **MCP error sanitization** — no internal paths leaked in error responses.
+- **Note sources cleanup** — stale provenance records cleaned up properly.
+- **Consolidation sanitization** — user input in consolidation is sanitized before LLM processing.
+
+### Bug Fixes
+
+- **Stale note timing now shows source file modification time** — `same health` and staleness hooks previously showed "just now" for all stale notes after reindex. Now correctly shows when the source file was actually modified.
+- **CHANGELOG.md excluded from indexing** — added to default `.sameignore` patterns to prevent oversized chunks.
+- **Decision attribution preserved on append** — `save_decision` no longer rewrites file-level agent frontmatter when appending.
+- **Dimension mismatch handling** — graceful fallback when embedding dimensions don't match stored vectors.
+
+### CI
+
+- **Lint CI** — `golangci-lint` integrated into CI pipeline.
+- **npm-publish graceful skip** — no longer fails when the version already exists on npm.
+- **GitHub Actions upgraded to Node.js 24** — all actions pinned to Node.js 24-compatible versions.
 
 ## v0.12.1
 

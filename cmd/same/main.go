@@ -101,6 +101,13 @@ func newEmbedProvider() (embedding.Provider, error) {
 		Dimensions: ec.Dimensions,
 	}
 
+	// Skip connection retries when the user hasn't explicitly configured
+	// an embedding provider. This avoids 6-second retry delays on commands
+	// like doctor/status/demo when Ollama isn't installed.
+	if !config.IsEmbeddingProviderExplicit() {
+		cfg.SkipRetry = true
+	}
+
 	// For ollama provider, use the legacy [ollama] URL if no base_url is set
 	if (cfg.Provider == "ollama" || cfg.Provider == "") && cfg.BaseURL == "" {
 		ollamaURL, err := config.OllamaURL()
@@ -179,6 +186,7 @@ Need help? https://discord.gg/9KfTkcGs7g`,
 		importCmd(),
 		vaultCmd(),
 		graphCmd(),
+		factsCmd(),
 		consolidateCmd(),
 		kaizenCmd(),
 	)

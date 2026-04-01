@@ -129,6 +129,38 @@ func configCmd() *cobra.Command {
 	editCmd.Flags().BoolVar(&editGlobal, "global", false, "Edit global config (~/.config/same/config.toml)")
 	cmd.AddCommand(editCmd)
 
+	// config set
+	var setGlobal bool
+	setCmd := &cobra.Command{
+		Use:   "set",
+		Short: "Set a configuration value",
+		Long: `Set a configuration value using dot notation.
+
+Examples:
+  same config set ollama.url http://host.docker.internal:11434
+  same config set chat.model qwen2.5:7b
+  same config set memory.max_results 8
+  same config set graph.llm_mode on
+  same config set --global ollama.url http://host.docker.internal:11434
+
+Use --global to set in ~/.config/same/config.toml (applies to all vaults).
+Without --global, sets in the current vault's .same/config.toml.`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := config.SetConfigValue(args[0], args[1], setGlobal); err != nil {
+				return err
+			}
+			target := "vault"
+			if setGlobal {
+				target = "global"
+			}
+			fmt.Printf("  %s✓%s Set %s = %s (%s config)\n", cli.Green, cli.Reset, args[0], args[1], target)
+			return nil
+		},
+	}
+	setCmd.Flags().BoolVar(&setGlobal, "global", false, "Set in global config (~/.config/same/config.toml)")
+	cmd.AddCommand(setCmd)
+
 	return cmd
 }
 

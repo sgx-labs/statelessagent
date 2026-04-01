@@ -1219,3 +1219,256 @@ func TestSearchOptions_TrustStateFilter_VectorSearch(t *testing.T) {
 		}
 	}
 }
+
+func TestHybridSearch_KeywordContentBoost(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	dim := 768
+	makeVec := func(val float32) []float32 {
+		v := make([]float32, dim)
+		v[0] = val
+		return v
+	}
+
+	// Insert notes: one has "Business Administration" in text, another does not.
+	notes := []NoteRecord{
+		{
+			Path: "notes/life-goals.md", Title: "Life Goals Session",
+			Tags: "[]", ChunkID: 0, ChunkHeading: "(full)",
+			Text:     "User studied Business Administration at UCLA. Wants to pivot to tech.",
+			Modified: 1700000000, ContentHash: "biz1", ContentType: "note", Confidence: 0.5,
+		},
+		{
+			Path: "notes/career-advice.md", Title: "Career Advice",
+			Tags: "[]", ChunkID: 0, ChunkHeading: "(full)",
+			Text:     "Consider your strengths when choosing a career path. Many options exist.",
+			Modified: 1700000001, ContentHash: "biz2", ContentType: "note", Confidence: 0.5,
+		},
+	}
+
+	vecs := [][]float32{makeVec(0.3), makeVec(0.7)}
+	for i := range notes {
+		if err := db.InsertNote(&notes[i], vecs[i]); err != nil {
+			t.Fatalf("InsertNote %d: %v", i, err)
+		}
+	}
+
+	queryVec := make([]float32, dim)
+	results, err := db.HybridSearch(queryVec, "Business Administration", SearchOptions{TopK: 5})
+	if err != nil {
+		t.Fatalf("HybridSearch: %v", err)
+	}
+
+	if len(results) == 0 {
+		t.Fatal("expected results from HybridSearch")
+	}
+
+	// The note containing literal "Business Administration" should rank
+	// at or near the top thanks to the keyword content boost.
+	foundIdx := -1
+	for i, r := range results {
+		if r.Path == "notes/life-goals.md" {
+			foundIdx = i
+			break
+		}
+	}
+	if foundIdx == -1 {
+		t.Fatal("expected notes/life-goals.md in results")
+	}
+	if foundIdx > 1 {
+		t.Errorf("expected life-goals.md to be in top 2 results, was at position %d", foundIdx)
+	}
+}
+
+func TestHybridSearch_KeywordBoostDoesNotOverrideStrongSemantic(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	dim := 768
+
+	// Note with very high vector similarity but no keyword match
+	strongVec := make([]float32, dim)
+	strongVec[0] = 0.99
+
+	// Note with keyword match but weaker vector
+	weakVec := make([]float32, dim)
+	weakVec[0] = 0.1
+
+	notes := []NoteRecord{
+		{
+			Path: "notes/strong-semantic.md", Title: "Strong Semantic Match",
+			Tags: "[]", ChunkID: 0, ChunkHeading: "(full)",
+			Text:     "Excellent architectural design for microservices system.",
+			Modified: 1700000000, ContentHash: "ss1", ContentType: "note", Confidence: 0.5,
+		},
+		{
+			Path: "notes/weak-keyword.md", Title: "Random Notes",
+			Tags: "[]", ChunkID: 0, ChunkHeading: "(full)",
+			Text:     "Mentioned 'test query' in passing amid unrelated content with low relevance.",
+			Modified: 1700000001, ContentHash: "wk1", ContentType: "note", Confidence: 0.5,
+		},
+	}
+
+	if err := db.InsertNote(&notes[0], strongVec); err != nil {
+		t.Fatalf("InsertNote 0: %v", err)
+	}
+	if err := db.InsertNote(&notes[1], weakVec); err != nil {
+		t.Fatalf("InsertNote 1: %v", err)
+	}
+
+	// Query vector very close to strongVec
+	queryVec := make([]float32, dim)
+	queryVec[0] = 0.98
+	results, err := db.HybridSearch(queryVec, "test query", SearchOptions{TopK: 5})
+	if err != nil {
+		t.Fatalf("HybridSearch: %v", err)
+	}
+
+	if len(results) == 0 {
+		t.Fatal("expected results")
+	}
+
+	// The strong semantic match should still be first because
+	// 1.5x boost on a 0.3 keyword score (0.45) should not beat a 0.95 semantic score.
+	if results[0].Path != "notes/strong-semantic.md" {
+		t.Errorf("expected strong semantic match first, got %s at position 0", results[0].Path)
+	}
+}
+
+func TestHybridSearch_NoLiteralMatch_NoBoost(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	dim := 768
+	makeVec := func(val float32) []float32 {
+		v := make([]float32, dim)
+		v[0] = val
+		return v
+	}
+
+	notes := []NoteRecord{
+		{
+			Path: "notes/unrelated.md", Title: "Unrelated Topic",
+			Tags: "[]", ChunkID: 0, ChunkHeading: "(full)",
+			Text:     "This note has nothing to do with the query at all.",
+			Modified: 1700000000, ContentHash: "u1", ContentType: "note", Confidence: 0.5,
+		},
+	}
+
+	if err := db.InsertNote(&notes[0], makeVec(0.5)); err != nil {
+		t.Fatalf("InsertNote: %v", err)
+	}
+
+	queryVec := makeVec(0.5)
+	results, err := db.HybridSearch(queryVec, "quantum physics", SearchOptions{TopK: 5})
+	if err != nil {
+		t.Fatalf("HybridSearch: %v", err)
+	}
+
+	// No literal "quantum physics" in any note — boost should not apply.
+	// Results should still work (vector search returns the note).
+	if len(results) == 0 {
+		t.Fatal("expected at least 1 result from vector search")
+	}
+}
+
+func TestHybridSearch_FusedScoresCappedForBodyExactMatch(t *testing.T) {
+	db, err := OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	dim := 768
+	makeVec := func(val float32) []float32 {
+		v := make([]float32, dim)
+		v[0] = val
+		return v
+	}
+
+	notes := []NoteRecord{
+		{
+			Path: "notes/semantic.md", Title: "Alpha Beta Gamma Architecture",
+			Tags: "[]", ChunkID: 0, ChunkHeading: "(full)",
+			Text:        "Semantic match for the surrounding architecture discussion.",
+			Modified:    1700000000,
+			ContentHash: "sem1", ContentType: "note", Confidence: 0.5,
+		},
+		{
+			Path: "notes/body-exact.md", Title: "Alpha Notes",
+			Tags: "[]", ChunkID: 0, ChunkHeading: "(full)",
+			Text:        "This weaker note mentions the exact phrase alpha beta gamma in the body only.",
+			Modified:    1700000001,
+			ContentHash: "body1", ContentType: "note", Confidence: 0.5,
+		},
+		{
+			Path: "notes/filler-one.md", Title: "Filler One",
+			Tags: "[]", ChunkID: 0, ChunkHeading: "(full)",
+			Text:        "Additional semantically related filler content.",
+			Modified:    1700000002,
+			ContentHash: "fill1", ContentType: "note", Confidence: 0.5,
+		},
+		{
+			Path: "notes/filler-two.md", Title: "Filler Two",
+			Tags: "[]", ChunkID: 0, ChunkHeading: "(full)",
+			Text:        "More filler content for ranking coverage.",
+			Modified:    1700000003,
+			ContentHash: "fill2", ContentType: "note", Confidence: 0.5,
+		},
+	}
+
+	vecs := [][]float32{
+		makeVec(0.95),
+		makeVec(0.92),
+		makeVec(0.75),
+		makeVec(0.60),
+	}
+	for i := range notes {
+		if err := db.InsertNote(&notes[i], vecs[i]); err != nil {
+			t.Fatalf("InsertNote %d: %v", i, err)
+		}
+	}
+
+	queryVec := makeVec(0.95)
+	results, err := db.HybridSearch(queryVec, "alpha beta gamma", SearchOptions{TopK: 4})
+	if err != nil {
+		t.Fatalf("HybridSearch: %v", err)
+	}
+	if len(results) < 2 {
+		t.Fatalf("expected at least 2 results, got %d", len(results))
+	}
+
+	var semantic *SearchResult
+	var bodyExact *SearchResult
+	for i := range results {
+		if results[i].Score > 1.0 {
+			t.Fatalf("result %q exceeded capped score range: %.3f", results[i].Path, results[i].Score)
+		}
+		switch results[i].Path {
+		case "notes/semantic.md":
+			semantic = &results[i]
+		case "notes/body-exact.md":
+			bodyExact = &results[i]
+		}
+	}
+
+	if semantic == nil || bodyExact == nil {
+		t.Fatalf("expected both semantic and body-exact results, got %#v", results)
+	}
+	if bodyExact.Score > 1.0 {
+		t.Fatalf("expected body-exact fused score to be capped, got %.3f", bodyExact.Score)
+	}
+	if results[0].Path != "notes/semantic.md" {
+		t.Fatalf("expected the stronger semantic result to stay first, got %s", results[0].Path)
+	}
+}

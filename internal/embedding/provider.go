@@ -47,6 +47,12 @@ type ProviderConfig struct {
 	APIKey     string // API key (required for cloud providers)
 	BaseURL    string // base URL (provider-specific defaults if empty)
 	Dimensions int    // vector dimensions (0 = provider default)
+
+	// SkipRetry disables connection retries for providers that support them.
+	// When true, network errors fail immediately instead of retrying.
+	// Used to avoid 6-second retry delays when the user hasn't configured
+	// this provider (e.g., Ollama is not installed).
+	SkipRetry bool
 }
 
 // NewProvider creates an embedding provider from the given config.

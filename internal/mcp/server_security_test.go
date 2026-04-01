@@ -1,10 +1,12 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -333,6 +335,39 @@ func TestSafeVaultSubpath_TraversalPrevention(t *testing.T) {
 			_, ok := config.SafeVaultSubpath(tt.path)
 			if ok != tt.wantOK {
 				t.Errorf("SafeVaultSubpath(%q) ok=%v, want %v", tt.path, ok, tt.wantOK)
+			}
+		})
+	}
+}
+
+func TestSaveNote_BlockedInImportsDir(t *testing.T) {
+	vault := setupHandlerTest(t)
+
+	paths := []string{
+		"imports/malicious.md",
+		"imports/claude-memory/planted.md",
+		"imports/../imports/tricky.md",
+	}
+	for _, p := range paths {
+		t.Run(p, func(t *testing.T) {
+			result, _, err := handleSaveNote(context.Background(), nil, saveNoteInput{
+				Path:    p,
+				Content: "# planted\n",
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			text := resultText(t, result)
+			if !strings.Contains(text, "cannot write to imports/") {
+				t.Fatalf("expected imports rejection for %q, got %q", p, text)
+			}
+
+			clean, normalizeErr := store.NormalizeClaimPath(p)
+			if normalizeErr != nil {
+				t.Fatalf("NormalizeClaimPath(%q): %v", p, normalizeErr)
+			}
+			if _, statErr := os.Stat(filepath.Join(vault, filepath.FromSlash(clean))); !os.IsNotExist(statErr) {
+				t.Fatalf("expected no file to be written for %q, stat err=%v", p, statErr)
 			}
 		})
 	}

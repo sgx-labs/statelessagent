@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/sgx-labs/statelessagent/internal/cli"
 	"github.com/sgx-labs/statelessagent/internal/config"
+	mcpserver "github.com/sgx-labs/statelessagent/internal/mcp"
 	"github.com/sgx-labs/statelessagent/internal/web"
 )
 
@@ -23,6 +26,7 @@ func webCmd() *cobra.Command {
 		port       int
 		openFlag   bool
 		foreground bool
+		mcpFlag    bool
 	)
 	cmd := &cobra.Command{
 		Use:   "web",
@@ -32,10 +36,15 @@ func webCmd() *cobra.Command {
 The dashboard is read-only and only accessible from localhost.
 The server runs in the background by default.
 
+Use --mcp to also enable the Streamable HTTP MCP endpoint on /mcp,
+which allows MCP clients like Claude Code and Cursor to connect
+over HTTP instead of stdio.
+
 Examples:
   same web                  # Start background server, open browser
   same web --port 8080      # Custom port
-  same web --fg             # Run in foreground (blocks terminal)`,
+  same web --fg             # Run in foreground (blocks terminal)
+  same web --mcp --fg       # Dashboard + MCP endpoint (foreground)`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			vp := config.VaultPath()
 			if vp == "" {
@@ -84,12 +93,44 @@ Examples:
 			if CommitHash != "" && CommitHash != "unknown" {
 				webVersion = Version + "+" + CommitHash
 			}
-			return web.Serve(ctx, addr, embedClient, webVersion, vp)
+
+			// Set up MCP endpoint if requested
+			var mcpOpts *web.MCPOptions
+			if mcpFlag {
+				// Initialize MCP globals (db, embedClient, vaultRoot)
+				mcpDB, initErr := mcpserver.InitGlobals()
+				if initErr != nil {
+					return fmt.Errorf("initialize MCP server: %w", initErr)
+				}
+				defer mcpDB.Close()
+
+				mcpserver.Version = webVersion
+
+				token := config.AuthToken()
+				if token == "" {
+					// Generate a random token for this session
+					token = generateToken()
+					fmt.Fprintf(os.Stderr, "  Generated MCP auth token (session-only): %s\n", token)
+					fmt.Fprintf(os.Stderr, "  %sSet SAME_MCP_TOKEN or auth.token in config for a persistent token%s\n\n", cli.Dim, cli.Reset)
+				}
+
+				mcpOpts = &web.MCPOptions{
+					Server: mcpserver.NewMCPServer(),
+					Token:  token,
+				}
+
+				mcpURL := fmt.Sprintf("http://%s/mcp", addr)
+				fmt.Fprintf(os.Stderr, "  MCP endpoint: %s%s%s\n\n", cli.Bold, mcpURL, cli.Reset)
+				printMCPConfigSnippets(mcpURL, token)
+			}
+
+			return web.Serve(ctx, addr, embedClient, webVersion, vp, mcpOpts)
 		},
 	}
 	cmd.Flags().IntVar(&port, "port", 4078, "Port to listen on")
 	cmd.Flags().BoolVar(&openFlag, "open", false, "Auto-open browser (default in background mode)")
 	cmd.Flags().BoolVar(&foreground, "fg", false, "Run in foreground (blocks terminal)")
+	cmd.Flags().BoolVar(&mcpFlag, "mcp", false, "Enable Streamable HTTP MCP endpoint on /mcp")
 	return cmd
 }
 
@@ -164,4 +205,38 @@ func openBrowser(url string) {
 		return
 	}
 	_ = cmd.Run()
+}
+
+// generateToken creates a random 32-byte hex token for session-only use.
+func generateToken() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to a less-random but still usable token
+		return "same-dev-token-" + fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
+}
+
+// printMCPConfigSnippets prints client configuration snippets for common MCP clients.
+func printMCPConfigSnippets(mcpURL, token string) {
+	fmt.Fprintf(os.Stderr, "  %sAdd to your MCP client config:%s\n\n", cli.Dim, cli.Reset)
+
+	// Claude Code
+	fmt.Fprintf(os.Stderr, "  %sClaude Code%s (.claude.json):\n", cli.Bold, cli.Reset)
+	fmt.Fprintf(os.Stderr, "    \"same\": {\n")
+	fmt.Fprintf(os.Stderr, "      \"type\": \"streamable-http\",\n")
+	fmt.Fprintf(os.Stderr, "      \"url\": \"%s\",\n", mcpURL)
+	fmt.Fprintf(os.Stderr, "      \"headers\": {\n")
+	fmt.Fprintf(os.Stderr, "        \"Authorization\": \"Bearer %s\"\n", token)
+	fmt.Fprintf(os.Stderr, "      }\n")
+	fmt.Fprintf(os.Stderr, "    }\n\n")
+
+	// Cursor
+	fmt.Fprintf(os.Stderr, "  %sCursor%s (.cursor/mcp.json):\n", cli.Bold, cli.Reset)
+	fmt.Fprintf(os.Stderr, "    \"same\": {\n")
+	fmt.Fprintf(os.Stderr, "      \"url\": \"%s\",\n", mcpURL)
+	fmt.Fprintf(os.Stderr, "      \"headers\": {\n")
+	fmt.Fprintf(os.Stderr, "        \"Authorization\": \"Bearer %s\"\n", token)
+	fmt.Fprintf(os.Stderr, "      }\n")
+	fmt.Fprintf(os.Stderr, "    }\n\n")
 }

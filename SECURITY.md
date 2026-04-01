@@ -4,7 +4,7 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.12.1  | :white_check_mark: |
+| 0.12.5  | :white_check_mark: |
 | 0.12.x  | :white_check_mark: |
 | 0.11.x  | :white_check_mark: |
 | 0.10.x  | Security fixes only |

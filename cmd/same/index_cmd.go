@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -13,24 +15,29 @@ import (
 
 	"github.com/sgx-labs/statelessagent/internal/cli"
 	"github.com/sgx-labs/statelessagent/internal/config"
+	"github.com/sgx-labs/statelessagent/internal/embedding"
 	"github.com/sgx-labs/statelessagent/internal/indexer"
+	"github.com/sgx-labs/statelessagent/internal/llm"
 	"github.com/sgx-labs/statelessagent/internal/store"
 )
 
 func reindexCmd() *cobra.Command {
 	var (
-		force   bool
-		verbose bool
+		force        bool
+		verbose      bool
+		extractFacts bool
 	)
 	cmd := &cobra.Command{
-		Use:   "reindex",
-		Short: "Scan your notes and rebuild the search index",
+		Use:     "reindex",
+		Aliases: []string{"index"},
+		Short:   "Scan your notes and rebuild the search index",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runReindex(force, verbose)
+			return runReindex(force, verbose, extractFacts)
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "Re-embed all files regardless of changes")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show each file being processed")
+	cmd.Flags().BoolVar(&extractFacts, "extract-facts", false, "Extract atomic facts from notes (requires LLM, slow)")
 	return cmd
 }
 
@@ -49,17 +56,141 @@ func migrateCmd() *cobra.Command {
 		Use:   "migrate",
 		Short: "Rebuild index from scratch (replaces old data)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runReindex(true, false)
+			return runReindex(true, false, false)
 		},
 	}
 }
 
-func runReindex(force bool, verbose bool) error {
+// reindexLockProcessExists is a variable so tests can override it.
+var reindexLockProcessExists = reindexProcessAlive
+
+func reindexProcessAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	err = proc.Signal(syscall.Signal(0))
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, os.ErrProcessDone) {
+		return false
+	}
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return errno == syscall.EPERM
+	}
+	return false
+}
+
+// acquireReindexLock creates a lockfile at .same/data/reindex.lock to prevent
+// concurrent reindex runs. Returns a cleanup function that removes the lock.
+func acquireReindexLock() (func(), error) {
+	lockPath := filepath.Join(config.DataDir(), "reindex.lock")
+
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		// If we can't create the dir, skip locking (store.Open will fail anyway)
+		return func() {}, nil
+	}
+
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		if os.IsExist(err) {
+			// Check if the lock is stale via PID
+			stale := false
+			if data, readErr := os.ReadFile(lockPath); readErr == nil {
+				fields := strings.Fields(string(data))
+				if len(fields) > 0 {
+					if pid, parseErr := strconv.Atoi(fields[0]); parseErr == nil {
+						stale = !reindexLockProcessExists(pid)
+					} else {
+						stale = true // invalid PID content
+					}
+				} else {
+					stale = true // empty file
+				}
+			} else {
+				stale = true // can't read file
+			}
+
+			if stale {
+				if rmErr := os.Remove(lockPath); rmErr != nil {
+					return nil, fmt.Errorf("remove stale reindex lockfile %s: %w", lockPath, rmErr)
+				}
+				f, err = os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+				if err != nil {
+					return nil, fmt.Errorf("Another reindex is in progress")
+				}
+			} else {
+				return nil, fmt.Errorf("Another reindex is in progress")
+			}
+		} else {
+			// Non-EEXIST error: skip locking
+			return func() {}, nil
+		}
+	}
+
+	// Write PID
+	if _, err := fmt.Fprintf(f, "%d\n", os.Getpid()); err != nil {
+		_ = f.Close()
+		_ = os.Remove(lockPath)
+		return func() {}, nil
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(lockPath)
+		return func() {}, nil
+	}
+
+	cleanup := func() {
+		if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "same: warning: failed to remove reindex lockfile %s: %v\n", lockPath, err)
+		}
+	}
+	return cleanup, nil
+}
+
+func runReindex(force bool, verbose bool, extractFacts bool) error {
 	db, err := store.Open()
 	if err != nil {
 		return userError("No SAME vault found", "Run 'same init' first.")
 	}
 	defer db.Close()
+
+	// Early detection: check for embedding model/dimension mismatch before
+	// starting the reindex. If the model changed and --force is not set,
+	// warn and suggest --force so the user doesn't get garbage results.
+	ec := config.EmbeddingProviderConfig()
+	provCfg := embedding.ProviderConfig{
+		Provider:   ec.Provider,
+		Model:      ec.Model,
+		APIKey:     ec.APIKey,
+		BaseURL:    ec.BaseURL,
+		Dimensions: ec.Dimensions,
+		SkipRetry:  true,
+	}
+	if (provCfg.Provider == "ollama" || provCfg.Provider == "") && provCfg.BaseURL == "" {
+		if ollamaURL, urlErr := config.OllamaURL(); urlErr == nil {
+			provCfg.BaseURL = ollamaURL
+		}
+	}
+	if client, embErr := embedding.NewProvider(provCfg); embErr == nil && client != nil {
+		if mismatchErr := db.CheckEmbeddingMeta(client.Name(), client.Model(), client.Dimensions()); mismatchErr != nil {
+			if !force {
+				fmt.Fprintf(os.Stderr, "  ⚠ %v\n", mismatchErr)
+			}
+		}
+	}
+
+	// Acquire reindex lockfile to prevent concurrent runs
+	unlock, lockErr := acquireReindexLock()
+	if lockErr != nil {
+		return lockErr
+	}
+	defer unlock()
 
 	// Set up context with signal handling for graceful cancellation
 	ctx, cancel := context.WithCancel(context.Background())
@@ -113,6 +244,12 @@ func runReindex(force bool, verbose bool) error {
 		}
 	}
 
+	// Phase 3: Fact extraction (optional, requires LLM)
+	var factResult *indexer.FactExtractionProgress
+	if extractFacts && !errors.Is(err, indexer.ErrCanceled) {
+		factResult = runFactExtraction(ctx, db)
+	}
+
 	fmt.Println()
 	if stats != nil && stats.Canceled {
 		fmt.Printf("  %sReindex canceled by user. %d of %d notes indexed.%s\n\n",
@@ -130,6 +267,10 @@ func runReindex(force bool, verbose bool) error {
 		fmt.Printf("  Notes in index:  %d\n", stats.NotesInIndex)
 		fmt.Printf("  Chunks in index: %d\n", stats.ChunksInIndex)
 	}
+	if factResult != nil {
+		factCount, _ := db.FactCount()
+		fmt.Printf("  Facts extracted: %d (%d new this run)\n", factCount, factResult.Facts)
+	}
 	searchMode := "keyword-only"
 	if db.HasVectors() {
 		searchMode = "semantic"
@@ -139,6 +280,60 @@ func runReindex(force bool, verbose bool) error {
 	fmt.Printf("  Graph role:     additive (works with search, not a replacement)\n")
 	fmt.Printf("\n  %sTip: Run 'same watch' in another terminal to auto-reindex as you edit notes.%s\n", cli.Dim, cli.Reset)
 	return nil
+}
+
+// runFactExtraction handles Phase 3 of the reindex pipeline: LLM-based
+// atomic fact extraction. Returns nil if LLM is unavailable.
+func runFactExtraction(ctx context.Context, db *store.DB) *indexer.FactExtractionProgress {
+	// Create LLM client
+	chatClient, chatErr := llm.NewClient()
+	if chatErr != nil {
+		fmt.Fprintf(os.Stderr, "  Fact extraction skipped: no LLM available (%v)\n", chatErr)
+		return nil
+	}
+
+	model := config.ChatModel()
+	if model == "" {
+		var pickErr error
+		model, pickErr = chatClient.PickBestModel()
+		if pickErr != nil || model == "" {
+			fmt.Fprintf(os.Stderr, "  Fact extraction skipped: no chat model found\n")
+			return nil
+		}
+	}
+
+	// Create embedding client for fact vectors
+	embedClient, embErr := newEmbedProvider()
+	if embErr != nil {
+		fmt.Fprintf(os.Stderr, "  Fact extraction skipped: no embedding provider (%v)\n", embErr)
+		return nil
+	}
+
+	fmt.Fprintf(os.Stderr, "\n  Extracting facts (model: %s)...\n", model)
+
+	factProgress := func(completed, total int) {
+		fmt.Fprintf(os.Stderr, "\r  Extracting facts: %d/%d notes...  ", completed, total)
+	}
+
+	factResult, factErr := indexer.BackfillFacts(ctx, db, chatClient, model, embedClient, factProgress)
+
+	// Clear progress line
+	if factResult != nil && factResult.Total > 0 {
+		fmt.Fprintf(os.Stderr, "\r%s\r", strings.Repeat(" ", 60))
+		if factErr == nil {
+			fmt.Fprintf(os.Stderr, "  Facts: %d extracted from %d notes.\n", factResult.Facts, factResult.Completed)
+		} else if errors.Is(factErr, indexer.ErrCanceled) {
+			fmt.Fprintf(os.Stderr, "  Fact extraction paused: %d/%d notes done.\n", factResult.Completed, factResult.Total)
+		}
+	} else if factResult != nil && factResult.Total == 0 {
+		fmt.Fprintf(os.Stderr, "  All notes already have facts extracted.\n")
+	}
+
+	if factErr != nil && !errors.Is(factErr, indexer.ErrCanceled) {
+		fmt.Fprintf(os.Stderr, "  [WARN] fact extraction: %v\n", factErr)
+	}
+
+	return factResult
 }
 
 func graphModeSummary(mode string) string {

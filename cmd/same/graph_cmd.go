@@ -89,12 +89,14 @@ func graphStatsCmd() *cobra.Command {
 
 func graphQueryCmd() *cobra.Command {
 	var (
-		nodeName string
-		nodeType string
-		rel      string
-		depth    int
-		dir      string
-		jsonOut  bool
+		nodeName        string
+		nodeType        string
+		rel             string
+		relationshipAlt string
+		depth           int
+		dir             string
+		directionAlt    string
+		jsonOut         bool
 	)
 	cmd := &cobra.Command{
 		Use:   "query",
@@ -102,6 +104,14 @@ func graphQueryCmd() *cobra.Command {
 		Example: `  same graph query --type note --node "internal/store/db.go" --depth 2
   same graph query --type decision --node "Use SQLite" --dir reverse`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// --relationship is an alias for --rel
+			if rel == "" && relationshipAlt != "" {
+				rel = relationshipAlt
+			}
+			// --direction is an alias for --dir
+			if dir == "forward" && directionAlt != "" {
+				dir = directionAlt
+			}
 			if nodeName == "" {
 				return fmt.Errorf("--node is required")
 			}
@@ -165,8 +175,10 @@ func graphQueryCmd() *cobra.Command {
 	cmd.Flags().StringVar(&nodeName, "node", "", "Name of the start node")
 	cmd.Flags().StringVar(&nodeType, "type", "note", "Type of the start node")
 	cmd.Flags().StringVar(&rel, "rel", "", "Filter by relationship type")
+	cmd.Flags().StringVar(&relationshipAlt, "relationship", "", "Filter by relationship type (alias for --rel)")
 	cmd.Flags().IntVar(&depth, "depth", 1, "Traversal depth")
 	cmd.Flags().StringVar(&dir, "dir", "forward", "Direction (forward, reverse)")
+	cmd.Flags().StringVar(&directionAlt, "direction", "", "Direction (alias for --dir)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Output as JSON")
 	return cmd
 }

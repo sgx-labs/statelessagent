@@ -138,7 +138,7 @@ func parseTestNoteFrontmatter(t *testing.T, content string) (noteFrontmatter, ma
 func TestRunAdd_RejectsPathTraversal(t *testing.T) {
 	vault := setupAddTestVault(t)
 
-	err := runAdd("escape attempt", "../escape.md", nil, "", "")
+	err := runAdd("escape attempt", "../escape.md", nil, "", "", nil)
 	if err == nil {
 		t.Fatal("expected path traversal to be rejected")
 	}
@@ -159,7 +159,7 @@ func TestRunAdd_RejectsSymlinkEscape(t *testing.T) {
 		t.Skipf("symlinks not supported in this environment: %v", err)
 	}
 
-	err := runAdd("escape attempt", filepath.Join("outside-link", "escape.md"), nil, "", "")
+	err := runAdd("escape attempt", filepath.Join("outside-link", "escape.md"), nil, "", "", nil)
 	if err == nil {
 		t.Fatal("expected symlink escape to be rejected")
 	}
@@ -183,7 +183,7 @@ func TestRunAdd_BlocksInternalPaths(t *testing.T) {
 
 	for _, notePath := range tests {
 		t.Run(notePath, func(t *testing.T) {
-			err := runAdd("blocked path", notePath, nil, "", "")
+			err := runAdd("blocked path", notePath, nil, "", "", nil)
 			if err == nil {
 				t.Fatal("expected internal path to be rejected")
 			}
@@ -206,7 +206,7 @@ func TestRunAdd_FrontmatterInjectionIsEscaped(t *testing.T) {
 
 	var runErr error
 	_ = captureCommandStdout(t, func() {
-		runErr = runAdd("release checklist", "notes/frontmatter-safe.md", tags, contentType, domain)
+		runErr = runAdd("release checklist", "notes/frontmatter-safe.md", tags, contentType, domain, nil)
 	})
 	if runErr != nil {
 		t.Fatalf("runAdd: %v", runErr)

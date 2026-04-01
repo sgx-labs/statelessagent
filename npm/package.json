@@ -1,7 +1,7 @@
 {
   "name": "@sgx-labs/same",
-  "version": "0.12.1",
-  "description": "Agentic storage and persistent memory for AI coding agents. Trust-aware retrieval, provenance tracking, stale detection. Local-first SQLite + vector search. 17 MCP tools.",
+  "version": "0.12.5",
+  "description": "Agentic storage and persistent memory for AI coding agents. Trust-aware retrieval, provenance tracking, stale detection, fact extraction. Local-first SQLite + vector search. 19 MCP tools.",
   "homepage": "https://statelessagent.com",
   "repository": {
     "type": "git",

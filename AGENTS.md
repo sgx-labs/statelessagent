@@ -47,7 +47,7 @@ cmd/same/
   config_cmd.go        # Config show/edit
   demo_cmd.go          # Interactive demo
   display_cmd.go       # Display mode switching
-  doctor_cmd.go        # 23 diagnostic checks
+  doctor_cmd.go        # 24 diagnostic checks
   feedback_cmd.go      # Note relevance feedback
   graph_cmd.go         # Knowledge graph query/path/stats/rebuild
   guard_cmd.go         # Push protection
@@ -114,7 +114,7 @@ internal/
     indexer.go            # Main indexer, reindex, single-file index
     chunker.go            # Markdown chunking by heading
     frontmatter.go        # YAML frontmatter parser
-  mcp/                 # MCP server — 17 tools (search, write, session mgmt)
+  mcp/                 # MCP server — 19 tools (search, write, session mgmt)
     server.go             # Tool registration, handlers, helpers
     git.go                # Git context collection for session context
   memory/              # Decision/handoff extraction, budget reports

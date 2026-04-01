@@ -1308,7 +1308,7 @@ provenance_hash: %s
 This is an imported memory note.
 `, sourceFile, sourceHash)
 
-	writeTestNote(t, vaultDir, "imported/memory.md", noteContent)
+	writeTestNote(t, vaultDir, "imports/memory.md", noteContent)
 
 	db, err := store.OpenMemory()
 	if err != nil {
@@ -1326,7 +1326,7 @@ This is an imported memory note.
 	}
 
 	// Query note_sources table to verify provenance was recorded
-	sources, err := db.GetSourcesForNote("imported/memory.md")
+	sources, err := db.GetSourcesForNote("imports/memory.md")
 	if err != nil {
 		t.Fatalf("GetSourcesForNote: %v", err)
 	}
@@ -1365,9 +1365,9 @@ func TestFrontmatterProvenance_ComputesHashWhenMissing(t *testing.T) {
 		ProvenanceSource: sourceFile,
 		ProvenanceHash:   "", // empty — should be computed
 	}
-	recordFrontmatterProvenance(db, "test/note.md", meta)
+	recordFrontmatterProvenance(db, "imports/note.md", meta)
 
-	sources, err := db.GetSourcesForNote("test/note.md")
+	sources, err := db.GetSourcesForNote("imports/note.md")
 	if err != nil {
 		t.Fatalf("GetSourcesForNote: %v", err)
 	}
@@ -1388,9 +1388,9 @@ func TestFrontmatterProvenance_SkippedWhenEmpty(t *testing.T) {
 
 	// Meta with no provenance should be a no-op
 	meta := NoteMeta{Title: "Normal Note"}
-	recordFrontmatterProvenance(db, "test/note.md", meta)
+	recordFrontmatterProvenance(db, "imports/note.md", meta)
 
-	sources, err := db.GetSourcesForNote("test/note.md")
+	sources, err := db.GetSourcesForNote("imports/note.md")
 	if err != nil {
 		t.Fatalf("GetSourcesForNote: %v", err)
 	}

@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   build:
@@ -167,5 +168,47 @@ jobs:
             echo "::notice::Published ${PKG_NAME}@${PKG_VER} to npm"
           else
             echo "::warning::npm publish failed — this is non-blocking. Publish manually: cd npm && npm publish --access public --auth-type=web"
+            exit 0
+          fi
+
+  mcp-registry-publish:
+    needs: npm-publish
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Sync server.json version with tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          jq --arg v "$VERSION" '
+            .version = $v |
+            .packages[0].version = $v
+          ' server.json > server.tmp && mv server.tmp server.json
+          echo "Updated server.json to version $VERSION"
+          cat server.json
+
+      - name: Validate server.json against MCP schema
+        run: |
+          npm install -g ajv-cli ajv-formats
+          curl -sL "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json" -o /tmp/server.schema.json
+          ajv validate -s /tmp/server.schema.json -d server.json --strict=false
+          echo "✓ server.json is valid"
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: |
+          if ./mcp-publisher publish 2>&1; then
+            echo "::notice::Published to MCP Registry"
+          else
+            echo "::warning::MCP Registry publish failed — this is non-blocking. Publish manually with: mcp-publisher login github && mcp-publisher publish"
             exit 0
           fi

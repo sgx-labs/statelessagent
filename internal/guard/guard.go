@@ -29,7 +29,7 @@ func NewScanner(vaultPath string) (*Scanner, error) {
 
 // NewScannerWithConfig creates a scanner with explicit config (useful for testing).
 func NewScannerWithConfig(vaultPath string, cfg GuardConfig) (*Scanner, error) {
-	patterns := builtinPatterns()
+	patterns := AllPatterns()
 	if cfg.Enabled && cfg.PII.Enabled {
 		patterns = FilterByConfig(patterns, cfg.EnabledPatternNames())
 	} else if cfg.Enabled {
