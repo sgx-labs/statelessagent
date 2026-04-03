@@ -1,0 +1,15 @@
+name: same
+version: 1.0.0
+description: >
+  SAME (Stateless Agent Memory Engine) — cross-agent memory with provenance
+  and trust state tracking. Persistent knowledge vault with semantic search,
+  decision logging, session handoffs, and memory invalidation.
+author: SAME Team
+url: https://statelessagent.com
+pip_dependencies: []
+hooks:
+  - prefetch
+  - on_session_end
+  - on_pre_compress
+  - on_memory_write
+  - on_turn_start

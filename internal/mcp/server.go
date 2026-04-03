@@ -2352,7 +2352,7 @@ func safeVaultPath(path string) string {
 			return ""
 		}
 	}
-	full, err := filepath.Abs(filepath.Join(config.VaultPath(), filepath.FromSlash(normalizedInput)))
+	full, err := filepath.Abs(filepath.Join(vaultRoot, filepath.FromSlash(normalizedInput)))
 	if err != nil {
 		return ""
 	}

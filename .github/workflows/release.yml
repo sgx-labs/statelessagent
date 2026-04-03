@@ -171,6 +171,39 @@ jobs:
             exit 0
           fi
 
+  homebrew-update:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Homebrew formula
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          VERSION_NUM="${VERSION#v}"
+
+          # Fetch checksums
+          CHECKSUMS=$(curl -fsSL "https://github.com/sgx-labs/statelessagent/releases/download/${VERSION}/sha256sums.txt")
+          DARWIN_ARM64=$(echo "$CHECKSUMS" | grep "same-darwin-arm64" | awk '{print $1}')
+          LINUX_AMD64=$(echo "$CHECKSUMS" | grep "same-linux-amd64" | awk '{print $1}')
+          LINUX_ARM64=$(echo "$CHECKSUMS" | grep "same-linux-arm64" | awk '{print $1}')
+
+          # Clone tap repo
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/sgx-labs/homebrew-tap.git" tap
+          cd tap
+
+          # Update formula
+          ./update-formula.sh "${VERSION}"
+
+          # Commit and push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/same.rb
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "same ${VERSION_NUM}"
+          git push origin main
+          echo "::notice::Updated Homebrew formula to ${VERSION_NUM}"
+
   mcp-registry-publish:
     needs: npm-publish
     runs-on: ubuntu-latest

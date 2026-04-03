@@ -1,0 +1,46 @@
+# default.sameignore
+#
+# Sensible defaults for any project. This file is installed automatically
+# by "same init" as your vault's starting .sameignore.
+#
+# It ignores the most universally noisy directories across all ecosystems.
+# Copy a stack-specific template from templates/sameignore/ on top of this
+# to add language or framework-specific rules.
+#
+# Usage (auto-installed by "same init", but can also be used manually):
+#   cp templates/sameignore/default.sameignore /path/to/your/vault/.sameignore
+#   same reindex
+#
+# See templates/sameignore/ for stack-specific templates:
+#   hermes-agent.sameignore  — Hermes Agent + Claude Code users
+#   python-project.sameignore
+#   node-project.sameignore
+#   monorepo.sameignore
+
+# --- Version control internals -----------------------------------------------
+.git/
+.svn/
+.hg/
+
+# --- Node.js dependencies ----------------------------------------------------
+node_modules/
+
+# --- Python bytecode ---------------------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+
+# --- Python virtual environments ---------------------------------------------
+venv/
+.venv/
+
+# --- Build and distribution output -------------------------------------------
+dist/
+build/
+
+# --- Cache directories -------------------------------------------------------
+.cache/
+
+# --- Test coverage output ----------------------------------------------------
+coverage/
+htmlcov/

@@ -1,0 +1,45 @@
+# node-project.sameignore
+#
+# .sameignore template for Node.js / JavaScript / TypeScript projects.
+# Place this file at the root of your project vault as ".sameignore" before
+# running "same index" or "same reindex" for the first time.
+#
+# Usage:
+#   cp templates/sameignore/node-project.sameignore /path/to/your/vault/.sameignore
+#   same reindex
+#
+# Ignores installed packages, build output, and generated artifacts that
+# produce enormous amounts of noise in search results.
+
+# --- Installed dependencies --------------------------------------------------
+# node_modules is the #1 offender. A typical project has tens of thousands
+# of files here. Index them and every search returns library source code.
+node_modules/
+
+# --- Next.js build output ----------------------------------------------------
+.next/
+.nuxt/
+
+# --- General build and dist output -------------------------------------------
+dist/
+build/
+out/
+
+# --- Cache directories -------------------------------------------------------
+.cache/
+.turbo/
+.parcel-cache/
+.eslintcache
+
+# --- Test coverage reports ---------------------------------------------------
+coverage/
+.nyc_output/
+
+# --- Minified / bundled files ------------------------------------------------
+# Generated output — searching minified JS is never useful.
+*.min.js
+*.min.css
+*.bundle.js
+
+# --- Storybook build ---------------------------------------------------------
+storybook-static/

@@ -65,6 +65,8 @@ eval/test_vault/.same/config.toml
 
 # Security review files (must never be in public repo)
 CODEX-REVIEW*.md
+decisions/hermes-plugin-bug-report-*.md
+decisions/hermes-plugin-evaluation.md
 .vercel
 .env*.local
 

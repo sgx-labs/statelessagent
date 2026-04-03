@@ -87,6 +87,22 @@ cd npm && npm publish
 
 Verify: `npm view @sgx-labs/same version` should show the new version.
 
+## 10b. Homebrew Tap
+
+Automated by `homebrew-update` job in release workflow. Verify:
+
+```bash
+brew update && brew info sgx-labs/tap/same
+```
+
+Should show the new version. If the workflow failed, update manually:
+
+```bash
+cd /path/to/homebrew-tap
+./update-formula.sh vX.Y.Z
+git add Formula/same.rb && git commit -m "same X.Y.Z" && git push
+```
+
 ## 11. Website Update (statelessagent.com)
 
 - [ ] Version bumps across all pages (index, docs, briefs, sgx-labs, llms.txt, llms-full.txt, .well-known/mcp.json)
@@ -103,6 +119,7 @@ Every release. No exceptions. Stale listings lose us to competitors.
 ### Official registries
 - [ ] **Official MCP Registry** — `mcp-publisher publish` (source of truth for other directories)
 - [ ] **npm** — `cd npm && npm publish` then verify `npm view @sgx-labs/same version`
+- [ ] **Homebrew** — automated, verify `brew info sgx-labs/tap/same`
 
 ### Directory listings (update version, description, tool count)
 - [ ] **Glama.ai** — https://glama.ai/mcp/servers/@sgx-labs/statelessagent
