@@ -630,7 +630,7 @@ Security hardening, crash recovery, search improvements, UX polish, and every ho
 
 ### Changed
 
-- **README rewritten** — pain-first opening, architecture diagram, feature matrix, competitor comparison table, updated benchmarks
+- **README rewritten** — pain-first opening, architecture diagram, feature matrix, comparison table, updated benchmarks
 - **Schema v3** — adds `session_recovery` table; auto-migrates from v2
 - **MCP tool list updated** — setup now shows all 11 tools with accurate descriptions
 

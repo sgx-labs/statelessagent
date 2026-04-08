@@ -67,3 +67,17 @@ CHANGELOG
 # OS files
 .DS_Store
 Thumbs.db
+
+# SAME-specific — don't index eval test fixtures or binary artifacts
+eval/
+*.db
+*.db-wal
+*.db-shm
+cgo-headers/
+same
+same.exe
+demo.tape
+
+# Don't index Go generated protobuf or generated code
+*.pb.go
+*_gen.go
