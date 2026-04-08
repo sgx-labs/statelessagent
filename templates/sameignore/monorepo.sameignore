@@ -1,0 +1,57 @@
+# monorepo.sameignore
+#
+# .sameignore template for large monorepos.
+# Place this file at the root of your project vault as ".sameignore" before
+# running "same index" or "same reindex" for the first time.
+#
+# Usage:
+#   cp templates/sameignore/monorepo.sameignore /path/to/your/vault/.sameignore
+#   same reindex
+#
+# Monorepos are especially prone to search noise because they combine multiple
+# languages, many vendored dependencies, and large generated output trees.
+# This template aggressively ignores everything that isn't handwritten source
+# or documentation.
+
+# --- Vendored / checked-in dependencies --------------------------------------
+# Go modules, Rust crates, and other vendored trees. Hundreds of MB of
+# third-party code that drowns out your project's actual knowledge.
+vendor/
+deps/
+third_party/
+
+# --- Node.js dependencies ----------------------------------------------------
+node_modules/
+
+# --- Cache directories -------------------------------------------------------
+.cache/
+.turbo/
+.bazel-cache/
+
+# --- Build and distribution output -------------------------------------------
+dist/
+build/
+out/
+_build/
+target/        # Rust/Maven/SBT
+
+# --- Generated code ----------------------------------------------------------
+# Proto-generated files, OpenAPI clients, gRPC stubs, etc.
+# These are derived from source-of-truth specs — search the specs, not the output.
+generated/
+gen/
+proto/
+*.pb.go
+*.pb.gw.go
+*_pb2.py
+*_pb2_grpc.py
+
+# --- Python bytecode ---------------------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+
+# --- Coverage and test output ------------------------------------------------
+coverage/
+htmlcov/
+.pytest_cache/

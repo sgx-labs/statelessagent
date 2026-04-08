@@ -1,0 +1,45 @@
+# python-project.sameignore
+#
+# .sameignore template for generic Python projects.
+# Place this file at the root of your project vault as ".sameignore" before
+# running "same index" or "same reindex" for the first time.
+#
+# Usage:
+#   cp templates/sameignore/python-project.sameignore /path/to/your/vault/.sameignore
+#   same reindex
+#
+# Ignores standard Python build artifacts, virtual environments, caches,
+# and generated output that would pollute search results with noise.
+
+# --- Virtual environments ----------------------------------------------------
+venv/
+.venv/
+env/
+.env/
+
+# --- Python bytecode ---------------------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Test caches and output --------------------------------------------------
+.pytest_cache/
+.tox/
+htmlcov/
+
+# --- Build and distribution artifacts ----------------------------------------
+dist/
+build/
+*.egg-info/
+*.egg/
+MANIFEST
+
+# --- Type checker caches -----------------------------------------------------
+.mypy_cache/
+.pytype/
+.pyre/
+
+# --- Common generated output -------------------------------------------------
+*.so
+*.dylib

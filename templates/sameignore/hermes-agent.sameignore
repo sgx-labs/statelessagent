@@ -1,0 +1,63 @@
+# hermes-agent.sameignore
+#
+# .sameignore template for Hermes Agent users — the primary SAME use case.
+# Place this file at the root of your project vault as ".sameignore" before
+# running "same index" or "same reindex" for the first time.
+#
+# Usage:
+#   cp templates/sameignore/hermes-agent.sameignore /path/to/your/vault/.sameignore
+#   same reindex
+#
+# Without a .sameignore, "same search" results get dominated by framework
+# docs, test fixtures, cache files, and build artifacts instead of your
+# actual project knowledge. Ignoring the noise makes search dramatically
+# more useful.
+#
+# Lines starting with # are comments. Blank lines are ignored.
+# Patterns follow .gitignore syntax (prefix with / to anchor to vault root).
+
+# --- Hermes Agent runtime directory ------------------------------------------
+# Hermes Agent writes session state, logs, and internal data here.
+# This is framework internals, not knowledge you want to search.
+hermes-agent/
+
+# --- SAME plugin data directory ----------------------------------------------
+# SAME's own data directory — index files, cache, internal state.
+# Never index your index.
+.hermes/
+
+# --- Claude Code / Anthropic AI settings -------------------------------------
+# Claude Code stores its configuration, project instructions, and
+# session data here. Usually contains system prompts and config,
+# not project knowledge worth searching.
+.claude/
+
+# --- Test directories --------------------------------------------------------
+# Test fixtures, snapshots, and test output files tend to be verbose
+# and repetitive. They'll drown out real search results with noise.
+# Remove this line if your tests contain documentation worth searching.
+test/
+tests/
+
+# --- Node.js dependencies ----------------------------------------------------
+# node_modules can contain tens of thousands of files. Indexing them
+# will make your vault enormous and every search will return framework
+# source code instead of your project's knowledge.
+node_modules/
+
+# --- Git internals -----------------------------------------------------------
+# Git's object store, refs, and config. Never useful in search results.
+.git/
+
+# --- Python bytecode cache ---------------------------------------------------
+# Compiled Python bytecode. Not human-readable and never useful to search.
+__pycache__/
+*.pyc
+*.pyo
+
+# --- Python virtual environments ---------------------------------------------
+# Installed package source code. Same problem as node_modules — will
+# flood search results with third-party library code.
+venv/
+.venv/
+env/
