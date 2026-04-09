@@ -1467,3 +1467,42 @@ func TestIndexer_GraphLLMFailureLogsError(t *testing.T) {
 		t.Logf("stderr output: %q (no graph LLM error logged — LLM may be available)", stderrOutput)
 	}
 }
+
+// TestIndexSingleFile_NilEmbedClient verifies that calling IndexSingleFile
+// with a nil embedClient (keyword-only mode) routes through IndexSingleFileLite
+// instead of dereferencing nil. This is a regression test for a panic that
+// crashed the MCP subprocess on every save_note call when the vault was
+// initialized with --provider none.
+func TestIndexSingleFile_NilEmbedClient(t *testing.T) {
+	vaultDir := setupTestVault(t)
+	relPath := "notes/nil-embed.md"
+	filePath := writeTestNote(t, vaultDir, relPath, `# Nil Embed Test
+
+This note must index correctly even when no embedding provider is configured.
+`)
+
+	db, err := store.OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer db.Close()
+
+	// The nil embedClient previously caused a panic at the
+	// embedClient.GetDocumentEmbeddings call. We expect this to succeed
+	// silently via the lite indexing path.
+	if err := IndexSingleFile(db, filePath, relPath, vaultDir, nil); err != nil {
+		t.Fatalf("IndexSingleFile with nil embedClient should succeed via lite path, got: %v", err)
+	}
+
+	// The note should be queryable.
+	var count int
+	if err := db.Conn().QueryRow(
+		"SELECT COUNT(*) FROM vault_notes WHERE path = ?",
+		relPath,
+	).Scan(&count); err != nil {
+		t.Fatalf("count vault_notes: %v", err)
+	}
+	if count == 0 {
+		t.Fatal("expected at least one row in vault_notes after IndexSingleFile, got 0")
+	}
+}

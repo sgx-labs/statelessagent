@@ -1506,7 +1506,8 @@ func TestRunInit_HeadlessEmitsTerseStatusLine(t *testing.T) {
 	got = strings.TrimSpace(got)
 	if got != "" {
 		// Allowed: the ok: status line. Anything else is a regression.
-		if !regexp.MustCompile(`^ok: vault=\S+ notes=\d+ chunks=\d+$`).MatchString(got) {
+		// Tolerate spaces in vault paths (macOS sometimes; custom TMPDIR).
+		if !regexp.MustCompile(`^ok: vault=.* notes=\d+ chunks=\d+$`).MatchString(got) {
 			// Multi-line output indicates the redirect didn't work — that's a regression.
 			lines := strings.Split(got, "\n")
 			t.Errorf("headless mode emitted unexpected output to stdout (%d lines):\n%s",
