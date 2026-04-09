@@ -1649,10 +1649,21 @@ func isCloudSyncedPath(path string) (bool, string) {
 }
 
 // warnCloudSync warns about cloud-synced folders if detected.
+// In quiet/headless mode the warning is written to stderr instead of stdout
+// so scripted callers see it even when stdout is being suppressed for the
+// terse status line.
 func warnCloudSync(vaultPath string, autoAccept bool) bool {
 	isCloud, provider := isCloudSyncedPath(vaultPath)
 	if !isCloud {
 		return true // proceed
+	}
+
+	if cli.Quiet {
+		// In headless mode, emit a single structured warning to stderr
+		// that scripts can parse, then proceed (we already implied --yes).
+		fmt.Fprintf(os.Stderr, "warn: cloud_sync_detected provider=%s vault=%s — DB conflicts possible across devices\n",
+			provider, vaultPath)
+		return true
 	}
 
 	fmt.Printf("\n  %s⚠%s This folder appears to be in %s.\n\n",
