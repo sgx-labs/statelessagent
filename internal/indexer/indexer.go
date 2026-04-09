@@ -536,6 +536,12 @@ func enrichStats(result map[string]interface{}) {
 // Deletes any existing chunks for the file's relative path, then inserts new ones.
 // This avoids the overhead of a full vault reindex when only one file changed.
 func IndexSingleFile(database *store.DB, filePath, relPath, vaultPath string, embedClient embedding.Provider) error {
+	// Keyword-only mode: route through the lite path which doesn't try
+	// to insert embedding vectors. Without this, save_note panics or
+	// fails to index when the vault was set up with --provider none.
+	if embedClient == nil {
+		return IndexSingleFileLite(database, filePath, relPath, vaultPath)
+	}
 	records, embeddings, content, meta, err := buildRecords(filePath, relPath, vaultPath, embedClient)
 	liteOnly := false
 	if err != nil {
@@ -721,6 +727,14 @@ func buildRecordsWithContent(filePath, relPath, vaultPath string, embedClient em
 			embedText = embedText[:config.MaxEmbedChars]
 		}
 		embedTexts[i] = embedText
+	}
+
+	// Defensive: callers must not pass a nil embedClient. If they do, return
+	// a clear error instead of dereferencing it. The IndexSingleFile entry
+	// point routes nil-client calls through IndexSingleFileLite, so this
+	// branch is a safety net for external callers of BuildRecordsForFile.
+	if embedClient == nil {
+		return nil, nil, content, meta, fmt.Errorf("buildRecords: embedClient is nil — use buildRecordsLite for keyword-only mode")
 	}
 
 	// Batch embed all chunks at once
