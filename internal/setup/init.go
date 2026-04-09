@@ -281,13 +281,19 @@ func RunInit(opts InitOptions) error {
 		cli.Quiet = true
 		defer func() { cli.Quiet = prevQuiet }()
 
+		// Save the real stdout so we can write the terse status line to
+		// it at the end, regardless of whether the /dev/null redirect
+		// below succeeds. If the redirect fails for any reason (read-only
+		// fs, exotic platform), the noisy fmt.Printf calls still go to
+		// the caller's stdout — that's degraded but better than dropping
+		// the status line entirely.
+		headlessOut = os.Stdout
+
 		// Redirect stdout to /dev/null so the dozens of status fmt.Printf
 		// calls scattered through the init flow don't pollute the
 		// scripted caller's stdout. We restore the original stdout right
 		// before writing the final terse status line.
-		devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
-		if err == nil {
-			headlessOut = os.Stdout
+		if devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0); err == nil {
 			os.Stdout = devnull
 			defer func() {
 				os.Stdout = headlessOut
