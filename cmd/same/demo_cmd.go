@@ -522,7 +522,10 @@ Answer concisely, citing sources by name:`, ctx.String(), askQuery)
 	}
 
 	// ── Setup prompt ────────────────────────────────────────────────────
-	if noSetup {
+	// Skip the prompt entirely in non-interactive contexts (CI, scripts,
+	// piped input). Without this, the demo blocks forever waiting for stdin
+	// that will never come.
+	if noSetup || !stdinIsTTY() {
 		fmt.Printf("  Run %ssame init%s anytime to set up a vault for your project.\n\n", cli.Cyan, cli.Reset)
 		return nil
 	}
@@ -638,4 +641,15 @@ func highlightTerms(text string, terms []string) string {
 		text = result.String()
 	}
 	return text
+}
+
+// stdinIsTTY reports whether standard input is connected to a terminal.
+// Used to skip interactive prompts when running under CI, pipes, or
+// other non-interactive contexts.
+func stdinIsTTY() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
 }

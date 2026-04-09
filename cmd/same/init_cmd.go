@@ -9,6 +9,7 @@ import (
 func initCmd() *cobra.Command {
 	var (
 		yes       bool
+		headless  bool
 		mcpOnly   bool
 		hooksOnly bool
 		verbose   bool
@@ -25,10 +26,14 @@ What it does:
   3. Indexes them so your AI can search them
   4. Connects to your AI tools (Claude, Cursor, etc.)
 
-Run this command from inside your project folder.`,
+Run this command from inside your project folder.
+
+Use --headless for scripted/automated installs (no prompts, no decorative
+output, terse status line on success). Implies --yes.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return setup.RunInit(setup.InitOptions{
 				Yes:       yes,
+				Headless:  headless,
 				MCPOnly:   mcpOnly,
 				HooksOnly: hooksOnly,
 				Verbose:   verbose,
@@ -38,6 +43,7 @@ Run this command from inside your project folder.`,
 		},
 	}
 	cmd.Flags().BoolVar(&yes, "yes", false, "Accept all defaults without prompting")
+	cmd.Flags().BoolVar(&headless, "headless", false, "Non-interactive mode for scripts: no prompts, no decorative output, terse status (implies --yes)")
 	cmd.Flags().BoolVar(&mcpOnly, "mcp-only", false, "Skip hooks setup (for Cursor/Windsurf users)")
 	cmd.Flags().BoolVar(&hooksOnly, "hooks-only", false, "Skip MCP setup (Claude Code only)")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show each file being processed")

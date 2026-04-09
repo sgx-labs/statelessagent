@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+// Quiet suppresses decorative output (banners, sections, boxes, footers).
+// Set to true for non-interactive / headless commands so scripted callers
+// get clean structured output instead of ANSI art and section dividers.
+var Quiet bool
+
 // ANSI color constants.
 const (
 	Green   = "\033[32m"
@@ -62,8 +67,11 @@ func FormatNumber(n int) string {
 }
 
 // Banner prints the SAME ASCII art logo with blue gradient
-// and tagline. Used by `same init`.
+// and tagline. Used by `same init`. No-op when Quiet is set.
 func Banner(version string) {
+	if Quiet {
+		return
+	}
 	logo := []string{
 		"  ███████╗ █████╗ ███╗   ███╗███████╗",
 		"  ██╔════╝██╔══██╗████╗ ████║██╔════╝",
@@ -90,7 +98,11 @@ func Banner(version string) {
 }
 
 // Header prints a small heavy-border box with a title. Used by `same status` and `same doctor`.
+// No-op when Quiet is set.
 func Header(title string) {
+	if Quiet {
+		return
+	}
 	fmt.Println()
 	heavyTop := margin + "\u250f" + strings.Repeat("\u2501", boxWidth) + "\u2513"
 	heavyBottom := margin + "\u2517" + strings.Repeat("\u2501", boxWidth) + "\u251b"
@@ -104,7 +116,11 @@ func Header(title string) {
 }
 
 // Section prints a section divider line: ── Name ─────────────────
+// No-op when Quiet is set.
 func Section(name string) {
+	if Quiet {
+		return
+	}
 	prefix := "\u2500\u2500 " + name + " "
 	remaining := boxWidth + 2 - runeLen(prefix)
 	if remaining < 0 {
@@ -115,7 +131,11 @@ func Section(name string) {
 }
 
 // Box prints a light-border box around content lines.
+// No-op when Quiet is set.
 func Box(lines []string) {
+	if Quiet {
+		return
+	}
 	lightTop := margin + "\u250c" + strings.Repeat("\u2500", boxWidth) + "\u2510"
 	lightBottom := margin + "\u2514" + strings.Repeat("\u2500", boxWidth) + "\u2518"
 
@@ -130,7 +150,11 @@ func Box(lines []string) {
 }
 
 // Footer prints the branded footer in dim text.
+// No-op when Quiet is set.
 func Footer() {
+	if Quiet {
+		return
+	}
 	fmt.Printf("\n%s%sstatelessagent.com%s\n\n", margin, Dim, Reset)
 }
 

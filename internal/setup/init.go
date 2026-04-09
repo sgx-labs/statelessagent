@@ -36,6 +36,7 @@ var welcomeNotes embed.FS
 // InitOptions controls the init wizard behavior.
 type InitOptions struct {
 	Yes       bool // skip all prompts, accept defaults
+	Headless  bool // suppress decorative output for non-interactive use; implies Yes
 	MCPOnly   bool // skip hooks setup (for Cursor/Windsurf users)
 	HooksOnly bool // skip MCP setup (Claude Code only)
 	Verbose   bool // show detailed progress (each file being processed)
@@ -270,6 +271,31 @@ func acquireInitLock() (func(), error) {
 
 // RunInit executes the interactive setup wizard.
 func RunInit(opts InitOptions) error {
+	// Headless implies Yes — no prompts at all.
+	var headlessOut *os.File // saved stdout for the final status line
+	if opts.Headless {
+		opts.Yes = true
+		// Suppress decorative output (banners, sections, boxes, footers).
+		// Restored on return so subsequent commands aren't affected.
+		prevQuiet := cli.Quiet
+		cli.Quiet = true
+		defer func() { cli.Quiet = prevQuiet }()
+
+		// Redirect stdout to /dev/null so the dozens of status fmt.Printf
+		// calls scattered through the init flow don't pollute the
+		// scripted caller's stdout. We restore the original stdout right
+		// before writing the final terse status line.
+		devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+		if err == nil {
+			headlessOut = os.Stdout
+			os.Stdout = devnull
+			defer func() {
+				os.Stdout = headlessOut
+				devnull.Close()
+			}()
+		}
+	}
+
 	// S20: Prevent concurrent init runs with a lockfile
 	unlock, err := acquireInitLock()
 	if err != nil {
@@ -543,6 +569,17 @@ func RunInit(opts InitOptions) error {
 		boxLines = append(boxLines, fmt.Sprintf("Database: %.1f MB", dbSizeMB))
 	}
 	cli.Box(boxLines)
+
+	// Headless mode: write a single terse status line directly to the
+	// saved original stdout (the rest of the init flow has been writing
+	// to /dev/null), then return — no decorative summary, no "big moment"
+	// ASCII art, no getting-started tips. Scripted callers can grep for
+	// the `ok:` prefix.
+	if opts.Headless && headlessOut != nil {
+		fmt.Fprintf(headlessOut, "ok: vault=%s notes=%d chunks=%d\n",
+			vaultPath, stats.NotesInIndex, stats.ChunksInIndex)
+		return nil
+	}
 
 	// Configuration summary — show what was auto-detected
 	if initDetection != nil && initDetection.Running {
@@ -1785,12 +1822,14 @@ func detectVault(autoAccept bool) (string, error) {
 			return cwd, nil
 		}
 	} else if len(projectDocs) == 0 {
-		fmt.Println("  No vault markers or markdown files found.")
-		fmt.Println()
-		fmt.Printf("  %sYou can use this directory as a fresh vault.%s\n", cli.Dim, cli.Reset)
-		fmt.Printf("  %sSAME will create starter notes and directories for you.%s\n", cli.Dim, cli.Reset)
-		fmt.Println()
-		if confirm("  Set up SAME in this directory?", true) {
+		if !cli.Quiet {
+			fmt.Println("  No vault markers or markdown files found.")
+			fmt.Println()
+			fmt.Printf("  %sYou can use this directory as a fresh vault.%s\n", cli.Dim, cli.Reset)
+			fmt.Printf("  %sSAME will create starter notes and directories for you.%s\n", cli.Dim, cli.Reset)
+			fmt.Println()
+		}
+		if autoAccept || confirm("  Set up SAME in this directory?", true) {
 			return cwd, nil
 		}
 	}
@@ -1950,19 +1989,39 @@ func runIndex(vaultPath string, verbose, useEmbeddings bool) (*indexer.Stats, er
 		}
 	}()
 
-	// Delete existing DB to ensure clean schema (init always does a full reindex).
-	// This prevents dimension mismatches when the user switches embedding models.
+	// If an existing DB is present, try to keep it. We only blow it away when
+	// it's incompatible (e.g. embedding model/dimension changed). This makes
+	// re-running `same init` safe — users can re-run to add MCP integration
+	// or fix config without losing their indexed knowledge.
 	dbPath := config.DBPath()
+	dbExisted := false
 	if _, err := os.Stat(dbPath); err == nil {
-		_ = os.Remove(dbPath)
-		// Also remove WAL/SHM files
-		_ = os.Remove(dbPath + "-wal")
-		_ = os.Remove(dbPath + "-shm")
+		dbExisted = true
 	}
 
 	db, err := store.Open()
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
+	}
+
+	// If the DB existed and we're using embeddings, verify the stored
+	// embedding metadata matches the current provider/model. If it doesn't,
+	// we have to rebuild — mixed-dim vectors break search.
+	if dbExisted && useEmbeddings {
+		ec := config.EmbeddingProviderConfig()
+		if ec.Provider != "" && ec.Model != "" && ec.Dimensions > 0 {
+			if checkErr := db.CheckEmbeddingMeta(ec.Provider, ec.Model, ec.Dimensions); checkErr != nil {
+				// Schema mismatch — close, delete, reopen to rebuild from scratch.
+				db.Close()
+				_ = os.Remove(dbPath)
+				_ = os.Remove(dbPath + "-wal")
+				_ = os.Remove(dbPath + "-shm")
+				db, err = store.Open()
+				if err != nil {
+					return nil, fmt.Errorf("reopen database after rebuild: %w", err)
+				}
+			}
+		}
 	}
 	defer db.Close()
 
@@ -2468,7 +2527,7 @@ func scanProjectContext(dir string) *ProjectContext {
 
 // showProjectContext prints the detected project context during init.
 func showProjectContext(ctx *ProjectContext) {
-	if ctx == nil {
+	if ctx == nil || cli.Quiet {
 		return
 	}
 	fmt.Println()
