@@ -16,6 +16,9 @@ func TestRunReindex_NoVault(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission model differs on Windows")
 	}
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses permission checks")
+	}
 
 	vault := t.TempDir()
 	oldOverride := config.VaultOverride
@@ -40,6 +43,9 @@ func TestRunReindex_NoVault(t *testing.T) {
 func TestRunStats_NoVault(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission model differs on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses permission checks")
 	}
 
 	vault := t.TempDir()

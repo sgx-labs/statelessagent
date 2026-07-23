@@ -1,12 +1,17 @@
 package main
 
 import (
+	"os"
 	"testing"
 
 	"github.com/sgx-labs/statelessagent/internal/config"
 )
 
 func TestWebCmd_NoVault(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can create the nonexistent vault path")
+	}
+
 	oldOverride := config.VaultOverride
 	config.VaultOverride = "/definitely/nonexistent/same-vault-path"
 	t.Cleanup(func() { config.VaultOverride = oldOverride })

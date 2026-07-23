@@ -168,6 +168,9 @@ func TestAcquireFileLock_StaleLockRemoveFailure(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("permission model differs on Windows")
 	}
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses permission checks")
+	}
 
 	dir := t.TempDir()
 	lockPath := filepath.Join(dir, "vaults.lock")
