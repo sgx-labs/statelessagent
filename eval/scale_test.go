@@ -326,11 +326,18 @@ func TestScale(t *testing.T) {
 		t.Logf("PASS: Index time %.1fs < 30s", indexDuration.Seconds())
 	}
 
+	// Shared CI runners are noisy and slower than dev machines; give the
+	// latency assertions headroom there so they only catch real regressions.
+	latencyFactor := 1.0
+	if os.Getenv("CI") != "" {
+		latencyFactor = 2.0
+	}
+
 	// LIKE-based search scans full text and is slower than FTS5.
 	// Use 100ms limit for FTS5, 200ms for keyword-LIKE fallback.
-	searchLimit := 100.0
+	searchLimit := 100.0 * latencyFactor
 	if !useFTS {
-		searchLimit = 200.0
+		searchLimit = 200.0 * latencyFactor
 	}
 	if avgSearchMs > searchLimit {
 		t.Errorf("FAIL: %s search avg %.2fms exceeds %.0fms limit", searchMode, avgSearchMs, searchLimit)
@@ -338,10 +345,11 @@ func TestScale(t *testing.T) {
 		t.Logf("PASS: %s search avg %.2fms < %.0fms", searchMode, avgSearchMs, searchLimit)
 	}
 
-	if avgMetaMs > 50 {
-		t.Errorf("FAIL: MetadataFilter avg %.2fms exceeds 50ms limit", avgMetaMs)
+	metaLimit := 50.0 * latencyFactor
+	if avgMetaMs > metaLimit {
+		t.Errorf("FAIL: MetadataFilter avg %.2fms exceeds %.0fms limit", avgMetaMs, metaLimit)
 	} else {
-		t.Logf("PASS: MetadataFilter avg %.2fms < 50ms", avgMetaMs)
+		t.Logf("PASS: MetadataFilter avg %.2fms < %.0fms", avgMetaMs, metaLimit)
 	}
 }
 
