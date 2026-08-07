@@ -4,7 +4,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
-	"os"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -28,14 +28,29 @@ func Open() (*DB, error) {
 	return OpenPath(config.DBPath())
 }
 
-// OpenPath opens or creates the database at the given path.
+// OpenPath opens or creates the database at the given filesystem path.
+// On Unix, the parent directory and database are secured with owner-only mode
+// bits before SQLite opens them. This is not a Windows ACL guarantee.
 func OpenPath(path string) (*DB, error) {
+	if path == ":memory:" {
+		return nil, fmt.Errorf("OpenPath does not accept in-memory SQLite DSNs; use OpenMemory")
+	}
+	if strings.HasPrefix(path, "file:") {
+		return nil, fmt.Errorf("OpenPath does not accept SQLite URI DSNs")
+	}
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, fmt.Errorf("create data dir: %w", err)
+	if dir == "." {
+		return nil, fmt.Errorf("OpenPath requires a database path with an explicit parent directory")
+	}
+	absolutePath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve database path: %w", err)
+	}
+	if err := prepareDBPath(absolutePath); err != nil {
+		return nil, err
 	}
 
-	conn, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_synchronous=NORMAL&_busy_timeout=5000")
+	conn, err := sql.Open("sqlite3", sqliteFileDSN(absolutePath))
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
@@ -73,6 +88,21 @@ func OpenPath(path string) (*DB, error) {
 	}
 
 	return db, nil
+}
+
+func sqliteFileDSN(absolutePath string) string {
+	uriPath := filepath.ToSlash(absolutePath)
+	// A Windows drive path needs a leading slash to form file:///C:/..., while
+	// Unix absolute paths and Windows UNC paths already begin with a slash.
+	if filepath.VolumeName(absolutePath) != "" && !strings.HasPrefix(uriPath, "/") {
+		uriPath = "/" + uriPath
+	}
+	query := url.Values{
+		"_journal_mode": {"WAL"},
+		"_synchronous":  {"NORMAL"},
+		"_busy_timeout": {"5000"},
+	}
+	return (&url.URL{Scheme: "file", Path: uriPath, RawQuery: query.Encode()}).String()
 }
 
 // OpenMemory opens an in-memory database for testing.
