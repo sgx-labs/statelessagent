@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -233,8 +234,16 @@ func TestRecordProvenance_AutoInjectedTraversalBlocked(t *testing.T) {
 	os.MkdirAll(filepath.Join(vault, "notes"), 0o755)
 	os.WriteFile(filepath.Join(vault, "notes", "saved.md"), []byte("# Saved"), 0o644)
 
-	// Seed context_usage with a traversal path
-	seedContextUsage(t, []string{"../../../etc/passwd"})
+	// Seed context_usage with a traversal path that survives the .md filter.
+	const traversalPath = "../../../etc/passwd.md"
+	seedContextUsage(t, []string{traversalPath})
+	accepted, err := getRecentInjectedNotePaths(60)
+	if err != nil {
+		t.Fatalf("getRecentInjectedNotePaths: %v", err)
+	}
+	if len(accepted) != 1 || accepted[0] != traversalPath {
+		t.Fatalf("seeded traversal path did not reach provenance sink input: %v", accepted)
+	}
 
 	// Call recordProvenanceSources with no explicit sources
 	recordProvenanceSources("notes/saved.md", nil)
@@ -245,7 +254,7 @@ func TestRecordProvenance_AutoInjectedTraversalBlocked(t *testing.T) {
 		t.Fatalf("GetSourcesForNote: %v", err)
 	}
 	for _, s := range sources {
-		if s.SourcePath == "../../../etc/passwd" {
+		if s.SourcePath == traversalPath {
 			t.Error("traversal path was NOT blocked — recorded as provenance source")
 		}
 	}
@@ -258,8 +267,16 @@ func TestRecordProvenance_AutoInjectedAbsoluteBlocked(t *testing.T) {
 	os.MkdirAll(filepath.Join(vault, "notes"), 0o755)
 	os.WriteFile(filepath.Join(vault, "notes", "saved.md"), []byte("# Saved"), 0o644)
 
-	// Seed context_usage with an absolute path
-	seedContextUsage(t, []string{"/etc/passwd"})
+	// Seed context_usage with an absolute .md path that survives the filter.
+	const absolutePath = "/etc/passwd.md"
+	seedContextUsage(t, []string{absolutePath})
+	accepted, err := getRecentInjectedNotePaths(60)
+	if err != nil {
+		t.Fatalf("getRecentInjectedNotePaths: %v", err)
+	}
+	if len(accepted) != 1 || accepted[0] != absolutePath {
+		t.Fatalf("seeded absolute path did not reach provenance sink input: %v", accepted)
+	}
 
 	// Call recordProvenanceSources with no explicit sources
 	recordProvenanceSources("notes/saved.md", nil)
@@ -270,22 +287,79 @@ func TestRecordProvenance_AutoInjectedAbsoluteBlocked(t *testing.T) {
 		t.Fatalf("GetSourcesForNote: %v", err)
 	}
 	for _, s := range sources {
-		if s.SourcePath == "/etc/passwd" {
+		if s.SourcePath == absolutePath {
 			t.Error("absolute path was NOT blocked — recorded as provenance source")
+		}
+	}
+}
+
+func TestRecordProvenance_AutoInjectedSymlinkSwapBlocked(t *testing.T) {
+	vault := setupHandlerTest(t)
+
+	notesDir := filepath.Join(vault, "notes")
+	if err := os.MkdirAll(notesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(notes): %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(notesDir, "saved.md"), []byte("# Saved"), 0o644); err != nil {
+		t.Fatalf("WriteFile(saved): %v", err)
+	}
+
+	const sourcePath = "notes/source.md"
+	vaultSource := filepath.Join(vault, filepath.FromSlash(sourcePath))
+	if err := os.WriteFile(vaultSource, []byte("# Accepted inside-vault note"), 0o644); err != nil {
+		t.Fatalf("WriteFile(source): %v", err)
+	}
+	seedContextUsage(t, []string{sourcePath})
+	accepted, err := getRecentInjectedNotePaths(60)
+	if err != nil {
+		t.Fatalf("getRecentInjectedNotePaths: %v", err)
+	}
+	if len(accepted) != 1 || accepted[0] != sourcePath {
+		t.Fatalf("valid source was not accepted before swap: %v", accepted)
+	}
+
+	outsideDir := t.TempDir()
+	outsideBytes := []byte("outside-vault secret bytes")
+	outsideTarget := filepath.Join(outsideDir, "outside.md")
+	if err := os.WriteFile(outsideTarget, outsideBytes, 0o644); err != nil {
+		t.Fatalf("WriteFile(outside): %v", err)
+	}
+	if err := os.Remove(vaultSource); err != nil {
+		t.Fatalf("Remove(source): %v", err)
+	}
+	if err := os.Symlink(outsideTarget, vaultSource); err != nil {
+		t.Skipf("symlink not supported on this platform: %v", err)
+	}
+
+	recordProvenanceSources("notes/saved.md", nil)
+
+	sources, err := db.GetSourcesForNote("notes/saved.md")
+	if err != nil {
+		t.Fatalf("GetSourcesForNote: %v", err)
+	}
+	outsideHash := fmt.Sprintf("%x", sha256.Sum256(outsideBytes))
+	for _, source := range sources {
+		if source.SourcePath == sourcePath {
+			t.Errorf("swapped symlink path was recorded: %+v", source)
+		}
+		if source.SourceHash == outsideHash {
+			t.Error("outside-vault bytes were read and recorded")
 		}
 	}
 }
 
 func TestRecordProvenance_ValidAutoInjectedPath(t *testing.T) {
 	vault := setupHandlerTest(t)
+	const sourcePath = "notes/source.md"
+	sourceBytes := []byte("# Source")
 
 	// Create the note being saved and a source note
 	os.MkdirAll(filepath.Join(vault, "notes"), 0o755)
 	os.WriteFile(filepath.Join(vault, "notes", "saved.md"), []byte("# Saved"), 0o644)
-	os.WriteFile(filepath.Join(vault, "notes", "source.md"), []byte("# Source"), 0o644)
+	os.WriteFile(filepath.Join(vault, "notes", "source.md"), sourceBytes, 0o644)
 
 	// Seed context_usage with a valid vault-relative path
-	seedContextUsage(t, []string{"notes/source.md"})
+	seedContextUsage(t, []string{sourcePath})
 
 	// Call recordProvenanceSources with no explicit sources
 	recordProvenanceSources("notes/saved.md", nil)
@@ -297,13 +371,14 @@ func TestRecordProvenance_ValidAutoInjectedPath(t *testing.T) {
 	}
 	found := false
 	for _, s := range sources {
-		if s.SourcePath == "notes/source.md" {
+		if s.SourcePath == sourcePath {
 			found = true
 			if s.SourceType != "note" {
 				t.Errorf("expected source_type 'note', got %q", s.SourceType)
 			}
-			if s.SourceHash == "" {
-				t.Error("expected non-empty hash for valid source file")
+			expectedHash := fmt.Sprintf("%x", sha256.Sum256(sourceBytes))
+			if s.SourceHash != expectedHash {
+				t.Errorf("expected source_hash %q, got %q", expectedHash, s.SourceHash)
 			}
 		}
 	}

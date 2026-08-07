@@ -802,8 +802,11 @@ func recordProvenanceSources(notePath string, explicitSources []string) {
 			if seen[p] || p == notePath {
 				continue
 			}
+			fullPath := safeVaultPath(p)
+			if fullPath == "" {
+				continue
+			}
 			hash := ""
-			fullPath := filepath.Join(vaultRoot, p)
 			if content, err := os.ReadFile(fullPath); err == nil {
 				h := sha256.Sum256(content)
 				hash = fmt.Sprintf("%x", h)
