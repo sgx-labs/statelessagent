@@ -34,6 +34,9 @@ func OpenPath(path string) (*DB, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("secure data dir: %w", err)
+	}
 
 	conn, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_synchronous=NORMAL&_busy_timeout=5000")
 	if err != nil {
@@ -57,6 +60,11 @@ func OpenPath(path string) (*DB, error) {
 			conn.Close()
 			return nil, fmt.Errorf("set %s: %w", pragma, err)
 		}
+	}
+
+	if err := os.Chmod(path, 0o600); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("secure database file: %w", err)
 	}
 
 	// Verify sqlite-vec is loaded
