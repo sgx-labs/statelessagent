@@ -117,9 +117,17 @@ func assertOpenedDatabasePath(t *testing.T, db *DB, want string) {
 	if err != nil {
 		t.Fatalf("resolve expected database path: %v", err)
 	}
+	want, err = filepath.EvalSymlinks(want)
+	if err != nil {
+		t.Fatalf("canonicalize expected database path: %v", err)
+	}
 	got, err = filepath.Abs(got)
 	if err != nil {
 		t.Fatalf("resolve opened database path: %v", err)
+	}
+	got, err = filepath.EvalSymlinks(got)
+	if err != nil {
+		t.Fatalf("canonicalize opened database path: %v", err)
 	}
 	if got != want {
 		t.Fatalf("opened database path = %q, want %q", got, want)
